@@ -477,6 +477,54 @@ describe("analyzer", () => {
 		});
 	});
 
+	describe("validation — propriétés intrinsèques des tableaux", () => {
+		test("accès à .length sur un tableau est valide", () => {
+			const result = analyze("{{tags.length}}", userSchema);
+			expect(result.valid).toBe(true);
+			expect(result.diagnostics).toHaveLength(0);
+			expect(result.outputSchema).toEqual({ type: "integer" });
+		});
+
+		test("accès à .length sur un tableau d'objets est valide", () => {
+			const result = analyze("{{orders.length}}", userSchema);
+			expect(result.valid).toBe(true);
+			expect(result.diagnostics).toHaveLength(0);
+			expect(result.outputSchema).toEqual({ type: "integer" });
+		});
+
+		test("accès à .length dans un template mixte → string", () => {
+			const result = analyze("Total: {{orders.length}} commandes", userSchema);
+			expect(result.valid).toBe(true);
+			expect(result.diagnostics).toHaveLength(0);
+			expect(result.outputSchema).toEqual({ type: "string" });
+		});
+
+		test("accès à .length dans un bloc #if est valide", () => {
+			const result = analyze(
+				"{{#if tags}}{{tags.length}}{{else}}0{{/if}}",
+				userSchema,
+			);
+			expect(result.valid).toBe(true);
+			expect(result.diagnostics).toHaveLength(0);
+		});
+
+		test("accès à .length sur un non-tableau → erreur", () => {
+			const result = analyze("{{name.length}}", userSchema);
+			expect(result.valid).toBe(false);
+			expect(result.diagnostics).toHaveLength(1);
+			expect(result.diagnostics[0]?.code).toBe("UNKNOWN_PROPERTY");
+		});
+
+		test("accès à .length sur un tableau imbriqué via #with", () => {
+			const result = analyze(
+				"{{#with metadata}}{{permissions.length}}{{/with}}",
+				userSchema,
+			);
+			expect(result.valid).toBe(true);
+			expect(result.diagnostics).toHaveLength(0);
+		});
+	});
+
 	describe("diagnostics contiennent une position (loc)", () => {
 		test("l'erreur inclut la position dans le source", () => {
 			const result = analyze("Hello {{badProp}}", userSchema);

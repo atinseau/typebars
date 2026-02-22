@@ -7,6 +7,7 @@ import {
 } from "./compiled-template.ts";
 import { TemplateAnalysisError } from "./errors.ts";
 import { executeFromAst } from "./executor.ts";
+import { MathHelpers } from "./helpers/index.ts";
 import { parse } from "./parser.ts";
 import type {
 	AnalysisResult,
@@ -60,6 +61,7 @@ export {
 	TemplateRuntimeError,
 } from "./errors.ts";
 export { clearCompilationCache, execute, executeFromAst } from "./executor.ts";
+export { MathHelpers } from "./helpers/index.ts";
 export type { ExpressionIdentifier, ParsedIdentifier } from "./parser.ts";
 export {
 	canUseFastPath,
@@ -78,7 +80,9 @@ export type {
 	DiagnosticCode,
 	DiagnosticDetails,
 	ExecuteOptions,
+	HelperConfig,
 	HelperDefinition,
+	HelperParam,
 	TemplateDiagnostic,
 	TemplateEngineOptions,
 	ValidationResult,
@@ -107,6 +111,17 @@ export class TemplateEngine {
 		this.hbs = Handlebars.create();
 		this.astCache = new LRUCache(options.astCacheSize ?? 256);
 		this.compilationCache = new LRUCache(options.compilationCacheSize ?? 256);
+
+		// ── Built-in helpers (math) ──────────────────────────────────────────
+		MathHelpers.register(this);
+
+		// ── Helpers custom via options ───────────────────────────────────────
+		if (options.helpers) {
+			for (const helper of options.helpers) {
+				const { name, ...definition } = helper;
+				this.registerHelper(name, definition);
+			}
+		}
 	}
 
 	// ─── Compilation ───────────────────────────────────────────────────────

@@ -18,6 +18,9 @@
 			"recommended": true,
 			"suspicious": {
 				"noThenProperty": "off"
+			},
+			"complexity": {
+				"noStaticOnlyClass": "off"
 			}
 		}
 	},

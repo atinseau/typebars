@@ -102,6 +102,31 @@ export interface TemplateEngineOptions {
 	 * @default 256
 	 */
 	compilationCacheSize?: number;
+
+	/**
+	 * Helpers custom à enregistrer lors de la construction de l'engine.
+	 *
+	 * Chaque entrée décrit un helper avec son nom, son implémentation,
+	 * ses paramètres attendus et son type de retour.
+	 *
+	 * @example
+	 * ```
+	 * const engine = new TemplateEngine({
+	 *   helpers: [
+	 *     {
+	 *       name: "uppercase",
+	 *       description: "Converts a string to uppercase",
+	 *       fn: (value: string) => String(value).toUpperCase(),
+	 *       params: [
+	 *         { name: "value", type: { type: "string" }, description: "The string to convert" },
+	 *       ],
+	 *       returnType: { type: "string" },
+	 *     },
+	 *   ],
+	 * });
+	 * ```
+	 */
+	helpers?: HelperConfig[];
 }
 
 // ─── Options d'exécution ─────────────────────────────────────────────────────
@@ -121,6 +146,33 @@ export interface ExecuteOptions {
 // Permet d'enregistrer des helpers personnalisés avec leur signature de type
 // pour l'analyse statique.
 
+/** Décrit un paramètre attendu par un helper */
+export interface HelperParam {
+	/** Nom du paramètre (pour la documentation / introspection) */
+	name: string;
+
+	/**
+	 * JSON Schema décrivant le type attendu pour ce paramètre.
+	 * Utilisé pour la documentation et la validation statique.
+	 */
+	type?: JSONSchema7;
+
+	/** Description humaine du paramètre */
+	description?: string;
+
+	/**
+	 * Indique si le paramètre est optionnel.
+	 * @default false
+	 */
+	optional?: boolean;
+}
+
+/**
+ * Définition d'un helper enregistrable via `registerHelper()`.
+ *
+ * Contient l'implémentation runtime et les métadonnées de typage
+ * pour l'analyse statique.
+ */
 export interface HelperDefinition {
 	/**
 	 * Implémentation runtime du helper — sera enregistrée auprès de Handlebars.
@@ -135,8 +187,49 @@ export interface HelperDefinition {
 	fn: (...args: any[]) => unknown;
 
 	/**
+	 * Paramètres attendus par le helper (pour la documentation et l'analyse).
+	 *
+	 * @example
+	 * ```
+	 * params: [
+	 *   { name: "value", type: { type: "number" }, description: "The value to round" },
+	 *   { name: "precision", type: { type: "number" }, description: "Decimal places", optional: true },
+	 * ]
+	 * ```
+	 */
+	params?: HelperParam[];
+
+	/**
 	 * JSON Schema décrivant le type de retour du helper pour l'analyse statique.
 	 * @default { type: "string" }
 	 */
 	returnType?: JSONSchema7;
+
+	/** Description humaine du helper */
+	description?: string;
+}
+
+/**
+ * Configuration complète d'un helper pour l'enregistrement via les options
+ * du constructeur `TemplateEngine({ helpers: [...] })`.
+ *
+ * Étend `HelperDefinition` avec un `name` obligatoire.
+ *
+ * @example
+ * ```
+ * const config: HelperConfig = {
+ *   name: "round",
+ *   description: "Rounds a number to a given precision",
+ *   fn: (value: number, precision?: number) => { ... },
+ *   params: [
+ *     { name: "value", type: { type: "number" } },
+ *     { name: "precision", type: { type: "number" }, optional: true },
+ *   ],
+ *   returnType: { type: "number" },
+ * };
+ * ```
+ */
+export interface HelperConfig extends HelperDefinition {
+	/** Nom du helper tel qu'il sera utilisé dans les templates (ex: `"uppercase"`) */
+	name: string;
 }

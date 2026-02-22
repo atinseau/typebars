@@ -94,7 +94,17 @@ function resolveSegment(
 		return resolveRef(resolved.additionalProperties, root);
 	}
 
-	// 3. Combinateurs — on cherche dans chaque branche
+	// 3. Propriétés intrinsèques des tableaux (ex: `.length`)
+	const schemaType = resolved.type;
+	const isArray =
+		schemaType === "array" ||
+		(Array.isArray(schemaType) && schemaType.includes("array"));
+
+	if (isArray && segment === "length") {
+		return { type: "integer" };
+	}
+
+	// 4. Combinateurs — on cherche dans chaque branche
 	const combinatorResult = resolveInCombinators(resolved, segment, root);
 	if (combinatorResult) return combinatorResult;
 

@@ -227,14 +227,58 @@ function processMustache(
 		// Vérifier si le helper est enregistré
 		const helper = ctx.helpers?.get(helperName);
 		if (helper) {
-			// Valider les paramètres
-			for (const param of stmt.params) {
-				resolveExpressionWithDiagnostics(
-					param as hbs.AST.Expression,
+			const helperParams = helper.params;
+
+			// ── Vérifier le nombre de paramètres requis ──────────────────
+			if (helperParams) {
+				const requiredCount = helperParams.filter((p) => !p.optional).length;
+				if (stmt.params.length < requiredCount) {
+					addDiagnostic(
+						ctx,
+						"MISSING_ARGUMENT",
+						"error",
+						`Helper "${helperName}" expects at least ${requiredCount} argument(s), but got ${stmt.params.length}`,
+						stmt,
+						{
+							helperName,
+							expected: `${requiredCount} argument(s)`,
+							actual: `${stmt.params.length} argument(s)`,
+						},
+					);
+				}
+			}
+
+			// ── Valider chaque paramètre (existence + type) ─────────────
+			for (let i = 0; i < stmt.params.length; i++) {
+				const resolvedSchema = resolveExpressionWithDiagnostics(
+					stmt.params[i] as hbs.AST.Expression,
 					ctx,
 					stmt,
 				);
+
+				// Vérifier la compatibilité de type si le helper déclare
+				// le type attendu pour ce paramètre
+				const helperParam = helperParams?.[i];
+				if (resolvedSchema && helperParam?.type) {
+					const expectedType = helperParam.type;
+					if (!isParamTypeCompatible(resolvedSchema, expectedType)) {
+						const paramName = helperParam.name;
+						addDiagnostic(
+							ctx,
+							"TYPE_MISMATCH",
+							"error",
+							`Helper "${helperName}" parameter "${paramName}" expects ${schemaTypeLabel(expectedType)}, but got ${schemaTypeLabel(resolvedSchema)}`,
+							stmt,
+							{
+								helperName,
+								expected: schemaTypeLabel(expectedType),
+								actual: schemaTypeLabel(resolvedSchema),
+							},
+						);
+					}
+				}
 			}
+
 			return helper.returnType ?? { type: "string" };
 		}
 
@@ -252,6 +296,42 @@ function processMustache(
 
 	// ── Expression simple ────────────────────────────────────────────────────
 	return resolveExpressionWithDiagnostics(stmt.path, ctx, stmt) ?? {};
+}
+
+/**
+ * Vérifie si un type résolu est compatible avec le type attendu par un
+ * paramètre de helper.
+ *
+ * Règles de compatibilité :
+ * - Si l'un des deux schemas n'a pas de `type`, on ne peut pas valider → compatible
+ * - `integer` est compatible avec `number` (integer ⊂ number)
+ * - Pour les types multiples (ex: `["string", "number"]`), il suffit qu'un
+ *   type résolu corresponde à un type attendu
+ */
+function isParamTypeCompatible(
+	resolved: JSONSchema7,
+	expected: JSONSchema7,
+): boolean {
+	// Si l'un des deux n'a pas d'info de type, on ne peut pas valider
+	if (!expected.type || !resolved.type) return true;
+
+	const expectedTypes = Array.isArray(expected.type)
+		? expected.type
+		: [expected.type];
+	const resolvedTypes = Array.isArray(resolved.type)
+		? resolved.type
+		: [resolved.type];
+
+	// Au moins un type résolu doit être compatible avec un type attendu
+	return resolvedTypes.some((rt) =>
+		expectedTypes.some(
+			(et) =>
+				rt === et ||
+				// integer est un sous-type de number
+				(et === "number" && rt === "integer") ||
+				(et === "integer" && rt === "number"),
+		),
+	);
 }
 
 /**

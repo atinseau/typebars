@@ -129,6 +129,17 @@ export function executeFromAst(
 		return resolveExpression(singleExpr.path, data, identifierData);
 	}
 
+	// ── Cas 1c : expression unique avec helper (params > 0) ──────────────
+	// Ex: `{{ divide accountIds.length 10 }}` ou `{{ math a "+" b }}`
+	// Le helper retourne une valeur typée mais Handlebars la convertit en
+	// string. On rend via Handlebars puis on coerce le résultat pour
+	// retrouver le type original (number, boolean, null).
+	if (singleExpr && (singleExpr.params.length > 0 || singleExpr.hash)) {
+		const merged = mergeDataWithIdentifiers(data, identifierData);
+		const raw = renderWithHandlebars(template, merged, ctx);
+		return coerceLiteral(raw);
+	}
+
 	// ── Cas 2 : fast-path pour templates simples (texte + expressions) ────
 	// Si le template ne contient que du texte et des expressions simples
 	// (pas de blocs, pas de helpers avec paramètres), on peut faire une

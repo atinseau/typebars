@@ -132,6 +132,78 @@ describe("schema-resolver", () => {
 		});
 	});
 
+	describe("propriétés intrinsèques des tableaux", () => {
+		test("résout .length sur un tableau → { type: 'integer' }", () => {
+			const schema: JSONSchema7 = {
+				type: "object",
+				properties: {
+					items: { type: "array", items: { type: "string" } },
+				},
+			};
+			const result = resolveSchemaPath(schema, ["items", "length"]);
+			expect(result).toEqual({ type: "integer" });
+		});
+
+		test("résout .length sur un tableau d'objets → { type: 'integer' }", () => {
+			const schema: JSONSchema7 = {
+				type: "object",
+				properties: {
+					orders: {
+						type: "array",
+						items: {
+							type: "object",
+							properties: { id: { type: "number" } },
+						},
+					},
+				},
+			};
+			const result = resolveSchemaPath(schema, ["orders", "length"]);
+			expect(result).toEqual({ type: "integer" });
+		});
+
+		test("résout .length sur un tableau sans items → { type: 'integer' }", () => {
+			const schema: JSONSchema7 = {
+				type: "object",
+				properties: {
+					data: { type: "array" },
+				},
+			};
+			const result = resolveSchemaPath(schema, ["data", "length"]);
+			expect(result).toEqual({ type: "integer" });
+		});
+
+		test("ne résout pas .length sur un non-tableau", () => {
+			const schema: JSONSchema7 = {
+				type: "object",
+				properties: {
+					name: { type: "string" },
+				},
+			};
+			expect(resolveSchemaPath(schema, ["name", "length"])).toBeUndefined();
+		});
+
+		test("résout .length sur un tableau avec type multi (inclut 'array')", () => {
+			const schema: JSONSchema7 = {
+				type: "object",
+				properties: {
+					flexible: { type: ["array", "null"], items: { type: "number" } },
+				},
+			};
+			const result = resolveSchemaPath(schema, ["flexible", "length"]);
+			expect(result).toEqual({ type: "integer" });
+		});
+
+		test("ne résout pas une propriété inconnue sur un tableau", () => {
+			const schema: JSONSchema7 = {
+				type: "object",
+				properties: {
+					items: { type: "array", items: { type: "string" } },
+				},
+			};
+			expect(resolveSchemaPath(schema, ["items", "foo"])).toBeUndefined();
+		});
+	});
+
 	describe("resolveArrayItems", () => {
 		test("résout les items d'un tableau simple", () => {
 			const schema: JSONSchema7 = { type: "array", items: { type: "string" } };
