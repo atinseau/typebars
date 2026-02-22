@@ -108,6 +108,11 @@ export class MathHelpers {
 		"math",
 	];
 
+	/** Set dérivé de `HELPER_NAMES` pour un lookup O(1) dans `isMathHelper()` */
+	private static readonly HELPER_NAMES_SET: ReadonlySet<string> = new Set(
+		MathHelpers.HELPER_NAMES,
+	);
+
 	// ─── Définitions des helpers ─────────────────────────────────────────
 
 	/** Retourne toutes les définitions sous forme de `Map<name, HelperDefinition>` */
@@ -430,6 +435,6 @@ export class MathHelpers {
 	 * @param name - Le nom du helper à vérifier
 	 */
 	static isMathHelper(name: string): boolean {
-		return MathHelpers.HELPER_NAMES.includes(name);
+		return MathHelpers.HELPER_NAMES_SET.has(name);
 	}
 }

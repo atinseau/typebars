@@ -1,6 +1,10 @@
-import { describe, expect, test } from "bun:test";
+import { beforeEach, describe, expect, test } from "bun:test";
 import Handlebars from "handlebars";
-import { execute } from "../src/index.ts";
+import {
+	clearCompilationCache,
+	clearParseCache,
+	execute,
+} from "../src/index.ts";
 import {
 	extractPathSegments,
 	isSingleExpression,
@@ -15,6 +19,11 @@ import {
 // (un seul segment de chemin). Pas de pré-processing nécessaire.
 
 describe("Handlebars colon syntax — parsing", () => {
+	beforeEach(() => {
+		clearParseCache();
+		clearCompilationCache();
+	});
+
 	test("parses {{key:number}} as a valid MustacheStatement", () => {
 		const ast = parse("{{meetingId:1}}");
 		expect(ast.body).toHaveLength(1);

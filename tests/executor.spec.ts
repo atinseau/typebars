@@ -1,8 +1,17 @@
-import { describe, expect, test } from "bun:test";
-import { execute } from "../src/index.ts";
+import { beforeEach, describe, expect, test } from "bun:test";
+import {
+	clearCompilationCache,
+	clearParseCache,
+	execute,
+} from "../src/index.ts";
 import { userData } from "./fixtures.ts";
 
 describe("executor", () => {
+	beforeEach(() => {
+		clearParseCache();
+		clearCompilationCache();
+	});
+
 	describe("préservation des types — expression unique", () => {
 		test("retourne un string pour {{name}}", () => {
 			const result = execute("{{name}}", userData);

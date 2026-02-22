@@ -28,9 +28,15 @@ import type {
 	HelperDefinition,
 	TemplateDiagnostic,
 	TemplateInput,
+	TemplateInputObject,
 } from "./types.ts";
-import { inferPrimitiveSchema, isLiteralInput } from "./types.ts";
 import {
+	inferPrimitiveSchema,
+	isLiteralInput,
+	isObjectInput,
+} from "./types.ts";
+import {
+	aggregateObjectAnalysis,
 	deepEqual,
 	extractSourceSnippet,
 	getSchemaPropertyNames,
@@ -98,6 +104,9 @@ export function analyze(
 	inputSchema: JSONSchema7,
 	identifierSchemas?: Record<number, JSONSchema7>,
 ): AnalysisResult {
+	if (isObjectInput(template)) {
+		return analyzeObjectTemplate(template, inputSchema, identifierSchemas);
+	}
 	if (isLiteralInput(template)) {
 		return {
 			valid: true,
@@ -107,6 +116,21 @@ export function analyze(
 	}
 	const ast = parse(template);
 	return analyzeFromAst(ast, template, inputSchema, { identifierSchemas });
+}
+
+/**
+ * Analyse un objet template récursivement (version standalone).
+ * Chaque propriété est analysée individuellement, les diagnostics sont
+ * fusionnés, et le `outputSchema` reflète la structure de l'objet.
+ */
+function analyzeObjectTemplate(
+	template: TemplateInputObject,
+	inputSchema: JSONSchema7,
+	identifierSchemas?: Record<number, JSONSchema7>,
+): AnalysisResult {
+	return aggregateObjectAnalysis(Object.keys(template), (key) =>
+		analyze(template[key] as TemplateInput, inputSchema, identifierSchemas),
+	);
 }
 
 /**

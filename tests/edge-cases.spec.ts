@@ -1,9 +1,19 @@
-import { describe, expect, test } from "bun:test";
+import { beforeEach, describe, expect, test } from "bun:test";
 import type { JSONSchema7 } from "json-schema";
-import { analyze, execute } from "../src/index.ts";
+import {
+	analyze,
+	clearCompilationCache,
+	clearParseCache,
+	execute,
+} from "../src/index.ts";
 import { userSchema } from "./fixtures.ts";
 
 describe("edge cases", () => {
+	beforeEach(() => {
+		clearParseCache();
+		clearCompilationCache();
+	});
+
 	test("template vide → string vide", () => {
 		const result = execute("", {});
 		expect(result).toBe("");

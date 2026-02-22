@@ -1,6 +1,13 @@
-import { describe, expect, test } from "bun:test";
+import { beforeEach, describe, expect, test } from "bun:test";
 import type { JSONSchema7 } from "json-schema";
-import { analyze, execute, parse, TemplateEngine } from "../src/index.ts";
+import {
+	analyze,
+	clearCompilationCache,
+	clearParseCache,
+	execute,
+	parse,
+	TemplateEngine,
+} from "../src/index.ts";
 import {
 	extractPathSegments,
 	getEffectivelySingleExpression,
@@ -57,6 +64,11 @@ function interpolateObject(
 // ═════════════════════════════════════════════════════════════════════════════
 
 describe("Migration: interpolateTemplateValues → execute()", () => {
+	beforeEach(() => {
+		clearParseCache();
+		clearCompilationCache();
+	});
+
 	test("Should inject string from data into values and available in the output", () => {
 		const output = interpolateObject(
 			{ accountId: "{{meetingId}}" },
@@ -211,6 +223,10 @@ describe("Migration: interpolateTemplateValues → execute()", () => {
 // ═════════════════════════════════════════════════════════════════════════════
 
 describe("Migration: extractTemplateTokens → parse() + AST", () => {
+	beforeEach(() => {
+		clearParseCache();
+	});
+
 	test("Should be able to return a list of templates from a string", () => {
 		const ast = parse("coucou {{meetingId}}");
 		// On filtre les MustacheStatement pour trouver les expressions
@@ -251,6 +267,11 @@ describe("Migration: extractTemplateTokens → parse() + AST", () => {
 // ═════════════════════════════════════════════════════════════════════════════
 
 describe("Migration: normalizeTemplateTokens → Handlebars normalisation native", () => {
+	beforeEach(() => {
+		clearParseCache();
+		clearCompilationCache();
+	});
+
 	test("Pre-formatted string is parsed correctly", () => {
 		const template = "coucou {{meetingId}}";
 		const result = execute(template, { meetingId: "value" });
@@ -289,6 +310,10 @@ describe("Migration: normalizeTemplateTokens → Handlebars normalisation native
 // ═════════════════════════════════════════════════════════════════════════════
 
 describe("Migration: isUniqueTemplate → isSingleExpression()", () => {
+	beforeEach(() => {
+		clearParseCache();
+	});
+
 	test("Detect unique template string — text + template is NOT single", () => {
 		const ast = parse("coucou {{meetingId}}");
 		expect(isSingleExpression(ast)).toBe(false);
@@ -319,6 +344,11 @@ describe("Migration: isUniqueTemplate → isSingleExpression()", () => {
 // ═════════════════════════════════════════════════════════════════════════════
 
 describe("Migration: Type preservation rules", () => {
+	beforeEach(() => {
+		clearParseCache();
+		clearCompilationCache();
+	});
+
 	describe("Single expression → preserves original type", () => {
 		test("string", () => {
 			expect(execute("{{v}}", { v: "hello" })).toBe("hello");
@@ -398,6 +428,10 @@ describe("Migration: Type preservation rules", () => {
 // ═════════════════════════════════════════════════════════════════════════════
 
 describe("Migration: validateTemplateUsage → analyze()", () => {
+	beforeEach(() => {
+		clearParseCache();
+	});
+
 	test("Should succeed if template key exists in schema", () => {
 		const schema: JSONSchema7 = {
 			type: "object",
@@ -492,6 +526,10 @@ describe("Migration: validateTemplateUsage → analyze()", () => {
 // ═════════════════════════════════════════════════════════════════════════════
 
 describe("Migration: compare → analyze() outputSchema inference", () => {
+	beforeEach(() => {
+		clearParseCache();
+	});
+
 	test("Should infer string type for string property", () => {
 		const schema: JSONSchema7 = {
 			type: "object",
@@ -586,6 +624,11 @@ describe("Migration: compare → analyze() outputSchema inference", () => {
 // ═════════════════════════════════════════════════════════════════════════════
 
 describe("Migration: validate → execute() runtime behavior", () => {
+	beforeEach(() => {
+		clearParseCache();
+		clearCompilationCache();
+	});
+
 	test("String value is returned as string", () => {
 		const result = execute("{{accountId}}", { accountId: "123" });
 		expect(typeof result).toBe("string");
@@ -635,6 +678,11 @@ describe("Migration: validate → execute() runtime behavior", () => {
 // ═════════════════════════════════════════════════════════════════════════════
 
 describe("Migration: Template identifiers ({{key:id}}) — LIMITATIONS", () => {
+	beforeEach(() => {
+		clearParseCache();
+		clearCompilationCache();
+	});
+
 	// L'ancien système supportait une syntaxe {{key:identifier}} pour
 	// référencer des données provenant de nœuds spécifiques dans un workflow.
 	// Ce mécanisme n'existe PAS dans Handlebars.
@@ -712,6 +760,10 @@ describe("Migration: Template identifiers ({{key:id}}) — LIMITATIONS", () => {
 // ═════════════════════════════════════════════════════════════════════════════
 
 describe("Migration: findTemplateSchemaFromPrevSchemas → JSON Schema resolution", () => {
+	beforeEach(() => {
+		clearParseCache();
+	});
+
 	// L'ancien findTemplateSchemaFromPrevSchemas cherchait un type dans une
 	// liste de schemas précédents identifiés par un numéro.
 	// Avec JSON Schema, on structure les données en un seul schema avec des
@@ -772,6 +824,11 @@ describe("Migration: findTemplateSchemaFromPrevSchemas → JSON Schema resolutio
 // ═════════════════════════════════════════════════════════════════════════════
 
 describe("Migration: TemplateEngine strict mode", () => {
+	beforeEach(() => {
+		clearParseCache();
+		clearCompilationCache();
+	});
+
 	const engine = new TemplateEngine();
 
 	test("Execute succeeds with valid schema", () => {
@@ -785,7 +842,7 @@ describe("Migration: TemplateEngine strict mode", () => {
 		const result = engine.execute(
 			"{{accountId}}",
 			{ accountId: "123" },
-			schema,
+			{ schema },
 		);
 		expect(result).toBe("123");
 	});
@@ -797,7 +854,7 @@ describe("Migration: TemplateEngine strict mode", () => {
 		};
 
 		expect(() =>
-			engine.execute("{{accountId}}", { accountId: "123" }, schema),
+			engine.execute("{{accountId}}", { accountId: "123" }, { schema }),
 		).toThrow();
 	});
 
@@ -812,6 +869,11 @@ describe("Migration: TemplateEngine strict mode", () => {
 // ═════════════════════════════════════════════════════════════════════════════
 
 describe("Migration: end-to-end object interpolation pattern", () => {
+	beforeEach(() => {
+		clearParseCache();
+		clearCompilationCache();
+	});
+
 	test("Full object with mixed types, like old interpolateTemplateValues", () => {
 		const templateObj = {
 			name: "{{user.name}}",
@@ -892,6 +954,11 @@ describe("Migration: end-to-end object interpolation pattern", () => {
 // ═════════════════════════════════════════════════════════════════════════════
 
 describe("Bonus: New features not available in old system", () => {
+	beforeEach(() => {
+		clearParseCache();
+		clearCompilationCache();
+	});
+
 	test("Conditional rendering with #if", () => {
 		const result = execute("{{#if active}}Online{{else}}Offline{{/if}}", {
 			active: true,

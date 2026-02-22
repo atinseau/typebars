@@ -11,8 +11,8 @@ import {
 	isThisExpression,
 	parse,
 } from "./parser.ts";
-import type { TemplateInput } from "./types.ts";
-import { isLiteralInput } from "./types.ts";
+import type { TemplateInput, TemplateInputObject } from "./types.ts";
+import { isLiteralInput, isObjectInput } from "./types.ts";
 import { LRUCache } from "./utils.ts";
 
 // ─── Template Executor ───────────────────────────────────────────────────────
@@ -88,9 +88,29 @@ export function execute(
 	data: Record<string, unknown>,
 	identifierData?: Record<number, Record<string, unknown>>,
 ): unknown {
+	if (isObjectInput(template)) {
+		return executeObjectTemplate(template, data, identifierData);
+	}
 	if (isLiteralInput(template)) return template;
 	const ast = parse(template);
 	return executeFromAst(ast, template, data, { identifierData });
+}
+
+/**
+ * Exécute un objet template récursivement (version standalone).
+ * Chaque propriété est exécutée individuellement et le résultat est un objet
+ * avec la même structure mais les valeurs résolues.
+ */
+function executeObjectTemplate(
+	template: TemplateInputObject,
+	data: Record<string, unknown>,
+	identifierData?: Record<number, Record<string, unknown>>,
+): Record<string, unknown> {
+	const result: Record<string, unknown> = {};
+	for (const [key, value] of Object.entries(template)) {
+		result[key] = execute(value, data, identifierData);
+	}
+	return result;
 }
 
 // ─── API interne (pour TemplateEngine / CompiledTemplate) ────────────────────

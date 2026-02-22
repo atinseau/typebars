@@ -1,7 +1,11 @@
-import { describe, expect, test } from "bun:test";
-import { parse, TemplateParseError } from "../src/index.ts";
+import { beforeEach, describe, expect, test } from "bun:test";
+import { clearParseCache, parse, TemplateParseError } from "../src/index.ts";
 
 describe("parser", () => {
+	beforeEach(() => {
+		clearParseCache();
+	});
+
 	test("parse retourne un AST valide pour un template simple", () => {
 		const ast = parse("Hello {{name}}");
 		expect(ast).toBeDefined();

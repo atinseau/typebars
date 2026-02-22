@@ -17,8 +17,16 @@ import type {
 	TemplateInput,
 	ValidationResult,
 } from "./types.ts";
-import { inferPrimitiveSchema, isLiteralInput } from "./types.ts";
-import { LRUCache } from "./utils.ts";
+import {
+	inferPrimitiveSchema,
+	isLiteralInput,
+	isObjectInput,
+} from "./types.ts";
+import {
+	aggregateObjectAnalysis,
+	aggregateObjectAnalysisAndExecution,
+	LRUCache,
+} from "./utils.ts";
 
 // ─── TemplateEngine ──────────────────────────────────────────────────────────
 // Point d'entrée public du moteur de template. Orchestre les trois phases :
@@ -31,9 +39,9 @@ import { LRUCache } from "./utils.ts";
 // - **Cache LRU** pour les AST parsés et les templates Handlebars compilés
 // - **Environnement Handlebars isolé** par instance (custom helpers)
 // - **Pattern `compile()`** : parse-once / execute-many
-// - **Méthode `validate()`** : validation légère sans inférence de type
+// - **Méthode `validate()`** : raccourci d'API sans `outputSchema`
 // - **`registerHelper()`** : helpers custom avec typage statique
-// - **Options object** pour `execute()` (en plus de l'API positionnelle)
+// - **`ExecuteOptions`** : options object pour `execute()`
 //
 // ─── Template Identifiers ────────────────────────────────────────────────────
 // La syntaxe `{{key:N}}` permet de référencer des variables provenant de
@@ -88,10 +96,21 @@ export type {
 	TemplateDiagnostic,
 	TemplateEngineOptions,
 	TemplateInput,
+	TemplateInputObject,
 	ValidationResult,
 } from "./types.ts";
-export { defineHelper, inferPrimitiveSchema, isLiteralInput } from "./types.ts";
-export { deepEqual, LRUCache } from "./utils.ts";
+export {
+	defineHelper,
+	inferPrimitiveSchema,
+	isLiteralInput,
+	isObjectInput,
+} from "./types.ts";
+export {
+	aggregateObjectAnalysis,
+	aggregateObjectAnalysisAndExecution,
+	deepEqual,
+	LRUCache,
+} from "./utils.ts";
 
 // ─── Classe principale ──────────────────────────────────────────────────────
 
@@ -134,26 +153,24 @@ export class TemplateEngine {
 	 * Compile un template et retourne un `CompiledTemplate` prêt à être
 	 * exécuté ou analysé sans re-parsing.
 	 *
-	 * C'est la méthode recommandée pour les templates utilisés plusieurs fois :
-	 * le parsing n'est fait qu'une seule fois, et la compilation Handlebars
-	 * est différée au premier `execute()` qui en a besoin.
+	 * Accepte un `TemplateInput` : string, number, boolean, null ou objet.
+	 * Pour les objets, chaque propriété est compilée récursivement.
 	 *
-	 * @param template - La chaîne de template (ex: `"Hello {{name}}"`)
+	 * @param template - Le template à compiler
 	 * @returns Un `CompiledTemplate` réutilisable
-	 *
-	 * @example
-	 * ```
-	 * const engine = new TemplateEngine();
-	 * const tpl = engine.compile("Hello {{name}}!");
-	 *
-	 * tpl.execute({ name: "Alice" }); // → "Hello Alice!"
-	 * tpl.execute({ name: "Bob" });   // → "Hello Bob!" (pas de re-parsing)
-	 *
-	 * const result = tpl.analyze(schema);
-	 * // result.outputSchema === { type: "string" }
-	 * ```
 	 */
 	compile(template: TemplateInput): CompiledTemplate {
+		if (isObjectInput(template)) {
+			const children: Record<string, CompiledTemplate> = {};
+			for (const [key, value] of Object.entries(template)) {
+				children[key] = this.compile(value);
+			}
+			return CompiledTemplate.fromObject(children, {
+				helpers: this.helpers,
+				hbs: this.hbs,
+				compilationCache: this.compilationCache,
+			});
+		}
 		if (isLiteralInput(template)) {
 			return CompiledTemplate.fromLiteral(template, {
 				helpers: this.helpers,
@@ -167,7 +184,7 @@ export class TemplateEngine {
 			hbs: this.hbs,
 			compilationCache: this.compilationCache,
 		};
-		return new CompiledTemplate(ast, template, options);
+		return CompiledTemplate.fromTemplate(ast, template, options);
 	}
 
 	// ─── Analyse statique ────────────────────────────────────────────────────
@@ -176,36 +193,28 @@ export class TemplateEngine {
 	 * Analyse statiquement un template par rapport à un JSON Schema v7
 	 * décrivant le contexte disponible.
 	 *
-	 * Retourne un `AnalysisResult` contenant :
-	 * - `valid`        — `true` si aucune erreur (les warnings sont tolérés)
-	 * - `diagnostics`  — liste de diagnostics (erreurs + warnings)
-	 * - `outputSchema` — JSON Schema v7 décrivant le type de retour du template
+	 * Accepte un `TemplateInput` : string, number, boolean, null ou objet.
+	 * Pour les objets, chaque propriété est analysée récursivement et le
+	 * `outputSchema` reflète la structure de l'objet avec les types résolus.
 	 *
-	 * @param template           - La chaîne de template (ex: `"Hello {{user.name}}"`)
+	 * @param template           - Le template à analyser
 	 * @param inputSchema        - JSON Schema v7 décrivant les variables disponibles
 	 * @param identifierSchemas  - (optionnel) Schemas par identifiant `{ [id]: JSONSchema7 }`
-	 *
-	 * @example
-	 * ```
-	 * const engine = new TemplateEngine();
-	 *
-	 * // Sans identifiers
-	 * const result = engine.analyze("{{age}}", {
-	 *   type: "object",
-	 *   properties: { age: { type: "number" } }
-	 * });
-	 *
-	 * // Avec identifiers
-	 * const result2 = engine.analyze("{{meetingId:1}}", schema, {
-	 *   1: { type: "object", properties: { meetingId: { type: "string" } } }
-	 * });
-	 * ```
 	 */
 	analyze(
 		template: TemplateInput,
 		inputSchema: JSONSchema7,
 		identifierSchemas?: Record<number, JSONSchema7>,
 	): AnalysisResult {
+		if (isObjectInput(template)) {
+			return aggregateObjectAnalysis(Object.keys(template), (key) =>
+				this.analyze(
+					template[key] as TemplateInput,
+					inputSchema,
+					identifierSchemas,
+				),
+			);
+		}
 		if (isLiteralInput(template)) {
 			return {
 				valid: true,
@@ -220,29 +229,19 @@ export class TemplateEngine {
 		});
 	}
 
-	// ─── Validation légère ─────────────────────────────────────────────────
+	// ─── Validation ──────────────────────────────────────────────────────────
 
 	/**
-	 * Valide un template contre un schema sans calculer le type de sortie.
+	 * Valide un template contre un schema sans retourner le type de sortie.
 	 *
-	 * C'est un raccourci pour `analyze()` qui ne retourne que `valid` et
-	 * `diagnostics`, sans `outputSchema`. Utile pour un feedback rapide
-	 * dans un éditeur ou une UI de configuration.
+	 * C'est un raccourci d'API pour `analyze()` qui ne retourne que `valid`
+	 * et `diagnostics`, sans `outputSchema`. L'analyse complète (y compris
+	 * l'inférence de type) est exécutée en interne — cette méthode ne
+	 * fournit pas de gain de performance, uniquement une API simplifiée.
 	 *
-	 * @param template           - La chaîne de template à valider
+	 * @param template           - Le template à valider
 	 * @param inputSchema        - JSON Schema v7 décrivant les variables disponibles
 	 * @param identifierSchemas  - (optionnel) Schemas par identifiant
-	 *
-	 * @example
-	 * ```
-	 * const engine = new TemplateEngine();
-	 * const { valid, diagnostics } = engine.validate("{{name}}", schema);
-	 *
-	 * if (!valid) {
-	 *   // Envoyer les diagnostics au frontend
-	 *   res.status(400).json({ diagnostics });
-	 * }
-	 * ```
 	 */
 	validate(
 		template: TemplateInput,
@@ -262,10 +261,15 @@ export class TemplateEngine {
 	 * Vérifie uniquement que la syntaxe du template est valide (parsing).
 	 * Ne nécessite pas de schema — utile pour un feedback rapide dans un éditeur.
 	 *
-	 * @param template - La chaîne de template à valider
+	 * Pour les objets, vérifie récursivement chaque propriété.
+	 *
+	 * @param template - Le template à valider
 	 * @returns `true` si le template est syntaxiquement correct
 	 */
 	isValidSyntax(template: TemplateInput): boolean {
+		if (isObjectInput(template)) {
+			return Object.values(template).every((v) => this.isValidSyntax(v));
+		}
 		if (isLiteralInput(template)) return true;
 		try {
 			parse(template);
@@ -280,69 +284,41 @@ export class TemplateEngine {
 	/**
 	 * Exécute un template avec les données fournies.
 	 *
-	 * Le type de retour dépend de la structure du template :
-	 * - Expression unique `{{expr}}` → valeur brute (number, boolean, object…)
-	 * - Template mixte ou avec blocs → `string`
+	 * Accepte un `TemplateInput` : string, number, boolean, null ou objet.
+	 * Pour les objets, chaque propriété est exécutée récursivement et un
+	 * objet avec les valeurs résolues est retourné.
 	 *
-	 * En mode strict (par défaut), si un `inputSchema` est fourni, l'analyse
-	 * statique est lancée avant l'exécution et une `TemplateAnalysisError` est
-	 * levée en cas d'erreur.
+	 * Si un `schema` est fourni dans les options, l'analyse statique est
+	 * lancée avant l'exécution. Une `TemplateAnalysisError` est levée en
+	 * cas d'erreur.
 	 *
-	 * Supporte deux signatures :
-	 *
-	 * **Signature avec options object (recommandée)** :
-	 * ```
-	 * engine.execute("{{name}}", data, {
-	 *   schema: mySchema,
-	 *   identifierData: { 1: { meetingId: "val1" } },
-	 *   identifierSchemas: { 1: meetingSchema },
-	 * });
-	 * ```
-	 *
-	 * **Signature positionnelle (backward-compatible)** :
-	 * ```
-	 * engine.execute("{{name}}", data, inputSchema, identifierData, identifierSchemas);
-	 * ```
-	 *
-	 * @param template - La chaîne de template
+	 * @param template - Le template à exécuter
 	 * @param data     - Les données de contexte pour le rendu
-	 * @param optionsOrSchema - Options object ou JSON Schema (backward-compat)
-	 * @param identifierData  - (legacy) Données par identifiant
-	 * @param identifierSchemas - (legacy) Schemas par identifiant
+	 * @param options  - Options d'exécution (schema, identifierData, identifierSchemas)
 	 * @returns Le résultat de l'exécution
 	 */
 	execute(
 		template: TemplateInput,
 		data: Record<string, unknown>,
-		optionsOrSchema?: ExecuteOptions | JSONSchema7,
-		identifierData?: Record<number, Record<string, unknown>>,
-		identifierSchemas?: Record<number, JSONSchema7>,
+		options?: ExecuteOptions,
 	): unknown {
+		// ── Objet template → exécution récursive ─────────────────────────────
+		if (isObjectInput(template)) {
+			const result: Record<string, unknown> = {};
+			for (const [key, value] of Object.entries(template)) {
+				result[key] = this.execute(value, data, options);
+			}
+			return result;
+		}
+
 		// ── Passthrough pour les valeurs littérales ───────────────────────────
 		if (isLiteralInput(template)) return template;
 
-		// ── Normalisation des arguments ──────────────────────────────────────
-		let schema: JSONSchema7 | undefined;
-		let idData: Record<number, Record<string, unknown>> | undefined;
-		let idSchemas: Record<number, JSONSchema7> | undefined;
-
-		if (optionsOrSchema && isExecuteOptions(optionsOrSchema)) {
-			// Nouvelle API avec options object
-			schema = optionsOrSchema.schema;
-			idData = optionsOrSchema.identifierData;
-			idSchemas = optionsOrSchema.identifierSchemas;
-		} else {
-			// Legacy API avec paramètres positionnels
-			schema = optionsOrSchema as JSONSchema7 | undefined;
-			idData = identifierData;
-			idSchemas = identifierSchemas;
-		}
-
 		// ── Validation statique préalable ────────────────────────────────────
-		if (schema) {
+		if (options?.schema) {
 			const ast = this.getCachedAst(template);
-			const analysis = analyzeFromAst(ast, template, schema, {
-				identifierSchemas: idSchemas,
+			const analysis = analyzeFromAst(ast, template, options.schema, {
+				identifierSchemas: options.identifierSchemas,
 				helpers: this.helpers,
 			});
 			if (!analysis.valid) {
@@ -353,7 +329,7 @@ export class TemplateEngine {
 		// ── Exécution ────────────────────────────────────────────────────────
 		const ast = this.getCachedAst(template);
 		return executeFromAst(ast, template, data, {
-			identifierData: idData,
+			identifierData: options?.identifierData,
 			hbs: this.hbs,
 			compilationCache: this.compilationCache,
 		});
@@ -365,9 +341,10 @@ export class TemplateEngine {
 	 * Analyse un template et, si valide, l'exécute avec les données fournies.
 	 * Retourne à la fois le résultat d'analyse et la valeur exécutée.
 	 *
-	 * Pratique pour obtenir le type de retour ET la valeur en un seul appel.
+	 * Pour les objets, chaque propriété est analysée et exécutée récursivement.
+	 * L'objet entier est considéré invalide si au moins une propriété l'est.
 	 *
-	 * @param template           - La chaîne de template
+	 * @param template           - Le template
 	 * @param inputSchema        - JSON Schema v7 décrivant les variables disponibles
 	 * @param data               - Les données de contexte pour le rendu
 	 * @param identifierSchemas  - (optionnel) Schemas par identifiant
@@ -382,6 +359,18 @@ export class TemplateEngine {
 		identifierSchemas?: Record<number, JSONSchema7>,
 		identifierData?: Record<number, Record<string, unknown>>,
 	): { analysis: AnalysisResult; value: unknown } {
+		if (isObjectInput(template)) {
+			return aggregateObjectAnalysisAndExecution(Object.keys(template), (key) =>
+				this.analyzeAndExecute(
+					template[key] as TemplateInput,
+					inputSchema,
+					data,
+					identifierSchemas,
+					identifierData,
+				),
+			);
+		}
+
 		if (isLiteralInput(template)) {
 			return {
 				analysis: {
@@ -422,20 +411,6 @@ export class TemplateEngine {
 	 * @param name       - Nom du helper (ex: `"uppercase"`)
 	 * @param definition - Définition du helper (implémentation + type de retour)
 	 * @returns `this` pour permettre le chaînage
-	 *
-	 * @example
-	 * ```
-	 * const engine = new TemplateEngine();
-	 *
-	 * // Helper inline
-	 * engine.registerHelper("uppercase", {
-	 *   fn: (value: string) => String(value).toUpperCase(),
-	 *   returnType: { type: "string" },
-	 * });
-	 *
-	 * engine.execute("{{uppercase name}}", { name: "alice" });
-	 * // → "ALICE"
-	 * ```
 	 */
 	registerHelper(name: string, definition: HelperDefinition): this {
 		this.helpers.set(name, definition);
@@ -498,24 +473,4 @@ export class TemplateEngine {
 		}
 		return ast;
 	}
-}
-
-// ─── Utilitaire ──────────────────────────────────────────────────────────────
-
-/**
- * Détermine si un argument est un `ExecuteOptions` (nouvelle API)
- * plutôt qu'un `JSONSchema7` (ancienne API positionnelle).
- *
- * Heuristique : un `ExecuteOptions` a au moins une des clés `schema`,
- * `identifierData`, ou `identifierSchemas`. Un `JSONSchema7` n'a jamais
- * ces clés.
- */
-function isExecuteOptions(
-	value: ExecuteOptions | JSONSchema7,
-): value is ExecuteOptions {
-	return (
-		"schema" in value ||
-		"identifierData" in value ||
-		"identifierSchemas" in value
-	);
 }

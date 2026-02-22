@@ -1,4 +1,5 @@
 import type { JSONSchema7 } from "json-schema";
+import type { AnalysisResult, TemplateDiagnostic } from "./types.ts";
 
 // ─── Utilitaires ─────────────────────────────────────────────────────────────
 // Fonctions et classes utilitaires partagées par les différents modules
@@ -217,4 +218,98 @@ export function getSchemaPropertyNames(schema: JSONSchema7): string[] {
 	}
 
 	return Array.from(names).sort();
+}
+
+// ─── Agrégation d'analyses d'objets ──────────────────────────────────────────
+// Factorise le pattern commun de récursion sur un objet template :
+// itérer les clés, analyser chaque entrée via un callback, accumuler
+// les diagnostics, construire le outputSchema objet.
+//
+// Utilisé par :
+// - `analyzer.ts` (analyzeObjectTemplate)
+// - `TemplateEngine.analyzeObject()` (index.ts)
+// - `CompiledTemplate.analyze()` en mode objet (compiled-template.ts)
+
+/**
+ * Agrège les résultats d'analyse d'un ensemble d'entrées nommées en un
+ * seul `AnalysisResult` avec un `outputSchema` de type objet.
+ *
+ * @param keys         - Les clés de l'objet à analyser
+ * @param analyzeEntry - Callback qui analyse une entrée par sa clé
+ * @returns Un `AnalysisResult` agrégé
+ *
+ * @example
+ * ```
+ * aggregateObjectAnalysis(
+ *   Object.keys(template),
+ *   (key) => analyze(template[key], inputSchema),
+ * );
+ * ```
+ */
+export function aggregateObjectAnalysis(
+	keys: string[],
+	analyzeEntry: (key: string) => AnalysisResult,
+): AnalysisResult {
+	const allDiagnostics: TemplateDiagnostic[] = [];
+	const properties: Record<string, JSONSchema7> = {};
+	let allValid = true;
+
+	for (const key of keys) {
+		const child = analyzeEntry(key);
+		if (!child.valid) allValid = false;
+		allDiagnostics.push(...child.diagnostics);
+		properties[key] = child.outputSchema;
+	}
+
+	return {
+		valid: allValid,
+		diagnostics: allDiagnostics,
+		outputSchema: {
+			type: "object",
+			properties,
+			required: keys,
+		},
+	};
+}
+
+/**
+ * Agrège les résultats d'analyse **et** d'exécution d'un ensemble d'entrées
+ * nommées. Retourne à la fois l'`AnalysisResult` agrégé et l'objet des
+ * valeurs exécutées (ou `undefined` si au moins une entrée est invalide).
+ *
+ * @param keys         - Les clés de l'objet
+ * @param processEntry - Callback qui analyse et exécute une entrée par sa clé
+ * @returns `{ analysis, value }` agrégés
+ */
+export function aggregateObjectAnalysisAndExecution(
+	keys: string[],
+	processEntry: (key: string) => { analysis: AnalysisResult; value: unknown },
+): { analysis: AnalysisResult; value: unknown } {
+	const allDiagnostics: TemplateDiagnostic[] = [];
+	const properties: Record<string, JSONSchema7> = {};
+	const resultValues: Record<string, unknown> = {};
+	let allValid = true;
+
+	for (const key of keys) {
+		const child = processEntry(key);
+		if (!child.analysis.valid) allValid = false;
+		allDiagnostics.push(...child.analysis.diagnostics);
+		properties[key] = child.analysis.outputSchema;
+		resultValues[key] = child.value;
+	}
+
+	const analysis: AnalysisResult = {
+		valid: allValid,
+		diagnostics: allDiagnostics,
+		outputSchema: {
+			type: "object",
+			properties,
+			required: keys,
+		},
+	};
+
+	return {
+		analysis,
+		value: allValid ? resultValues : undefined,
+	};
 }

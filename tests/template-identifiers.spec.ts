@@ -1,7 +1,9 @@
-import { describe, expect, test } from "bun:test";
+import { beforeEach, describe, expect, test } from "bun:test";
 import type { JSONSchema7 } from "json-schema";
 import {
 	analyze,
+	clearCompilationCache,
+	clearParseCache,
 	execute,
 	extractExpressionIdentifier,
 	parseIdentifier,
@@ -55,6 +57,11 @@ function interpolateObject(
 // ═════════════════════════════════════════════════════════════════════════════
 
 describe("parseIdentifier", () => {
+	beforeEach(() => {
+		clearParseCache();
+		clearCompilationCache();
+	});
+
 	test("extracts key and identifier from 'meetingId:1'", () => {
 		const result = parseIdentifier("meetingId:1");
 		expect(result).toEqual({ key: "meetingId", identifier: 1 });
@@ -126,6 +133,11 @@ describe("extractExpressionIdentifier", () => {
 // ═════════════════════════════════════════════════════════════════════════════
 
 describe("execute() with identifierData", () => {
+	beforeEach(() => {
+		clearParseCache();
+		clearCompilationCache();
+	});
+
 	describe("single expression {{key:N}} — type preservation", () => {
 		test("preserves string type from identifier source", () => {
 			const result = execute(
@@ -449,6 +461,10 @@ describe("interpolateObject with identifierData (old interpolateTemplateValues m
 // ═════════════════════════════════════════════════════════════════════════════
 
 describe("analyze() with identifierSchemas", () => {
+	beforeEach(() => {
+		clearParseCache();
+	});
+
 	describe("basic identifier validation", () => {
 		test("valid: identifier key exists in identifierSchemas", () => {
 			const schema: JSONSchema7 = {
@@ -777,6 +793,11 @@ describe("analyze() with identifierSchemas", () => {
 // ═════════════════════════════════════════════════════════════════════════════
 
 describe("TemplateEngine with identifiers", () => {
+	beforeEach(() => {
+		clearParseCache();
+		clearCompilationCache();
+	});
+
 	describe("analyze()", () => {
 		const engine = new TemplateEngine();
 
@@ -804,17 +825,25 @@ describe("TemplateEngine with identifiers", () => {
 	describe("execute() with identifierData", () => {
 		test("resolves identifier from identifierData", () => {
 			const engine = new TemplateEngine();
-			const result = engine.execute("{{meetingId:1}}", {}, undefined, {
-				1: { meetingId: "hello" },
-			});
+			const result = engine.execute(
+				"{{meetingId:1}}",
+				{},
+				{
+					identifierData: { 1: { meetingId: "hello" } },
+				},
+			);
 			expect(result).toBe("hello");
 		});
 
 		test("preserves type for single identifier expression", () => {
 			const engine = new TemplateEngine();
-			const result = engine.execute("{{count:1}}", {}, undefined, {
-				1: { count: 42 },
-			});
+			const result = engine.execute(
+				"{{count:1}}",
+				{},
+				{
+					identifierData: { 1: { count: 42 } },
+				},
+			);
 			expect(result).toBe(42);
 			expect(typeof result).toBe("number");
 		});
@@ -824,8 +853,7 @@ describe("TemplateEngine with identifiers", () => {
 			const result = engine.execute(
 				"{{name}} {{greeting:1}}",
 				{ name: "Alice" },
-				undefined,
-				{ 1: { greeting: "hello" } },
+				{ identifierData: { 1: { greeting: "hello" } } },
 			);
 			expect(result).toBe("Alice hello");
 		});
@@ -848,9 +876,11 @@ describe("TemplateEngine with identifiers", () => {
 			const result = engine.execute(
 				"{{name}} {{meetingId:1}}",
 				{ name: "Alice" },
-				schema,
-				{ 1: { meetingId: "test" } },
-				idSchemas,
+				{
+					schema,
+					identifierData: { 1: { meetingId: "test" } },
+					identifierSchemas: idSchemas,
+				},
 			);
 			expect(result).toBe("Alice test");
 		});
@@ -872,9 +902,11 @@ describe("TemplateEngine with identifiers", () => {
 				engine.execute(
 					"{{meetingId:1}}",
 					{},
-					schema,
-					{ 1: { meetingId: "test" } },
-					idSchemas,
+					{
+						schema,
+						identifierData: { 1: { meetingId: "test" } },
+						identifierSchemas: idSchemas,
+					},
 				),
 			).toThrow();
 		});
@@ -888,9 +920,11 @@ describe("TemplateEngine with identifiers", () => {
 				engine.execute(
 					"{{meetingId:1}}",
 					{},
-					schema,
-					{ 1: { meetingId: "test" } },
-					idSchemas,
+					{
+						schema,
+						identifierData: { 1: { meetingId: "test" } },
+						identifierSchemas: idSchemas,
+					},
 				),
 			).toThrow();
 		});
@@ -940,6 +974,11 @@ describe("TemplateEngine with identifiers", () => {
 // ═════════════════════════════════════════════════════════════════════════════
 
 describe("Exact migration of old interpolateTemplateValues tests with identifiers", () => {
+	beforeEach(() => {
+		clearParseCache();
+		clearCompilationCache();
+	});
+
 	test("old: detect template with identifiers (no identifierData → falls back to data)", () => {
 		// L'ancien système résolvait {{meetingId:1}} depuis data si pas de
 		// outputNodeById. Le nouveau système retourne "" (Handlebars ne trouve pas).
@@ -1051,6 +1090,10 @@ describe("Exact migration of old interpolateTemplateValues tests with identifier
 // ═════════════════════════════════════════════════════════════════════════════
 
 describe("Exact migration of old validateTemplateUsage tests with prevSchemas", () => {
+	beforeEach(() => {
+		clearParseCache();
+	});
+
 	test("old: success if template has identifier and key exists in identifierSchemas", () => {
 		const schema: JSONSchema7 = {
 			type: "object",
@@ -1122,6 +1165,10 @@ describe("Exact migration of old validateTemplateUsage tests with prevSchemas", 
 // ═════════════════════════════════════════════════════════════════════════════
 
 describe("Exact migration of old findTemplateSchemaFromPrevSchemas behavior", () => {
+	beforeEach(() => {
+		clearParseCache();
+	});
+
 	// L'ancien findTemplateSchemaFromPrevSchemas(key, identifier, prevSchemas)
 	// cherchait un schema dans une liste ordonnée [id, schema][].
 	// Le nouveau système utilise identifierSchemas comme Record<number, JSONSchema7>
@@ -1232,6 +1279,11 @@ describe("Exact migration of old findTemplateSchemaFromPrevSchemas behavior", ()
 // ═════════════════════════════════════════════════════════════════════════════
 
 describe("Template identifier edge cases", () => {
+	beforeEach(() => {
+		clearParseCache();
+		clearCompilationCache();
+	});
+
 	test("identifier with no identifierData — execute returns undefined for single expr", () => {
 		const result = execute("{{key:5}}", { key: "from-data" });
 		expect(result).toBeUndefined();

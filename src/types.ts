@@ -8,23 +8,60 @@ import type { FromSchema, JSONSchema } from "json-schema-to-ts";
 // valeur telle quelle.
 
 /**
- * Type d'entrée accepté par le moteur de template.
+ * Objet dont chaque propriété est un `TemplateInput` (récursif).
  *
- * - `string`  → template Handlebars classique (parsé et exécuté)
- * - `number`  → littéral numérique (passthrough)
- * - `boolean` → littéral booléen (passthrough)
- * - `null`    → littéral null (passthrough)
+ * Permet de passer une structure entière comme template :
+ * ```
+ * engine.analyze({
+ *   userName: "{{name}}",
+ *   userAge: "{{age}}",
+ *   nested: { x: "{{foo}}" },
+ * }, inputSchema);
+ * ```
  */
-export type TemplateInput = string | number | boolean | null;
+export interface TemplateInputObject {
+	[key: string]: TemplateInput;
+}
 
 /**
- * Vérifie si une valeur est un littéral non-string (number, boolean, null).
+ * Type d'entrée accepté par le moteur de template.
+ *
+ * - `string`              → template Handlebars classique (parsé et exécuté)
+ * - `number`              → littéral numérique (passthrough)
+ * - `boolean`             → littéral booléen (passthrough)
+ * - `null`                → littéral null (passthrough)
+ * - `TemplateInputObject` → objet dont chaque propriété est un `TemplateInput`
+ */
+export type TemplateInput =
+	| string
+	| number
+	| boolean
+	| null
+	| TemplateInputObject;
+
+/**
+ * Vérifie si une valeur est un littéral non-string primitif (number, boolean, null).
  * Ces valeurs sont traitées en passthrough par le moteur.
+ *
+ * Note : les objets (`TemplateInputObject`) ne sont PAS des littéraux.
  */
 export function isLiteralInput(
 	input: TemplateInput,
 ): input is number | boolean | null {
-	return typeof input !== "string";
+	return (
+		input === null || (typeof input !== "string" && typeof input !== "object")
+	);
+}
+
+/**
+ * Vérifie si une valeur est un objet template (`TemplateInputObject`).
+ * Les objets templates sont traités récursivement par le moteur :
+ * chaque propriété est analysée/exécutée individuellement.
+ */
+export function isObjectInput(
+	input: TemplateInput,
+): input is TemplateInputObject {
+	return input !== null && typeof input === "object";
 }
 
 /**
@@ -48,7 +85,10 @@ export function inferPrimitiveSchema(
 	if (typeof value === "number") {
 		return Number.isInteger(value) ? { type: "integer" } : { type: "number" };
 	}
-	return { type: "string" };
+	// Exhaustiveness check — toutes les branches sont couvertes ci-dessus.
+	// Si le type de `value` change, TypeScript lèvera une erreur ici.
+	value satisfies never;
+	return { type: "null" };
 }
 
 // ─── Codes de diagnostic ─────────────────────────────────────────────────────
