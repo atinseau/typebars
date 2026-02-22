@@ -1,4 +1,5 @@
 import type { JSONSchema7 } from "json-schema";
+import type { FromSchema, JSONSchema } from "json-schema-to-ts";
 
 // ─── Codes de diagnostic ─────────────────────────────────────────────────────
 // Codes machine-readable pour chaque type d'erreur/warning, permettant au
@@ -232,4 +233,96 @@ export interface HelperDefinition {
 export interface HelperConfig extends HelperDefinition {
 	/** Nom du helper tel qu'il sera utilisé dans les templates (ex: `"uppercase"`) */
 	name: string;
+}
+
+// ─── Inférence automatique des types de paramètres via json-schema-to-ts ─────
+// Permet à `defineHelper()` d'inférer les types TypeScript des arguments de `fn`
+// à partir des JSON Schemas déclarés dans `params`.
+
+/**
+ * Param definition utilisé pour l'inférence de type.
+ * Accepte `JSONSchema` de `json-schema-to-ts` pour permettre à `FromSchema`
+ * de résoudre les types littéraux.
+ */
+type TypedHelperParam = {
+	readonly name: string;
+	readonly type?: JSONSchema;
+	readonly description?: string;
+	readonly optional?: boolean;
+};
+
+/**
+ * Infère le type TypeScript d'un seul paramètre à partir de son JSON Schema.
+ * - Si `optional: true`, le type résolu est unionné avec `undefined`.
+ * - Si `type` n'est pas fourni, le type est `unknown`.
+ */
+type InferParamType<P> = P extends {
+	readonly type: infer S extends JSONSchema;
+	readonly optional: true;
+}
+	? FromSchema<S> | undefined
+	: P extends { readonly type: infer S extends JSONSchema }
+		? FromSchema<S>
+		: unknown;
+
+/**
+ * Mappe un tuple de `TypedHelperParam` vers un tuple de types TypeScript
+ * inférés, utilisable comme signature de `fn`.
+ *
+ * @example
+ * ```
+ * type Args = InferArgs<readonly [
+ *   { name: "a"; type: { type: "string" } },
+ *   { name: "b"; type: { type: "number" }; optional: true },
+ * ]>;
+ * // => [string, number | undefined]
+ * ```
+ */
+type InferArgs<P extends readonly TypedHelperParam[]> = {
+	[K in keyof P]: InferParamType<P[K]>;
+};
+
+/**
+ * Configuration d'un helper avec inférence générique sur les paramètres.
+ * Utilisé exclusivement par `defineHelper()`.
+ */
+interface TypedHelperConfig<P extends readonly TypedHelperParam[]> {
+	name: string;
+	description?: string;
+	params: P;
+	fn: (...args: InferArgs<P>) => unknown;
+	returnType?: JSONSchema;
+}
+
+/**
+ * Crée un `HelperConfig` avec inférence automatique des types de `fn`
+ * à partir des JSON Schemas déclarés dans `params`.
+ *
+ * Le paramètre générique `const P` préserve les types littéraux des schemas
+ * (équivalent de `as const`), ce qui permet à `FromSchema` de résoudre
+ * les types TypeScript correspondants.
+ *
+ * @example
+ * ```
+ * const helper = defineHelper({
+ *   name: "concat",
+ *   description: "Concatenates two strings",
+ *   params: [
+ *     { name: "a", type: { type: "string" }, description: "First string" },
+ *     { name: "b", type: { type: "string" }, description: "Second string" },
+ *     { name: "sep", type: { type: "string" }, description: "Separator", optional: true },
+ *   ],
+ *   fn: (a, b, sep) => {
+ *     // a: string, b: string, sep: string | undefined
+ *     const separator = sep ?? "";
+ *     return `${a}${separator}${b}`;
+ *   },
+ *   returnType: { type: "string" },
+ * });
+ * ```
+ */
+export function defineHelper<const P extends readonly TypedHelperParam[]>(
+	config: TypedHelperConfig<P>,
+): HelperConfig {
+	return config as unknown as HelperConfig;
 }

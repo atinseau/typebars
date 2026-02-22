@@ -1,5 +1,5 @@
 import type { JSONSchema7 } from "json-schema";
-import { TemplateEngine } from "./src/index.ts";
+import { defineHelper, TemplateEngine } from "./src/index.ts";
 
 // ─── Showcase du Template Engine avec helpers built-in et custom ──────────────
 
@@ -7,10 +7,11 @@ import { TemplateEngine } from "./src/index.ts";
 // On peut aussi ajouter des helpers custom via les options du constructeur.
 const engine = new TemplateEngine({
 	helpers: [
-		{
+		defineHelper({
 			name: "uppercase",
 			description: "Converts a string to uppercase",
-			fn: (value: string) => String(value).toUpperCase(),
+			// value est automatiquement inféré comme `string` grâce à FromSchema
+			fn: (value) => String(value).toUpperCase(),
 			params: [
 				{
 					name: "value",
@@ -19,11 +20,12 @@ const engine = new TemplateEngine({
 				},
 			],
 			returnType: { type: "string" },
-		},
-		{
+		}),
+		defineHelper({
 			name: "concat",
 			description: "Concatenates two strings with an optional separator",
-			fn: (a: string, b: string, sep: unknown) => {
+			// a: string, b: string, sep: string | undefined — inféré automatiquement
+			fn: (a, b, sep) => {
 				const separator = typeof sep === "string" ? sep : "";
 				return `${a}${separator}${b}`;
 			},
@@ -38,7 +40,7 @@ const engine = new TemplateEngine({
 				},
 			],
 			returnType: { type: "string" },
-		},
+		}),
 	],
 });
 

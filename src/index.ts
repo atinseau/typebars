@@ -87,6 +87,7 @@ export type {
 	TemplateEngineOptions,
 	ValidationResult,
 } from "./types.ts";
+export { defineHelper } from "./types.ts";
 export { deepEqual, LRUCache } from "./utils.ts";
 
 // ─── Classe principale ──────────────────────────────────────────────────────
