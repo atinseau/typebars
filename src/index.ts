@@ -14,8 +14,10 @@ import type {
 	ExecuteOptions,
 	HelperDefinition,
 	TemplateEngineOptions,
+	TemplateInput,
 	ValidationResult,
 } from "./types.ts";
+import { inferPrimitiveSchema, isLiteralInput } from "./types.ts";
 import { LRUCache } from "./utils.ts";
 
 // ─── TemplateEngine ──────────────────────────────────────────────────────────
@@ -85,9 +87,10 @@ export type {
 	HelperParam,
 	TemplateDiagnostic,
 	TemplateEngineOptions,
+	TemplateInput,
 	ValidationResult,
 } from "./types.ts";
-export { defineHelper } from "./types.ts";
+export { defineHelper, inferPrimitiveSchema, isLiteralInput } from "./types.ts";
 export { deepEqual, LRUCache } from "./utils.ts";
 
 // ─── Classe principale ──────────────────────────────────────────────────────
@@ -150,7 +153,14 @@ export class TemplateEngine {
 	 * // result.outputSchema === { type: "string" }
 	 * ```
 	 */
-	compile(template: string): CompiledTemplate {
+	compile(template: TemplateInput): CompiledTemplate {
+		if (isLiteralInput(template)) {
+			return CompiledTemplate.fromLiteral(template, {
+				helpers: this.helpers,
+				hbs: this.hbs,
+				compilationCache: this.compilationCache,
+			});
+		}
 		const ast = this.getCachedAst(template);
 		const options: CompiledTemplateOptions = {
 			helpers: this.helpers,
@@ -192,10 +202,17 @@ export class TemplateEngine {
 	 * ```
 	 */
 	analyze(
-		template: string,
+		template: TemplateInput,
 		inputSchema: JSONSchema7,
 		identifierSchemas?: Record<number, JSONSchema7>,
 	): AnalysisResult {
+		if (isLiteralInput(template)) {
+			return {
+				valid: true,
+				diagnostics: [],
+				outputSchema: inferPrimitiveSchema(template),
+			};
+		}
 		const ast = this.getCachedAst(template);
 		return analyzeFromAst(ast, template, inputSchema, {
 			identifierSchemas,
@@ -228,7 +245,7 @@ export class TemplateEngine {
 	 * ```
 	 */
 	validate(
-		template: string,
+		template: TemplateInput,
 		inputSchema: JSONSchema7,
 		identifierSchemas?: Record<number, JSONSchema7>,
 	): ValidationResult {
@@ -248,7 +265,8 @@ export class TemplateEngine {
 	 * @param template - La chaîne de template à valider
 	 * @returns `true` si le template est syntaxiquement correct
 	 */
-	isValidSyntax(template: string): boolean {
+	isValidSyntax(template: TemplateInput): boolean {
+		if (isLiteralInput(template)) return true;
 		try {
 			parse(template);
 			return true;
@@ -294,12 +312,15 @@ export class TemplateEngine {
 	 * @returns Le résultat de l'exécution
 	 */
 	execute(
-		template: string,
+		template: TemplateInput,
 		data: Record<string, unknown>,
 		optionsOrSchema?: ExecuteOptions | JSONSchema7,
 		identifierData?: Record<number, Record<string, unknown>>,
 		identifierSchemas?: Record<number, JSONSchema7>,
 	): unknown {
+		// ── Passthrough pour les valeurs littérales ───────────────────────────
+		if (isLiteralInput(template)) return template;
+
 		// ── Normalisation des arguments ──────────────────────────────────────
 		let schema: JSONSchema7 | undefined;
 		let idData: Record<number, Record<string, unknown>> | undefined;
@@ -355,12 +376,23 @@ export class TemplateEngine {
 	 *          l'analyse a échoué.
 	 */
 	analyzeAndExecute(
-		template: string,
+		template: TemplateInput,
 		inputSchema: JSONSchema7,
 		data: Record<string, unknown>,
 		identifierSchemas?: Record<number, JSONSchema7>,
 		identifierData?: Record<number, Record<string, unknown>>,
 	): { analysis: AnalysisResult; value: unknown } {
+		if (isLiteralInput(template)) {
+			return {
+				analysis: {
+					valid: true,
+					diagnostics: [],
+					outputSchema: inferPrimitiveSchema(template),
+				},
+				value: template,
+			};
+		}
+
 		const ast = this.getCachedAst(template);
 		const analysis = analyzeFromAst(ast, template, inputSchema, {
 			identifierSchemas,

@@ -9,6 +9,7 @@ import type {
 	HelperDefinition,
 	ValidationResult,
 } from "./types.ts";
+import { inferPrimitiveSchema } from "./types.ts";
 import type { LRUCache } from "./utils.ts";
 
 // ─── CompiledTemplate ────────────────────────────────────────────────────────
@@ -23,6 +24,11 @@ import type { LRUCache } from "./utils.ts";
 //   tpl.execute({ name: "Alice" });   // pas de re-parsing
 //   tpl.execute({ name: "Bob" });     // pas de re-parsing ni recompilation
 //   tpl.analyze(schema);              // pas de re-parsing
+//
+// ─── Literal passthrough ─────────────────────────────────────────────────────
+// Quand la source est une valeur primitive (number, boolean, null), le
+// CompiledTemplate fonctionne en mode passthrough : pas de parsing, pas de
+// compilation, la valeur est retournée telle quelle.
 //
 // ─── Avantages par rapport à l'API directe ───────────────────────────────────
 // - **Performance** : parsing et compilation ne sont faits qu'une seule fois
@@ -40,10 +46,10 @@ export interface CompiledTemplateOptions {
 }
 
 export class CompiledTemplate {
-	/** L'AST Handlebars pré-parsé (immutable) */
-	readonly ast: hbs.AST.Program;
+	/** L'AST Handlebars pré-parsé — null en mode littéral */
+	readonly ast: hbs.AST.Program | null;
 
-	/** Le template source original */
+	/** Le template source original — string vide en mode littéral */
 	readonly template: string;
 
 	/** Template Handlebars compilé (lazy — créé au premier `execute()` qui en a besoin) */
@@ -52,14 +58,42 @@ export class CompiledTemplate {
 	/** Options héritées du TemplateEngine parent */
 	private readonly options: CompiledTemplateOptions;
 
+	/**
+	 * Valeur littérale en mode passthrough (number, boolean, null).
+	 * `undefined` signifie que le template est un vrai template string.
+	 */
+	private readonly literalValue: number | boolean | null | undefined;
+
 	constructor(
-		ast: hbs.AST.Program,
+		ast: hbs.AST.Program | null,
 		template: string,
 		options: CompiledTemplateOptions,
+		literalValue?: number | boolean | null,
 	) {
 		this.ast = ast;
 		this.template = template;
 		this.options = options;
+		this.literalValue = literalValue;
+	}
+
+	/**
+	 * Crée un CompiledTemplate en mode passthrough pour une valeur littérale
+	 * (number, boolean, null). Aucun parsing ni compilation n'est effectué.
+	 *
+	 * @param value   - La valeur primitive
+	 * @param options - Options héritées du TemplateEngine
+	 * @returns Un CompiledTemplate qui retourne toujours `value`
+	 */
+	static fromLiteral(
+		value: number | boolean | null,
+		options: CompiledTemplateOptions,
+	): CompiledTemplate {
+		return new CompiledTemplate(null, "", options, value);
+	}
+
+	/** Vérifie si ce template est en mode littéral (passthrough) */
+	private isLiteral(): boolean {
+		return this.literalValue !== undefined;
 	}
 
 	// ─── Analyse statique ────────────────────────────────────────────────
@@ -92,7 +126,17 @@ export class CompiledTemplate {
 		inputSchema: JSONSchema7,
 		identifierSchemas?: Record<number, JSONSchema7>,
 	): AnalysisResult {
-		return analyzeFromAst(this.ast, this.template, inputSchema, {
+		if (this.isLiteral()) {
+			return {
+				valid: true,
+				diagnostics: [],
+				outputSchema: inferPrimitiveSchema(
+					this.literalValue as number | boolean | null,
+				),
+			};
+		}
+		// biome-ignore lint/style/noNonNullAssertion: ast is guaranteed non-null when not literal
+		return analyzeFromAst(this.ast!, this.template, inputSchema, {
 			identifierSchemas,
 			helpers: this.options.helpers,
 		});
@@ -159,6 +203,9 @@ export class CompiledTemplate {
 	 * ```
 	 */
 	execute(data: Record<string, unknown>, options?: ExecuteOptions): unknown {
+		// En mode littéral, retourner la valeur telle quelle
+		if (this.isLiteral()) return this.literalValue;
+
 		// Validation statique préalable si un schema est fourni
 		if (options?.schema) {
 			const analysis = this.analyze(options.schema, options.identifierSchemas);
@@ -168,7 +215,8 @@ export class CompiledTemplate {
 		}
 
 		return executeFromAst(
-			this.ast,
+			// biome-ignore lint/style/noNonNullAssertion: ast is guaranteed non-null when not literal
+			this.ast!,
 			this.template,
 			data,
 			this.buildExecutorContext(options),
@@ -196,6 +244,19 @@ export class CompiledTemplate {
 			identifierData?: Record<number, Record<string, unknown>>;
 		},
 	): { analysis: AnalysisResult; value: unknown } {
+		if (this.isLiteral()) {
+			return {
+				analysis: {
+					valid: true,
+					diagnostics: [],
+					outputSchema: inferPrimitiveSchema(
+						this.literalValue as number | boolean | null,
+					),
+				},
+				value: this.literalValue,
+			};
+		}
+
 		const analysis = this.analyze(inputSchema, options?.identifierSchemas);
 
 		if (!analysis.valid) {
@@ -203,7 +264,8 @@ export class CompiledTemplate {
 		}
 
 		const value = executeFromAst(
-			this.ast,
+			// biome-ignore lint/style/noNonNullAssertion: ast is guaranteed non-null when not literal
+			this.ast!,
 			this.template,
 			data,
 			this.buildExecutorContext({

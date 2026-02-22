@@ -11,6 +11,8 @@ import {
 	isThisExpression,
 	parse,
 } from "./parser.ts";
+import type { TemplateInput } from "./types.ts";
+import { isLiteralInput } from "./types.ts";
 import { LRUCache } from "./utils.ts";
 
 // ─── Template Executor ───────────────────────────────────────────────────────
@@ -82,10 +84,11 @@ const globalCompilationCache = new LRUCache<string, HandlebarsTemplateDelegate>(
  * @param identifierData - (optionnel) Données par identifiant `{ [id]: { key: value } }`
  */
 export function execute(
-	template: string,
+	template: TemplateInput,
 	data: Record<string, unknown>,
 	identifierData?: Record<number, Record<string, unknown>>,
 ): unknown {
+	if (isLiteralInput(template)) return template;
 	const ast = parse(template);
 	return executeFromAst(ast, template, data, { identifierData });
 }

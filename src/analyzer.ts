@@ -27,7 +27,9 @@ import type {
 	DiagnosticDetails,
 	HelperDefinition,
 	TemplateDiagnostic,
+	TemplateInput,
 } from "./types.ts";
+import { inferPrimitiveSchema, isLiteralInput } from "./types.ts";
 import {
 	deepEqual,
 	extractSourceSnippet,
@@ -92,10 +94,17 @@ interface AnalysisContext {
  *          schema de sortie inféré.
  */
 export function analyze(
-	template: string,
+	template: TemplateInput,
 	inputSchema: JSONSchema7,
 	identifierSchemas?: Record<number, JSONSchema7>,
 ): AnalysisResult {
+	if (isLiteralInput(template)) {
+		return {
+			valid: true,
+			diagnostics: [],
+			outputSchema: inferPrimitiveSchema(template),
+		};
+	}
 	const ast = parse(template);
 	return analyzeFromAst(ast, template, inputSchema, { identifierSchemas });
 }

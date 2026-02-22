@@ -1,6 +1,56 @@
 import type { JSONSchema7 } from "json-schema";
 import type { FromSchema, JSONSchema } from "json-schema-to-ts";
 
+// ─── Template Input ──────────────────────────────────────────────────────────
+// Le moteur accepte des valeurs primitives en plus des strings de template.
+// Quand une valeur non-string est passée, elle est traitée comme un littéral
+// passthrough : l'analyse retourne le type inféré, l'exécution retourne la
+// valeur telle quelle.
+
+/**
+ * Type d'entrée accepté par le moteur de template.
+ *
+ * - `string`  → template Handlebars classique (parsé et exécuté)
+ * - `number`  → littéral numérique (passthrough)
+ * - `boolean` → littéral booléen (passthrough)
+ * - `null`    → littéral null (passthrough)
+ */
+export type TemplateInput = string | number | boolean | null;
+
+/**
+ * Vérifie si une valeur est un littéral non-string (number, boolean, null).
+ * Ces valeurs sont traitées en passthrough par le moteur.
+ */
+export function isLiteralInput(
+	input: TemplateInput,
+): input is number | boolean | null {
+	return typeof input !== "string";
+}
+
+/**
+ * Infère le JSON Schema d'une valeur primitive non-string.
+ *
+ * @param value - La valeur primitive (number, boolean, null)
+ * @returns Le JSON Schema correspondant
+ *
+ * @example
+ * ```
+ * inferPrimitiveSchema(42)    // → { type: "number" }
+ * inferPrimitiveSchema(true)  // → { type: "boolean" }
+ * inferPrimitiveSchema(null)  // → { type: "null" }
+ * ```
+ */
+export function inferPrimitiveSchema(
+	value: number | boolean | null,
+): JSONSchema7 {
+	if (value === null) return { type: "null" };
+	if (typeof value === "boolean") return { type: "boolean" };
+	if (typeof value === "number") {
+		return Number.isInteger(value) ? { type: "integer" } : { type: "number" };
+	}
+	return { type: "string" };
+}
+
 // ─── Codes de diagnostic ─────────────────────────────────────────────────────
 // Codes machine-readable pour chaque type d'erreur/warning, permettant au
 // frontend de réagir programmatiquement sans parser le message humain.
