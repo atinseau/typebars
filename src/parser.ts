@@ -1,6 +1,12 @@
 import Handlebars from "handlebars";
 import { TemplateParseError } from "./errors.ts";
 
+// ─── Regex pour détecter un identifiant de template (ex: "meetingId:1") ──────
+// L'identifiant est toujours un entier positif ou zéro, séparé du nom de la
+// variable par un `:`. Le `:` et le nombre sont sur le **dernier** segment
+// du chemin (Handlebars split sur les `.`).
+const IDENTIFIER_RE = /^(.+):(\d+)$/;
+
 // ─── Template Parser ─────────────────────────────────────────────────────────
 // Wrapper mince autour du parser Handlebars. On centralise ici l'appel au
 // parser pour :
@@ -22,22 +28,22 @@ const NUMERIC_LITERAL_RE = /^-?\d+(\.\d+)?$/;
  * @throws {TemplateParseError} si la syntaxe du template est invalide
  */
 export function parse(template: string): hbs.AST.Program {
-  try {
-    return Handlebars.parse(template);
-  } catch (error: unknown) {
-    // Handlebars lève une Error classique avec un message descriptif.
-    // On la transforme en TemplateParseError pour un traitement uniforme.
-    const message = error instanceof Error ? error.message : String(error);
+	try {
+		return Handlebars.parse(template);
+	} catch (error: unknown) {
+		// Handlebars lève une Error classique avec un message descriptif.
+		// On la transforme en TemplateParseError pour un traitement uniforme.
+		const message = error instanceof Error ? error.message : String(error);
 
-    // Handlebars inclut parfois la position dans le message, on tente
-    // de l'extraire pour enrichir notre erreur.
-    const locMatch = message.match(/line\s+(\d+).*?column\s+(\d+)/i);
-    const loc = locMatch
-      ? { line: parseInt(locMatch[1]!, 10), column: parseInt(locMatch[2]!, 10) }
-      : undefined;
+		// Handlebars inclut parfois la position dans le message, on tente
+		// de l'extraire pour enrichir notre erreur.
+		const locMatch = message.match(/line\s+(\d+).*?column\s+(\d+)/i);
+		const loc = locMatch
+			? { line: parseInt(locMatch[1]!, 10), column: parseInt(locMatch[2]!, 10) }
+			: undefined;
 
-    throw new TemplateParseError(message, loc);
-  }
+		throw new TemplateParseError(message, loc);
+	}
 }
 
 /**
@@ -52,10 +58,10 @@ export function parse(template: string): hbs.AST.Program {
  * @returns `true` si le template est une expression unique
  */
 export function isSingleExpression(ast: hbs.AST.Program): boolean {
-  const { body } = ast;
+	const { body } = ast;
 
-  // Exactement un nœud, et c'est un MustacheStatement (pas un block, pas du texte)
-  return body.length === 1 && body[0]!.type === "MustacheStatement";
+	// Exactement un nœud, et c'est un MustacheStatement (pas un block, pas du texte)
+	return body.length === 1 && body[0]?.type === "MustacheStatement";
 }
 
 /**
@@ -68,13 +74,11 @@ export function isSingleExpression(ast: hbs.AST.Program): boolean {
  * @returns Les segments du chemin, ou un tableau vide si l'expression n'est
  *          pas un `PathExpression`
  */
-export function extractPathSegments(
-  expr: hbs.AST.Expression,
-): string[] {
-  if (expr.type === "PathExpression") {
-    return (expr as hbs.AST.PathExpression).parts;
-  }
-  return [];
+export function extractPathSegments(expr: hbs.AST.Expression): string[] {
+	if (expr.type === "PathExpression") {
+		return (expr as hbs.AST.PathExpression).parts;
+	}
+	return [];
 }
 
 /**
@@ -82,9 +86,9 @@ export function extractPathSegments(
  * (utilisé à l'intérieur des blocs `{{#each}}`).
  */
 export function isThisExpression(expr: hbs.AST.Expression): boolean {
-  if (expr.type !== "PathExpression") return false;
-  const path = expr as hbs.AST.PathExpression;
-  return path.original === "this" || path.original === ".";
+	if (expr.type !== "PathExpression") return false;
+	const path = expr as hbs.AST.PathExpression;
+	return path.original === "this" || path.original === ".";
 }
 
 // ─── Filtrage des nœuds significatifs ────────────────────────────────────────
@@ -98,14 +102,16 @@ export function isThisExpression(expr: hbs.AST.Expression): boolean {
  * Retourne les statements significatifs d'un Program en éliminant les
  * `ContentStatement` constitués uniquement de whitespace.
  */
-export function getEffectiveBody(program: hbs.AST.Program): hbs.AST.Statement[] {
-  return program.body.filter(
-    (s) =>
-      !(
-        s.type === "ContentStatement" &&
-        (s as hbs.AST.ContentStatement).value.trim() === ""
-      ),
-  );
+export function getEffectiveBody(
+	program: hbs.AST.Program,
+): hbs.AST.Statement[] {
+	return program.body.filter(
+		(s) =>
+			!(
+				s.type === "ContentStatement" &&
+				(s as hbs.AST.ContentStatement).value.trim() === ""
+			),
+	);
 }
 
 /**
@@ -123,13 +129,13 @@ export function getEffectiveBody(program: hbs.AST.Program): hbs.AST.Statement[] 
  *          d'autres nœuds significatifs.
  */
 export function getEffectivelySingleBlock(
-  program: hbs.AST.Program,
+	program: hbs.AST.Program,
 ): hbs.AST.BlockStatement | null {
-  const effective = getEffectiveBody(program);
-  if (effective.length === 1 && effective[0]!.type === "BlockStatement") {
-    return effective[0] as hbs.AST.BlockStatement;
-  }
-  return null;
+	const effective = getEffectiveBody(program);
+	if (effective.length === 1 && effective[0]?.type === "BlockStatement") {
+		return effective[0] as hbs.AST.BlockStatement;
+	}
+	return null;
 }
 
 /**
@@ -139,13 +145,13 @@ export function getEffectivelySingleBlock(
  * Exemple : `  {{age}}  ` → true
  */
 export function getEffectivelySingleExpression(
-  program: hbs.AST.Program,
+	program: hbs.AST.Program,
 ): hbs.AST.MustacheStatement | null {
-  const effective = getEffectiveBody(program);
-  if (effective.length === 1 && effective[0]!.type === "MustacheStatement") {
-    return effective[0] as hbs.AST.MustacheStatement;
-  }
-  return null;
+	const effective = getEffectiveBody(program);
+	if (effective.length === 1 && effective[0]?.type === "MustacheStatement") {
+		return effective[0] as hbs.AST.MustacheStatement;
+	}
+	return null;
 }
 
 // ─── Détection de littéraux dans le contenu textuel ──────────────────────────
@@ -160,11 +166,13 @@ export function getEffectivelySingleExpression(
  * @param text - Le texte trimé d'un ContentStatement ou d'un groupe de ContentStatements
  * @returns Le type JSON Schema détecté, ou `null` si c'est du texte libre (string).
  */
-export function detectLiteralType(text: string): "number" | "boolean" | "null" | null {
-  if (NUMERIC_LITERAL_RE.test(text)) return "number";
-  if (text === "true" || text === "false") return "boolean";
-  if (text === "null") return "null";
-  return null;
+export function detectLiteralType(
+	text: string,
+): "number" | "boolean" | "null" | null {
+	if (NUMERIC_LITERAL_RE.test(text)) return "number";
+	if (text === "true" || text === "false") return "boolean";
+	if (text === "null") return "null";
+	return null;
 }
 
 /**
@@ -173,12 +181,94 @@ export function detectLiteralType(text: string): "number" | "boolean" | "null" |
  * Retourne la string trimée sinon.
  */
 export function coerceLiteral(raw: string): unknown {
-  const trimmed = raw.trim();
-  const type = detectLiteralType(trimmed);
-  if (type === "number") return Number(trimmed);
-  if (type === "boolean") return trimmed === "true";
-  if (type === "null") return null;
-  // Pas un littéral typé → on retourne la string brute sans la trimer,
-  // car le whitespace peut être significatif (ex: résultat d'un #each).
-  return raw;
+	const trimmed = raw.trim();
+	const type = detectLiteralType(trimmed);
+	if (type === "number") return Number(trimmed);
+	if (type === "boolean") return trimmed === "true";
+	if (type === "null") return null;
+	// Pas un littéral typé → on retourne la string brute sans la trimer,
+	// car le whitespace peut être significatif (ex: résultat d'un #each).
+	return raw;
+}
+
+// ─── Template Identifier Parsing ─────────────────────────────────────────────
+// Syntaxe `{{key:N}}` où N est un entier positif ou zéro.
+// L'identifiant permet de résoudre une variable depuis une source de données
+// spécifique (ex: un nœud de workflow identifié par son numéro).
+
+/** Résultat du parsing d'un segment de chemin avec identifiant potentiel */
+export interface ParsedIdentifier {
+	/** Le nom de la variable, sans le suffixe `:N` */
+	key: string;
+	/** L'identifiant numérique, ou `null` si absent */
+	identifier: number | null;
+}
+
+/**
+ * Parse un segment de chemin individuel pour en extraire la clé et
+ * l'identifiant optionnel.
+ *
+ * @param segment - Un segment de chemin brut (ex: `"meetingId:1"` ou `"meetingId"`)
+ * @returns Un objet `{ key, identifier }`
+ *
+ * @example
+ * ```
+ * parseIdentifier("meetingId:1")  // → { key: "meetingId", identifier: 1 }
+ * parseIdentifier("meetingId")    // → { key: "meetingId", identifier: null }
+ * parseIdentifier("meetingId:0")  // → { key: "meetingId", identifier: 0 }
+ * ```
+ */
+export function parseIdentifier(segment: string): ParsedIdentifier {
+	const match = segment.match(IDENTIFIER_RE);
+	if (match) {
+		return { key: match[1]!, identifier: parseInt(match[2]!, 10) };
+	}
+	return { key: segment, identifier: null };
+}
+
+/** Résultat de l'extraction de l'identifiant sur une expression complète */
+export interface ExpressionIdentifier {
+	/** Segments de chemin nettoyés (sans le suffixe `:N` sur le dernier) */
+	cleanSegments: string[];
+	/** L'identifiant numérique extrait du dernier segment, ou `null` */
+	identifier: number | null;
+}
+
+/**
+ * Extrait l'identifiant d'une expression complète (tableau de segments).
+ *
+ * L'identifiant est toujours sur le **dernier** segment du chemin, car
+ * Handlebars split sur les `.` avant le `:`.
+ *
+ * @param segments - Les segments bruts du chemin (ex: `["user", "name:1"]`)
+ * @returns Un objet `{ cleanSegments, identifier }`
+ *
+ * @example
+ * ```
+ * extractExpressionIdentifier(["meetingId:1"])
+ * // → { cleanSegments: ["meetingId"], identifier: 1 }
+ *
+ * extractExpressionIdentifier(["user", "name:1"])
+ * // → { cleanSegments: ["user", "name"], identifier: 1 }
+ *
+ * extractExpressionIdentifier(["meetingId"])
+ * // → { cleanSegments: ["meetingId"], identifier: null }
+ * ```
+ */
+export function extractExpressionIdentifier(
+	segments: string[],
+): ExpressionIdentifier {
+	if (segments.length === 0) {
+		return { cleanSegments: [], identifier: null };
+	}
+
+	const lastSegment = segments[segments.length - 1]!;
+	const parsed = parseIdentifier(lastSegment);
+
+	if (parsed.identifier !== null) {
+		const cleanSegments = [...segments.slice(0, -1), parsed.key];
+		return { cleanSegments, identifier: parsed.identifier };
+	}
+
+	return { cleanSegments: segments, identifier: null };
 }

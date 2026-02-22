@@ -1,15 +1,27 @@
 {
-  "name": "bun-playground",
-  "module": "index.ts",
-  "type": "module",
-  "private": true,
-  "devDependencies": {
-    "@types/bun": "latest"
-  },
-  "peerDependencies": {
-    "typescript": "^5"
-  },
-  "dependencies": {
-    "handlebars": "^4.7.8"
-  }
+	"name": "bun-playground",
+	"module": "index.ts",
+	"type": "module",
+	"private": true,
+	"scripts": {
+		"postinstall": "lefthook install",
+		"build:bun": "bun build src/*.ts --outdir ./dist --production --minify --root src --sourcemap --splitting --target node --format esm --packages external --chunk-naming='chunk-[hash].js'",
+		"build:tsc": "tsc --project tsconfig.build.json",
+		"build": "bun --parallel build:bun build:tsc",
+		"prepublishOnly": "bun run build",
+		"check-types": "tsc --noEmit",
+		"check": "biome check --write --unsafe",
+		"test": "bun test"
+	},
+	"devDependencies": {
+		"@biomejs/biome": "2.4.3",
+		"@types/bun": "latest",
+		"lefthook": "^2.1.1"
+	},
+	"peerDependencies": {
+		"typescript": "^5"
+	},
+	"dependencies": {
+		"handlebars": "4.7.8"
+	}
 }

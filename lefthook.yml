@@ -1,0 +1,10 @@
+pre-commit:
+  jobs:
+    - run: bun check-types
+    - run: bun biome check --write {staged_files} --no-errors-on-unmatched --unsafe
+      stage_fixed: true
+    - group:
+        parallel: true
+        jobs:
+          - run: bun test
+            interactive: true
