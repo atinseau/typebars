@@ -32,7 +32,7 @@ describe("TemplateEngine", () => {
 	});
 
 	describe("mode strict (défaut)", () => {
-		const engine = new TemplateEngine({ strictMode: true });
+		const engine = new TemplateEngine();
 
 		test("execute lève TemplateAnalysisError si le schema invalide le template", () => {
 			expect(() =>
@@ -48,16 +48,6 @@ describe("TemplateEngine", () => {
 		test("execute fonctionne sans schema (pas de validation)", () => {
 			const result = engine.execute("{{anything}}", { anything: 42 });
 			expect(result).toBe(42);
-		});
-	});
-
-	describe("mode non-strict", () => {
-		const engine = new TemplateEngine({ strictMode: false });
-
-		test("execute ne lève pas d'erreur même si le schema invalide le template", () => {
-			expect(() =>
-				engine.execute("{{badProp}}", { badProp: "x" }, userSchema),
-			).not.toThrow();
 		});
 	});
 
@@ -85,7 +75,7 @@ describe("TemplateEngine", () => {
 	});
 
 	describe("analyzeAndExecute", () => {
-		const engine = new TemplateEngine({ strictMode: true });
+		const engine = new TemplateEngine();
 
 		test("retourne analysis et value quand le template est valide", () => {
 			const { analysis, value } = engine.analyzeAndExecute(
@@ -106,17 +96,6 @@ describe("TemplateEngine", () => {
 			);
 			expect(analysis.valid).toBe(false);
 			expect(value).toBeUndefined();
-		});
-
-		test("retourne la valeur même invalide en mode non-strict", () => {
-			const lenient = new TemplateEngine({ strictMode: false });
-			const { analysis, value } = lenient.analyzeAndExecute(
-				"{{name}}",
-				userSchema,
-				userData,
-			);
-			expect(analysis.valid).toBe(true);
-			expect(value).toBe("Alice");
 		});
 	});
 });

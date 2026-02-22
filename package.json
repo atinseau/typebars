@@ -16,7 +16,8 @@
 	"devDependencies": {
 		"@biomejs/biome": "2.4.3",
 		"@types/bun": "latest",
-		"lefthook": "^2.1.1"
+		"@types/json-schema": "7.0.15",
+		"lefthook": "2.1.1"
 	},
 	"peerDependencies": {
 		"typescript": "^5"

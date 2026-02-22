@@ -1,4 +1,5 @@
 import type { JSONSchema7 } from "./types.ts";
+import { deepEqual } from "./utils.ts";
 
 // ─── JSON Schema Resolver ────────────────────────────────────────────────────
 // Utilitaire pour naviguer dans un JSON Schema Draft v7 en suivant un chemin
@@ -39,12 +40,7 @@ export function resolveRef(
 	const defsKey = match[1] as "definitions" | "$defs";
 	const name = match[2] ?? "";
 
-	const defs =
-		defsKey === "definitions"
-			? root.definitions
-			: ((root as Record<string, unknown>).$defs as
-					| Record<string, JSONSchema7>
-					| undefined);
+	const defs = defsKey === "definitions" ? root.definitions : root.$defs;
 
 	if (!defs || !(name in defs)) {
 		throw new Error(
@@ -54,7 +50,7 @@ export function resolveRef(
 
 	// Résolution récursive au cas où la définition elle-même contient un $ref
 	const def = defs[name];
-	if (!def) {
+	if (!def || typeof def === "boolean") {
 		throw new Error(
 			`Cannot resolve $ref "${ref}": definition "${name}" not found.`,
 		);
@@ -82,7 +78,8 @@ function resolveSegment(
 	// 1. Propriétés explicites
 	if (resolved.properties && segment in resolved.properties) {
 		const prop = resolved.properties[segment];
-		if (prop) return resolveRef(prop, root);
+		if (prop && typeof prop !== "boolean") return resolveRef(prop, root);
+		if (prop === true) return {};
 	}
 
 	// 2. additionalProperties (quand la propriété n'est pas déclarée)
@@ -118,6 +115,7 @@ function resolveInCombinators(
 	// et toutes les contraintes s'appliquent simultanément.
 	if (schema.allOf) {
 		const matches = schema.allOf
+			.filter((b): b is JSONSchema7 => typeof b !== "boolean")
 			.map((branch) => resolveSegment(branch, segment, root))
 			.filter((s): s is JSONSchema7 => s !== undefined);
 
@@ -129,6 +127,7 @@ function resolveInCombinators(
 	for (const key of ["anyOf", "oneOf"] as const) {
 		if (!schema[key]) continue;
 		const matches = schema[key]
+			.filter((b): b is JSONSchema7 => typeof b !== "boolean")
 			.map((branch) => resolveSegment(branch, segment, root))
 			.filter((s): s is JSONSchema7 => s !== undefined);
 
@@ -213,11 +212,20 @@ export function resolveArrayItems(
 		return {};
 	}
 
+	// items peut être un boolean (true = anything, false = nothing)
+	if (typeof resolved.items === "boolean") {
+		return {};
+	}
+
 	// items peut être un schema unique ou un tuple (tableau de schemas).
 	// Pour les boucles de template, on traite le cas d'un schema unique.
 	if (Array.isArray(resolved.items)) {
 		// Tuple : on crée un oneOf de tous les types possibles
-		return { oneOf: resolved.items.map((item) => resolveRef(item, root)) };
+		const schemas = resolved.items
+			.filter((item): item is JSONSchema7 => typeof item !== "boolean")
+			.map((item) => resolveRef(item, root));
+		if (schemas.length === 0) return {};
+		return { oneOf: schemas };
 	}
 
 	return resolveRef(resolved.items, root);
@@ -226,29 +234,43 @@ export function resolveArrayItems(
 /**
  * Simplifie un schema de sortie pour éviter les constructions inutilement
  * complexes (ex: `oneOf` avec un seul élément, doublons, etc.).
+ *
+ * Utilise `deepEqual` pour la déduplication — plus robuste et performant
+ * que `JSON.stringify` (indépendant de l'ordre des clés, sans allocation
+ * de strings intermédiaires).
  */
 export function simplifySchema(schema: JSONSchema7): JSONSchema7 {
 	// oneOf / anyOf avec un seul élément → on déplie
 	for (const key of ["oneOf", "anyOf"] as const) {
-		if (schema[key] && schema[key].length === 1) {
-			return simplifySchema(schema[key][0] as JSONSchema7);
+		const arr = schema[key];
+		if (arr && arr.length === 1) {
+			const first = arr[0];
+			if (first !== undefined && typeof first !== "boolean")
+				return simplifySchema(first);
 		}
 	}
 
 	// allOf avec un seul élément → on déplie
 	if (schema.allOf && schema.allOf.length === 1) {
-		return simplifySchema(schema.allOf[0] as JSONSchema7);
+		const first = schema.allOf[0];
+		if (first !== undefined && typeof first !== "boolean")
+			return simplifySchema(first);
 	}
 
 	// Déduplique les entrées identiques dans oneOf/anyOf
 	for (const key of ["oneOf", "anyOf"] as const) {
-		if (schema[key] && schema[key].length > 1) {
-			const seen = new Set<string>();
+		const arr = schema[key];
+		if (arr && arr.length > 1) {
 			const unique: JSONSchema7[] = [];
-			for (const entry of schema[key]) {
-				const serialized = JSON.stringify(entry);
-				if (!seen.has(serialized)) {
-					seen.add(serialized);
+			for (const entry of arr) {
+				if (typeof entry === "boolean") continue;
+				// Utilisation de deepEqual au lieu de JSON.stringify pour la
+				// comparaison structurelle — plus robuste (ordre des clés) et
+				// plus performant (pas d'allocation de strings).
+				const isDuplicate = unique.some((existing) =>
+					deepEqual(existing, entry),
+				);
+				if (!isDuplicate) {
 					unique.push(simplifySchema(entry));
 				}
 			}

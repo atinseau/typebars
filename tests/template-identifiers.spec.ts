@@ -803,7 +803,7 @@ describe("TemplateEngine with identifiers", () => {
 
 	describe("execute() with identifierData", () => {
 		test("resolves identifier from identifierData", () => {
-			const engine = new TemplateEngine({ strictMode: false });
+			const engine = new TemplateEngine();
 			const result = engine.execute("{{meetingId:1}}", {}, undefined, {
 				1: { meetingId: "hello" },
 			});
@@ -811,7 +811,7 @@ describe("TemplateEngine with identifiers", () => {
 		});
 
 		test("preserves type for single identifier expression", () => {
-			const engine = new TemplateEngine({ strictMode: false });
+			const engine = new TemplateEngine();
 			const result = engine.execute("{{count:1}}", {}, undefined, {
 				1: { count: 42 },
 			});
@@ -820,7 +820,7 @@ describe("TemplateEngine with identifiers", () => {
 		});
 
 		test("mixed data and identifierData", () => {
-			const engine = new TemplateEngine({ strictMode: false });
+			const engine = new TemplateEngine();
 			const result = engine.execute(
 				"{{name}} {{greeting:1}}",
 				{ name: "Alice" },
@@ -833,7 +833,7 @@ describe("TemplateEngine with identifiers", () => {
 
 	describe("execute() strict mode with identifierSchemas", () => {
 		test("succeeds when both schema and identifierSchemas validate", () => {
-			const engine = new TemplateEngine({ strictMode: true });
+			const engine = new TemplateEngine();
 			const schema: JSONSchema7 = {
 				type: "object",
 				properties: { name: { type: "string" } },
@@ -856,7 +856,7 @@ describe("TemplateEngine with identifiers", () => {
 		});
 
 		test("throws when identifier key is missing from identifierSchemas", () => {
-			const engine = new TemplateEngine({ strictMode: true });
+			const engine = new TemplateEngine();
 			const schema: JSONSchema7 = {
 				type: "object",
 				properties: { name: { type: "string" } },
@@ -880,7 +880,7 @@ describe("TemplateEngine with identifiers", () => {
 		});
 
 		test("throws when identifier N not in identifierSchemas", () => {
-			const engine = new TemplateEngine({ strictMode: true });
+			const engine = new TemplateEngine();
 			const schema: JSONSchema7 = { type: "object", properties: {} };
 			const idSchemas: Record<number, JSONSchema7> = {};
 
@@ -898,7 +898,7 @@ describe("TemplateEngine with identifiers", () => {
 
 	describe("analyzeAndExecute()", () => {
 		test("returns analysis and value for valid identifier template", () => {
-			const engine = new TemplateEngine({ strictMode: true });
+			const engine = new TemplateEngine();
 			const schema: JSONSchema7 = { type: "object", properties: {} };
 			const idSchemas: Record<number, JSONSchema7> = {
 				1: {
@@ -919,8 +919,8 @@ describe("TemplateEngine with identifiers", () => {
 			expect(value).toBe(42);
 		});
 
-		test("returns undefined value for invalid identifier template in strict mode", () => {
-			const engine = new TemplateEngine({ strictMode: true });
+		test("returns undefined value for invalid identifier template", () => {
+			const engine = new TemplateEngine();
 			const schema: JSONSchema7 = { type: "object", properties: {} };
 
 			const { analysis, value } = engine.analyzeAndExecute(

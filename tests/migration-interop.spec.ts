@@ -772,7 +772,7 @@ describe("Migration: findTemplateSchemaFromPrevSchemas → JSON Schema resolutio
 // ═════════════════════════════════════════════════════════════════════════════
 
 describe("Migration: TemplateEngine strict mode", () => {
-	const engine = new TemplateEngine({ strictMode: true });
+	const engine = new TemplateEngine();
 
 	test("Execute succeeds with valid schema", () => {
 		const schema: JSONSchema7 = {
@@ -804,16 +804,6 @@ describe("Migration: TemplateEngine strict mode", () => {
 	test("Execute without schema skips validation", () => {
 		const result = engine.execute("{{anything}}", { anything: 42 });
 		expect(result).toBe(42);
-	});
-
-	test("Non-strict mode does not throw on invalid references", () => {
-		const lenient = new TemplateEngine({ strictMode: false });
-		const schema: JSONSchema7 = {
-			type: "object",
-			properties: {},
-		};
-
-		expect(() => lenient.execute("{{missing}}", {}, schema)).not.toThrow();
 	});
 });
 

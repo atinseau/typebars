@@ -1,26 +1,33 @@
+import type { JSONSchema7 } from "./src/index.ts";
 import { TemplateEngine } from "./src/index.ts";
 
-const engine = new TemplateEngine({
-	strictMode: true,
-});
+// ─── Showcase des nouvelles fonctionnalités du Template Engine v2 ─────────────
+
+const engine = new TemplateEngine();
 
 const template = `
-  {{user}}
-  {{hello}}
+  <div>
+    <h1>{{ title }}</h1>
+    <p>{{ description }}</p>
+    <ul>
+      {{#each items}}
+        <li>{{ this }}</li>
+      {{/each}}
+    </ul>
+  </div>
 `;
 
-const result = engine.analyze(template, {
+const schema: JSONSchema7 = {
 	type: "object",
 	properties: {
-		showAge: { type: "boolean" },
-		user: {
-			type: "object",
-			properties: {
-				name: { type: "string" },
-				age: { type: "number" },
-			},
+		title: { type: "string" },
+		description: { type: "string" },
+		items: {
+			type: "array",
+			items: { type: "string" },
 		},
 	},
-});
+	required: ["title", "description", "items"],
+} as const;
 
-console.log(JSON.stringify(result, null, 2));
+console.log(engine.analyze(template, schema));

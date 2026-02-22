@@ -1,4 +1,11 @@
 import {
+	createMissingArgumentMessage,
+	createPropertyNotFoundMessage,
+	createTypeMismatchMessage,
+	createUnanalyzableMessage,
+	createUnknownHelperMessage,
+} from "./errors.ts";
+import {
 	detectLiteralType,
 	extractExpressionIdentifier,
 	extractPathSegments,
@@ -15,20 +22,32 @@ import {
 } from "./schema-resolver.ts";
 import type {
 	AnalysisResult,
+	DiagnosticCode,
+	DiagnosticDetails,
+	HelperDefinition,
 	JSONSchema7,
 	TemplateDiagnostic,
 } from "./types.ts";
+import {
+	deepEqual,
+	extractSourceSnippet,
+	getSchemaPropertyNames,
+} from "./utils.ts";
 
 // ─── Static Analyzer ─────────────────────────────────────────────────────────
 // Analyse statique d'un template Handlebars par rapport à un JSON Schema v7
 // décrivant le contexte disponible.
 //
-// Deux responsabilités :
-// 1. **Validation** — vérifier que chaque référence du template existe dans le
-//    schema et que les constructions (if, each, with) sont utilisées sur des
-//    types compatibles.
-// 2. **Inférence du type de retour** — produire un JSON Schema décrivant le
-//    type de la valeur retournée par l'exécution du template.
+// Architecture fusionnée (v2) :
+// Un seul parcours de l'AST effectue simultanément la **validation** et
+// l'**inférence du type de retour**. Cela élimine la duplication entre les
+// anciennes fonctions `validate*` et `infer*`, et améliore la performance
+// en évitant un double parcours.
+//
+// Contexte :
+// Le contexte d'analyse utilise un pattern **save/restore** au lieu de
+// créer de nouveaux objets à chaque récursion (`{ ...ctx, current: X }`).
+// Cela réduit la pression sur le GC pour les templates profondément imbriqués.
 //
 // ─── Template Identifiers ────────────────────────────────────────────────────
 // La syntaxe `{{key:N}}` permet de référencer une variable depuis un schema
@@ -46,12 +65,16 @@ import type {
 interface AnalysisContext {
 	/** Schema racine (pour résoudre les $ref) */
 	root: JSONSchema7;
-	/** Schema du contexte courant (change avec #each, #with) */
+	/** Schema du contexte courant (change avec #each, #with) — muté via save/restore */
 	current: JSONSchema7;
 	/** Accumulateur de diagnostics */
 	diagnostics: TemplateDiagnostic[];
+	/** Template source complet (pour extraire les snippets d'erreur) */
+	template: string;
 	/** Schemas par identifiant de template (pour la syntaxe {{key:N}}) */
 	identifierSchemas?: Record<number, JSONSchema7>;
+	/** Helpers custom enregistrés (pour l'analyse statique) */
+	helpers?: Map<string, HelperDefinition>;
 }
 
 // ─── API publique ────────────────────────────────────────────────────────────
@@ -59,6 +82,8 @@ interface AnalysisContext {
 /**
  * Analyse statiquement un template par rapport à un JSON Schema v7 décrivant
  * le contexte disponible.
+ *
+ * Version backward-compatible — parse le template en interne.
  *
  * @param template           - La chaîne de template (ex: `"Hello {{user.name}}"`)
  * @param inputSchema        - JSON Schema v7 décrivant les variables disponibles
@@ -72,26 +97,40 @@ export function analyze(
 	identifierSchemas?: Record<number, JSONSchema7>,
 ): AnalysisResult {
 	const ast = parse(template);
+	return analyzeFromAst(ast, template, inputSchema, { identifierSchemas });
+}
 
+/**
+ * Analyse statiquement un template à partir d'un AST déjà parsé.
+ *
+ * C'est la fonction interne utilisée par `TemplateEngine.compile()` et
+ * `CompiledTemplate.analyze()` pour éviter un re-parsing coûteux.
+ *
+ * @param ast               - L'AST Handlebars déjà parsé
+ * @param template          - Le template source (pour les snippets d'erreur)
+ * @param inputSchema       - JSON Schema v7 décrivant les variables disponibles
+ * @param options           - Options supplémentaires
+ * @returns Un `AnalysisResult`
+ */
+export function analyzeFromAst(
+	ast: hbs.AST.Program,
+	template: string,
+	inputSchema: JSONSchema7,
+	options?: {
+		identifierSchemas?: Record<number, JSONSchema7>;
+		helpers?: Map<string, HelperDefinition>;
+	},
+): AnalysisResult {
 	const ctx: AnalysisContext = {
 		root: inputSchema,
 		current: inputSchema,
 		diagnostics: [],
-		identifierSchemas,
+		template,
+		identifierSchemas: options?.identifierSchemas,
+		helpers: options?.helpers,
 	};
 
-	// Inférer le type de sortie en parcourant l'AST.
-	// On distingue 3 cas (du plus spécifique au plus général) :
-	//
-	// 1. Expression unique `{{expr}}`
-	//    → le type de retour est celui de l'expression (number, object, …)
-	//
-	// 2. Bloc unique `{{#if …}}…{{/if}}` (éventuellement entouré de whitespace)
-	//    → on délègue à `inferBlockType` qui analyse les branches
-	//
-	// 3. Template mixte (texte + expressions, blocs multiples, …)
-	//    → le résultat est toujours une string (concaténation)
-
+	// Parcours unique : inférence du type + validation en un seul pass.
 	const outputSchema = inferProgramType(ast, ctx);
 
 	const hasErrors = ctx.diagnostics.some((d) => d.severity === "error");
@@ -103,253 +142,130 @@ export function analyze(
 	};
 }
 
-// ─── Parcours de l'AST (validation) ──────────────────────────────────────────
-// Ces fonctions parcourent l'AST pour valider les références et collecter
-// les diagnostics. Elles ne retournent pas de type — c'est le rôle des
-// fonctions `infer*`.
+// ─── Parcours unifié de l'AST ────────────────────────────────────────────────
+// Un seul ensemble de fonctions gère à la fois la validation (émission de
+// diagnostics) et l'inférence de type (retour d'un JSONSchema7).
+//
+// Fonctions principales :
+// - `inferProgramType`   — point d'entrée pour un Program (corps de template ou bloc)
+// - `processStatement`   — dispatche un statement (validation side-effect)
+// - `processMustache`    — gère un MustacheStatement (expression ou helper inline)
+// - `inferBlockType`     — gère un BlockStatement (if, each, with, custom…)
 
 /**
- * Valide un `Program` (corps d'un template ou d'un bloc).
- * Parcourt séquentiellement chaque statement.
+ * Dispatche le traitement d'un statement individuel.
+ *
+ * Appelé par `inferProgramType` dans le cas "template mixte" pour valider
+ * chaque statement tout en ignorant le type retourné (le résultat est
+ * toujours `string` pour un template mixte).
+ *
+ * @returns Le schema inféré pour ce statement, ou `undefined` pour les
+ *          statements sans sémantique (ContentStatement, CommentStatement).
  */
-function validateProgram(program: hbs.AST.Program, ctx: AnalysisContext): void {
-	for (const stmt of program.body) {
-		validateStatement(stmt, ctx);
-	}
-}
-
-/**
- * Dispatche la validation d'un statement selon son type AST.
- */
-function validateStatement(
+function processStatement(
 	stmt: hbs.AST.Statement,
 	ctx: AnalysisContext,
-): void {
+): JSONSchema7 | undefined {
 	switch (stmt.type) {
 		case "ContentStatement":
-			// Texte statique — rien à valider
-			break;
+		case "CommentStatement":
+			// Texte statique ou commentaire — rien à valider, pas de type à inférer
+			return undefined;
 
 		case "MustacheStatement":
-			validateMustache(stmt as hbs.AST.MustacheStatement, ctx);
-			break;
+			return processMustache(stmt as hbs.AST.MustacheStatement, ctx);
 
 		case "BlockStatement":
-			validateBlock(stmt as hbs.AST.BlockStatement, ctx);
-			break;
-
-		case "CommentStatement":
-			// Commentaire Handlebars {{!-- ... --}} — ignoré
-			break;
+			return inferBlockType(stmt as hbs.AST.BlockStatement, ctx);
 
 		default:
 			// Nœud AST non reconnu — on émet un warning plutôt qu'une erreur
 			// pour ne pas bloquer sur des extensions futures de Handlebars.
 			addDiagnostic(
 				ctx,
+				"UNANALYZABLE",
 				"warning",
 				`Unsupported AST node type: "${stmt.type}"`,
 				stmt,
 			);
+			return undefined;
 	}
 }
 
 /**
- * Valide une expression moustache `{{expression}}`.
- * Vérifie que le chemin référencé existe dans le schema courant.
+ * Traite un MustacheStatement `{{expression}}` ou `{{helper arg}}`.
+ *
+ * Distingue deux cas :
+ * 1. **Expression simple** (`{{name}}`, `{{user.age}}`) — résolution dans le schema
+ * 2. **Helper inline** (`{{uppercase name}}`) — params > 0 ou hash présent
+ *
+ * @returns Le schema inféré pour cette expression
  */
-function validateMustache(
+function processMustache(
 	stmt: hbs.AST.MustacheStatement,
 	ctx: AnalysisContext,
-): void {
-	// Les SubExpressions (helpers imbriqués) ne sont pas supportées pour
+): JSONSchema7 {
+	// Sub-expressions (helpers imbriqués) ne sont pas supportées pour
 	// l'analyse statique — on émet un warning.
 	if (stmt.path.type === "SubExpression") {
 		addDiagnostic(
 			ctx,
+			"UNANALYZABLE",
 			"warning",
 			"Sub-expressions are not statically analyzable",
 			stmt,
 		);
-		return;
+		return {};
 	}
 
-	resolveExpressionWithDiagnostics(stmt.path, ctx, stmt);
-}
+	// ── Détection des helpers inline ─────────────────────────────────────────
+	// Si le MustacheStatement a des paramètres ou un hash, c'est un appel
+	// de helper (ex: `{{uppercase name}}`), pas une simple expression.
+	if (stmt.params.length > 0 || stmt.hash) {
+		const helperName = getExpressionName(stmt.path);
 
-/**
- * Extrait le premier argument d'un BlockStatement.
- *
- * Dans l'AST Handlebars, pour `{{#if active}}` :
- * - `stmt.path` → PathExpression("if")    ← le nom du helper
- * - `stmt.params[0]` → PathExpression("active") ← l'argument réel
- *
- * @returns L'expression argument, ou `undefined` si le bloc n'a pas d'argument.
- */
-function getBlockArgument(
-	stmt: hbs.AST.BlockStatement,
-): hbs.AST.Expression | undefined {
-	return stmt.params[0] as hbs.AST.Expression | undefined;
-}
+		// Vérifier si le helper est enregistré
+		const helper = ctx.helpers?.get(helperName);
+		if (helper) {
+			// Valider les paramètres
+			for (const param of stmt.params) {
+				resolveExpressionWithDiagnostics(
+					param as hbs.AST.Expression,
+					ctx,
+					stmt,
+				);
+			}
+			return helper.returnType ?? { type: "string" };
+		}
 
-/**
- * Valide un bloc `{{#helper}}...{{/helper}}`.
- * Supporte : `if`, `unless`, `each`, `with`.
- */
-function validateBlock(
-	stmt: hbs.AST.BlockStatement,
-	ctx: AnalysisContext,
-): void {
-	const helperName = getBlockHelperName(stmt);
-
-	switch (helperName) {
-		case "if":
-		case "unless":
-			validateIfBlock(stmt, ctx);
-			break;
-
-		case "each":
-			validateEachBlock(stmt, ctx);
-			break;
-
-		case "with":
-			validateWithBlock(stmt, ctx);
-			break;
-
-		default:
-			addDiagnostic(
-				ctx,
-				"warning",
-				`Unknown block helper "{{#${helperName}}}" — cannot analyze statically`,
-				stmt,
-			);
-			// On valide quand même le corps avec le contexte courant (best-effort)
-			validateProgram(stmt.program, ctx);
-			if (stmt.inverse) validateProgram(stmt.inverse, ctx);
-	}
-}
-
-/**
- * Valide un bloc `{{#if condition}}...{{else}}...{{/if}}`.
- * La condition doit référencer un chemin valide dans le schema.
- */
-function validateIfBlock(
-	stmt: hbs.AST.BlockStatement,
-	ctx: AnalysisContext,
-): void {
-	const arg = getBlockArgument(stmt);
-	if (arg) {
-		// Valider que la condition référence un chemin existant
-		resolveExpressionWithDiagnostics(arg, ctx, stmt);
-	} else {
+		// Helper inline inconnu — warning
 		addDiagnostic(
 			ctx,
-			"error",
-			`"{{#${getBlockHelperName(stmt)}}}" requires an argument`,
+			"UNKNOWN_HELPER",
+			"warning",
+			`Unknown inline helper "${helperName}" — cannot analyze statically`,
 			stmt,
+			{ helperName },
 		);
+		return { type: "string" };
 	}
 
-	// Le contexte ne change pas dans un if/unless — on valide les deux branches
-	validateProgram(stmt.program, ctx);
-	if (stmt.inverse) validateProgram(stmt.inverse, ctx);
-}
-
-/**
- * Valide un bloc `{{#each items}}...{{/each}}`.
- * `items` doit référencer un tableau dans le schema.
- * Le corps du bloc est validé avec le schema des éléments du tableau.
- */
-function validateEachBlock(
-	stmt: hbs.AST.BlockStatement,
-	ctx: AnalysisContext,
-): void {
-	const arg = getBlockArgument(stmt);
-	if (!arg) {
-		addDiagnostic(ctx, "error", `"{{#each}}" requires an argument`, stmt);
-		validateProgram(stmt.program, { ...ctx, current: {} });
-		if (stmt.inverse) validateProgram(stmt.inverse, ctx);
-		return;
-	}
-
-	const schema = resolveExpressionWithDiagnostics(arg, ctx, stmt);
-	if (!schema) {
-		// Le chemin n'a pas pu être résolu — on a déjà émis un diagnostic.
-		// On valide le corps avec un schema vide (best-effort).
-		validateProgram(stmt.program, { ...ctx, current: {} });
-		if (stmt.inverse) validateProgram(stmt.inverse, ctx);
-		return;
-	}
-
-	// Résoudre le schema des éléments du tableau
-	const itemSchema = resolveArrayItems(schema, ctx.root);
-	if (!itemSchema) {
-		addDiagnostic(
-			ctx,
-			"error",
-			`"{{#each}}" expects an array, but resolved schema has type "${schemaTypeLabel(schema)}"`,
-			stmt,
-		);
-		validateProgram(stmt.program, { ...ctx, current: {} });
-		if (stmt.inverse) validateProgram(stmt.inverse, ctx);
-		return;
-	}
-
-	// Valider le corps avec le schema des éléments comme contexte
-	validateProgram(stmt.program, { ...ctx, current: itemSchema });
-
-	// La branche inverse ({{else}}) garde le contexte parent
-	if (stmt.inverse) validateProgram(stmt.inverse, ctx);
-}
-
-/**
- * Valide un bloc `{{#with object}}...{{/with}}`.
- * `object` doit référencer un objet dans le schema.
- * Le corps du bloc est validé avec ce sous-schema comme contexte.
- */
-function validateWithBlock(
-	stmt: hbs.AST.BlockStatement,
-	ctx: AnalysisContext,
-): void {
-	const arg = getBlockArgument(stmt);
-	if (!arg) {
-		addDiagnostic(ctx, "error", `"{{#with}}" requires an argument`, stmt);
-		validateProgram(stmt.program, { ...ctx, current: {} });
-		if (stmt.inverse) validateProgram(stmt.inverse, ctx);
-		return;
-	}
-
-	const schema = resolveExpressionWithDiagnostics(arg, ctx, stmt);
-	if (!schema) {
-		validateProgram(stmt.program, { ...ctx, current: {} });
-		if (stmt.inverse) validateProgram(stmt.inverse, ctx);
-		return;
-	}
-
-	// Valider le corps avec le sous-schema comme nouveau contexte
-	validateProgram(stmt.program, { ...ctx, current: schema });
-	if (stmt.inverse) validateProgram(stmt.inverse, ctx);
-}
-
-// ─── Inférence de type ───────────────────────────────────────────────────────
-// Ces fonctions déterminent le JSON Schema de sortie du template.
-
-function inferExpressionType(
-	expr: hbs.AST.Expression,
-	ctx: AnalysisContext,
-): JSONSchema7 {
-	const schema = resolveExpressionWithDiagnostics(expr, ctx);
-	// Si le chemin n'a pas pu être résolu, on retourne un schema vide (unknown).
-	// Le diagnostic a déjà été émis par resolveExpressionWithDiagnostics.
-	return schema ?? {};
+	// ── Expression simple ────────────────────────────────────────────────────
+	return resolveExpressionWithDiagnostics(stmt.path, ctx, stmt) ?? {};
 }
 
 /**
  * Infère le type de sortie d'un `Program` (corps d'un template ou d'un bloc).
  *
- * - Si le programme est vide → `{ type: "string" }` (string vide)
- * - Si le programme contient un seul MustacheStatement → type de l'expression
- * - Sinon → `{ type: "string" }` (concaténation)
+ * Gère 4 cas, du plus spécifique au plus général :
+ *
+ * 1. **Expression unique** `{{expr}}` → type de l'expression
+ * 2. **Bloc unique** `{{#if}}…{{/if}}` → type du bloc
+ * 3. **Contenu textuel pur** → détection de littéral (number, boolean, null)
+ * 4. **Template mixte** → toujours `string` (concaténation)
+ *
+ * La validation est effectuée en même temps que l'inférence : chaque
+ * expression et bloc est validé lors de son traitement.
  */
 function inferProgramType(
 	program: hbs.AST.Program,
@@ -365,7 +281,7 @@ function inferProgramType(
 	// ── Cas 1 : une seule expression {{expr}} ──────────────────────────────
 	const singleExpr = getEffectivelySingleExpression(program);
 	if (singleExpr) {
-		return inferExpressionType(singleExpr.path, ctx);
+		return processMustache(singleExpr, ctx);
 	}
 
 	// ── Cas 2 : un seul bloc {{#if}}, {{#each}}, {{#with}}, … ─────────────
@@ -391,93 +307,202 @@ function inferProgramType(
 	}
 
 	// ── Cas 4 : template mixte (texte + expressions, blocs multiples…) ────
-	// On valide pour collecter les diagnostics, le résultat est toujours string.
-	validateProgram(program, ctx);
+	// On parcourt tous les statements pour valider (side-effects : diagnostics).
+	// Le résultat est toujours string (concaténation).
+	for (const stmt of program.body) {
+		processStatement(stmt, ctx);
+	}
 	return { type: "string" };
 }
 
 /**
- * Infère le type de sortie d'un bloc `{{#if}}...{{else}}...{{/if}}`.
- * Le résultat est l'union des types des deux branches.
+ * Infère le type de sortie d'un BlockStatement et valide son contenu.
+ *
+ * Supporte les helpers built-in (`if`, `unless`, `each`, `with`) et les
+ * helpers custom enregistrés via `TemplateEngine.registerHelper()`.
+ *
+ * Utilise le pattern **save/restore** pour le contexte : au lieu de créer
+ * un nouvel objet `{ ...ctx, current: X }` à chaque récursion, on sauvegarde
+ * `ctx.current`, on le mute, on traite le corps, puis on restaure. Cela
+ * réduit la pression sur le GC pour les templates profondément imbriqués.
  */
-export function inferBlockType(
+function inferBlockType(
 	stmt: hbs.AST.BlockStatement,
 	ctx: AnalysisContext,
 ): JSONSchema7 {
 	const helperName = getBlockHelperName(stmt);
 
 	switch (helperName) {
+		// ── if / unless ──────────────────────────────────────────────────────
 		case "if":
 		case "unless": {
-			// Valider la condition (argument du bloc, pas le nom du helper)
 			const arg = getBlockArgument(stmt);
 			if (arg) {
 				resolveExpressionWithDiagnostics(arg, ctx, stmt);
+			} else {
+				addDiagnostic(
+					ctx,
+					"MISSING_ARGUMENT",
+					"error",
+					createMissingArgumentMessage(helperName),
+					stmt,
+					{ helperName },
+				);
 			}
 
+			// Inférer le type de la branche "then"
 			const thenType = inferProgramType(stmt.program, ctx);
 
 			if (stmt.inverse) {
 				const elseType = inferProgramType(stmt.inverse, ctx);
-				// Union des deux branches
-				const thenJson = JSON.stringify(thenType);
-				const elseJson = JSON.stringify(elseType);
-				if (thenJson === elseJson) return thenType;
+				// Si les deux branches ont le même type → type unique
+				if (deepEqual(thenType, elseType)) return thenType;
+				// Sinon → union des deux types
 				return simplifySchema({ oneOf: [thenType, elseType] });
 			}
 
-			// Pas de branche else → le résultat peut être undefined (string vide
-			// en Handlebars, mais conceptuellement c'est optionnel).
+			// Pas de branche else → le résultat est le type de la branche then
+			// (conceptuellement optionnel, mais Handlebars retourne "" pour falsy)
 			return thenType;
 		}
 
+		// ── each ─────────────────────────────────────────────────────────────
 		case "each": {
-			// Valider et résoudre le schema de la collection (argument du bloc)
 			const arg = getBlockArgument(stmt);
-			if (arg) {
-				const collectionSchema = resolveExpressionWithDiagnostics(
-					arg,
+			if (!arg) {
+				addDiagnostic(
 					ctx,
+					"MISSING_ARGUMENT",
+					"error",
+					createMissingArgumentMessage("each"),
 					stmt,
+					{ helperName: "each" },
 				);
-				if (collectionSchema) {
-					const itemSchema = resolveArrayItems(collectionSchema, ctx.root);
-					if (itemSchema) {
-						// Valider le corps avec le contexte des éléments
-						validateProgram(stmt.program, { ...ctx, current: itemSchema });
-					} else {
-						// La cible n'est pas un tableau — même diagnostic que validateEachBlock
-						addDiagnostic(
-							ctx,
-							"error",
-							`"{{#each}}" expects an array, but resolved schema has type "${schemaTypeLabel(collectionSchema)}"`,
-							stmt,
-						);
-					}
-				}
+				// Valider le corps avec un contexte vide (best-effort)
+				const saved = ctx.current;
+				ctx.current = {};
+				inferProgramType(stmt.program, ctx);
+				ctx.current = saved;
+				if (stmt.inverse) inferProgramType(stmt.inverse, ctx);
+				return { type: "string" };
 			}
+
+			const collectionSchema = resolveExpressionWithDiagnostics(arg, ctx, stmt);
+			if (!collectionSchema) {
+				// Le chemin n'a pas pu être résolu — diagnostic déjà émis.
+				const saved = ctx.current;
+				ctx.current = {};
+				inferProgramType(stmt.program, ctx);
+				ctx.current = saved;
+				if (stmt.inverse) inferProgramType(stmt.inverse, ctx);
+				return { type: "string" };
+			}
+
+			// Résoudre le schema des éléments du tableau
+			const itemSchema = resolveArrayItems(collectionSchema, ctx.root);
+			if (!itemSchema) {
+				addDiagnostic(
+					ctx,
+					"TYPE_MISMATCH",
+					"error",
+					createTypeMismatchMessage(
+						"each",
+						"an array",
+						schemaTypeLabel(collectionSchema),
+					),
+					stmt,
+					{
+						helperName: "each",
+						expected: "array",
+						actual: schemaTypeLabel(collectionSchema),
+					},
+				);
+				// Valider le corps avec un contexte vide (best-effort)
+				const saved = ctx.current;
+				ctx.current = {};
+				inferProgramType(stmt.program, ctx);
+				ctx.current = saved;
+				if (stmt.inverse) inferProgramType(stmt.inverse, ctx);
+				return { type: "string" };
+			}
+
+			// Valider le corps avec le schema des éléments comme contexte
+			const saved = ctx.current;
+			ctx.current = itemSchema;
+			inferProgramType(stmt.program, ctx);
+			ctx.current = saved;
+
+			// La branche inverse ({{else}}) garde le contexte parent
+			if (stmt.inverse) inferProgramType(stmt.inverse, ctx);
+
 			// Un each concatène les rendus → toujours string
 			return { type: "string" };
 		}
 
+		// ── with ─────────────────────────────────────────────────────────────
 		case "with": {
 			const arg = getBlockArgument(stmt);
-			if (arg) {
-				const innerSchema = resolveExpressionWithDiagnostics(arg, ctx, stmt);
-				if (innerSchema) {
-					return inferProgramType(stmt.program, {
-						...ctx,
-						current: innerSchema,
-					});
-				}
+			if (!arg) {
+				addDiagnostic(
+					ctx,
+					"MISSING_ARGUMENT",
+					"error",
+					createMissingArgumentMessage("with"),
+					stmt,
+					{ helperName: "with" },
+				);
+				// Valider le corps avec un contexte vide
+				const saved = ctx.current;
+				ctx.current = {};
+				const result = inferProgramType(stmt.program, ctx);
+				ctx.current = saved;
+				if (stmt.inverse) inferProgramType(stmt.inverse, ctx);
+				return result;
 			}
-			return inferProgramType(stmt.program, { ...ctx, current: {} });
+
+			const innerSchema = resolveExpressionWithDiagnostics(arg, ctx, stmt);
+
+			const saved = ctx.current;
+			ctx.current = innerSchema ?? {};
+			const result = inferProgramType(stmt.program, ctx);
+			ctx.current = saved;
+
+			// La branche inverse garde le contexte parent
+			if (stmt.inverse) inferProgramType(stmt.inverse, ctx);
+
+			return result;
 		}
 
+		// ── Helper custom ou inconnu ─────────────────────────────────────────
 		default: {
-			// Helper inconnu — on ne peut rien inférer
-			validateProgram(stmt.program, ctx);
-			if (stmt.inverse) validateProgram(stmt.inverse, ctx);
+			const helper = ctx.helpers?.get(helperName);
+			if (helper) {
+				// Helper custom enregistré — valider les paramètres
+				for (const param of stmt.params) {
+					resolveExpressionWithDiagnostics(
+						param as hbs.AST.Expression,
+						ctx,
+						stmt,
+					);
+				}
+				// Valider le corps avec le contexte courant
+				inferProgramType(stmt.program, ctx);
+				if (stmt.inverse) inferProgramType(stmt.inverse, ctx);
+				return helper.returnType ?? { type: "string" };
+			}
+
+			// Helper inconnu — warning
+			addDiagnostic(
+				ctx,
+				"UNKNOWN_HELPER",
+				"warning",
+				createUnknownHelperMessage(helperName),
+				stmt,
+				{ helperName },
+			);
+			// Valider quand même le corps avec le contexte courant (best-effort)
+			inferProgramType(stmt.program, ctx);
+			if (stmt.inverse) inferProgramType(stmt.inverse, ctx);
 			return { type: "string" };
 		}
 	}
@@ -518,8 +543,9 @@ function resolveExpressionWithDiagnostics(
 
 		addDiagnostic(
 			ctx,
+			"UNANALYZABLE",
 			"warning",
-			`Expression of type "${expr.type}" cannot be statically analyzed`,
+			createUnanalyzableMessage(expr.type),
 			parentNode ?? expr,
 		);
 		return undefined;
@@ -543,11 +569,14 @@ function resolveExpressionWithDiagnostics(
 	const resolved = resolveSchemaPath(ctx.current, cleanSegments);
 	if (resolved === undefined) {
 		const fullPath = cleanSegments.join(".");
+		const availableProperties = getSchemaPropertyNames(ctx.current);
 		addDiagnostic(
 			ctx,
+			"UNKNOWN_PROPERTY",
 			"error",
-			`Property "${fullPath}" does not exist in the context schema`,
+			createPropertyNotFoundMessage(fullPath, availableProperties),
 			parentNode ?? expr,
+			{ path: fullPath, availableProperties },
 		);
 		return undefined;
 	}
@@ -576,9 +605,11 @@ function resolveWithIdentifier(
 	if (!ctx.identifierSchemas) {
 		addDiagnostic(
 			ctx,
+			"MISSING_IDENTIFIER_SCHEMAS",
 			"error",
 			`Property "${fullPath}:${identifier}" uses an identifier but no identifier schemas were provided`,
 			node,
+			{ path: `${fullPath}:${identifier}`, identifier },
 		);
 		return undefined;
 	}
@@ -588,9 +619,11 @@ function resolveWithIdentifier(
 	if (!idSchema) {
 		addDiagnostic(
 			ctx,
+			"UNKNOWN_IDENTIFIER",
 			"error",
 			`Property "${fullPath}:${identifier}" references identifier ${identifier} but no schema exists for this identifier`,
 			node,
+			{ path: `${fullPath}:${identifier}`, identifier },
 		);
 		return undefined;
 	}
@@ -598,11 +631,18 @@ function resolveWithIdentifier(
 	// Résoudre le chemin dans le schema de l'identifiant
 	const resolved = resolveSchemaPath(idSchema, cleanSegments);
 	if (resolved === undefined) {
+		const availableProperties = getSchemaPropertyNames(idSchema);
 		addDiagnostic(
 			ctx,
+			"IDENTIFIER_PROPERTY_NOT_FOUND",
 			"error",
 			`Property "${fullPath}" does not exist in the schema for identifier ${identifier}`,
 			node,
+			{
+				path: fullPath,
+				identifier,
+				availableProperties,
+			},
 		);
 		return undefined;
 	}
@@ -611,6 +651,21 @@ function resolveWithIdentifier(
 }
 
 // ─── Utilitaires ─────────────────────────────────────────────────────────────
+
+/**
+ * Extrait le premier argument d'un BlockStatement.
+ *
+ * Dans l'AST Handlebars, pour `{{#if active}}` :
+ * - `stmt.path` → PathExpression("if")    ← le nom du helper
+ * - `stmt.params[0]` → PathExpression("active") ← l'argument réel
+ *
+ * @returns L'expression argument, ou `undefined` si le bloc n'a pas d'argument.
+ */
+function getBlockArgument(
+	stmt: hbs.AST.BlockStatement,
+): hbs.AST.Expression | undefined {
+	return stmt.params[0] as hbs.AST.Expression | undefined;
+}
 
 /**
  * Récupère le nom du helper d'un BlockStatement (ex: "if", "each", "with").
@@ -623,22 +678,47 @@ function getBlockHelperName(stmt: hbs.AST.BlockStatement): string {
 }
 
 /**
- * Ajoute un diagnostic au contexte d'analyse.
+ * Récupère le nom d'une expression (premier segment du PathExpression).
+ * Utilisé pour identifier les helpers inline.
+ */
+function getExpressionName(expr: hbs.AST.Expression): string {
+	if (expr.type === "PathExpression") {
+		return (expr as hbs.AST.PathExpression).original;
+	}
+	return "";
+}
+
+/**
+ * Ajoute un diagnostic enrichi au contexte d'analyse.
+ *
+ * Chaque diagnostic inclut :
+ * - Un `code` machine-readable pour le frontend
+ * - Un `message` humain décrivant le problème
+ * - Un `source` snippet du template (si la position est disponible)
+ * - Des `details` structurés pour le debugging
  */
 function addDiagnostic(
 	ctx: AnalysisContext,
+	code: DiagnosticCode,
 	severity: "error" | "warning",
 	message: string,
 	node?: hbs.AST.Node,
+	details?: DiagnosticDetails,
 ): void {
-	const diagnostic: TemplateDiagnostic = { severity, message };
+	const diagnostic: TemplateDiagnostic = { severity, code, message };
 
-	// Extraire la position si disponible dans le nœud AST
+	// Extraire la position et le snippet source si disponible
 	if (node && "loc" in node && node.loc) {
 		diagnostic.loc = {
 			start: { line: node.loc.start.line, column: node.loc.start.column },
 			end: { line: node.loc.end.line, column: node.loc.end.column },
 		};
+		// Extraire le fragment de template autour de l'erreur
+		diagnostic.source = extractSourceSnippet(ctx.template, diagnostic.loc);
+	}
+
+	if (details) {
+		diagnostic.details = details;
 	}
 
 	ctx.diagnostics.push(diagnostic);
@@ -657,3 +737,8 @@ function schemaTypeLabel(schema: JSONSchema7): string {
 	if (schema.enum) return "enum";
 	return "unknown";
 }
+
+// ─── Export pour usage interne ────────────────────────────────────────────────
+// `inferBlockType` est exporté pour permettre des tests unitaires ciblés
+// sur l'inférence de type des blocs.
+export { inferBlockType };
