@@ -1,4 +1,4 @@
-import type { JSONSchema7 } from "../src/types.ts";
+import type { JSONSchema7 } from "json-schema";
 
 // ─── Fixtures ────────────────────────────────────────────────────────────────
 // Schema et données réutilisés dans la majorité des tests.

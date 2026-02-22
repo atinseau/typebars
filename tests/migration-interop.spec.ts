@@ -1,11 +1,11 @@
 import { describe, expect, test } from "bun:test";
+import type { JSONSchema7 } from "json-schema";
 import { analyze, execute, parse, TemplateEngine } from "../src/index.ts";
 import {
 	extractPathSegments,
 	getEffectivelySingleExpression,
 	isSingleExpression,
 } from "../src/parser.ts";
-import type { JSONSchema7 } from "../src/types.ts";
 
 // ─── Migration / Interop Tests ───────────────────────────────────────────────
 // Ces tests vérifient que les comportements de l'ancien système (SchemaIOService)

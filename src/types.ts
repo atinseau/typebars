@@ -1,9 +1,4 @@
-// ─── JSON Schema Draft v7 ────────────────────────────────────────────────────
-// Types importés depuis @types/json-schema — on ne réimplémente rien.
-
 import type { JSONSchema7 } from "json-schema";
-
-export type { JSONSchema7, JSONSchema7Definition } from "json-schema";
 
 // ─── Codes de diagnostic ─────────────────────────────────────────────────────
 // Codes machine-readable pour chaque type d'erreur/warning, permettant au

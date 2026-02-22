@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import type { JSONSchema7 } from "json-schema";
 import {
 	analyze,
 	execute,
@@ -6,7 +7,6 @@ import {
 	parseIdentifier,
 	TemplateEngine,
 } from "../src/index.ts";
-import type { JSONSchema7 } from "../src/types.ts";
 
 // ═════════════════════════════════════════════════════════════════════════════
 // Template Identifiers ({{key:N}}) — Full Feature Tests

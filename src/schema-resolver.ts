@@ -1,4 +1,4 @@
-import type { JSONSchema7 } from "./types.ts";
+import type { JSONSchema7 } from "json-schema";
 import { deepEqual } from "./utils.ts";
 
 // ─── JSON Schema Resolver ────────────────────────────────────────────────────

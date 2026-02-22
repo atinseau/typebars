@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
+import type { JSONSchema7 } from "json-schema";
 import { analyze } from "../src/index.ts";
-import type { JSONSchema7 } from "../src/types.ts";
 import { userSchema } from "./fixtures.ts";
 
 describe("analyzer", () => {

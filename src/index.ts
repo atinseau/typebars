@@ -1,4 +1,5 @@
 import Handlebars from "handlebars";
+import type { JSONSchema7 } from "json-schema";
 import { analyzeFromAst } from "./analyzer.ts";
 import {
 	CompiledTemplate,
@@ -11,7 +12,6 @@ import type {
 	AnalysisResult,
 	ExecuteOptions,
 	HelperDefinition,
-	JSONSchema7,
 	TemplateEngineOptions,
 	ValidationResult,
 } from "./types.ts";
@@ -79,8 +79,6 @@ export type {
 	DiagnosticDetails,
 	ExecuteOptions,
 	HelperDefinition,
-	JSONSchema7,
-	JSONSchema7Definition,
 	TemplateDiagnostic,
 	TemplateEngineOptions,
 	ValidationResult,

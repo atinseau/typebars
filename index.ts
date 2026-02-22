@@ -1,4 +1,4 @@
-import type { JSONSchema7 } from "./src/index.ts";
+import type { JSONSchema7 } from "json-schema";
 import { TemplateEngine } from "./src/index.ts";
 
 // ─── Showcase des nouvelles fonctionnalités du Template Engine v2 ─────────────

@@ -1,4 +1,5 @@
 import type Handlebars from "handlebars";
+import type { JSONSchema7 } from "json-schema";
 import { analyzeFromAst } from "./analyzer.ts";
 import { TemplateAnalysisError } from "./errors.ts";
 import { type ExecutorContext, executeFromAst } from "./executor.ts";
@@ -6,7 +7,6 @@ import type {
 	AnalysisResult,
 	ExecuteOptions,
 	HelperDefinition,
-	JSONSchema7,
 	ValidationResult,
 } from "./types.ts";
 import type { LRUCache } from "./utils.ts";

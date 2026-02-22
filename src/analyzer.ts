@@ -1,3 +1,4 @@
+import type { JSONSchema7 } from "json-schema";
 import {
 	createMissingArgumentMessage,
 	createPropertyNotFoundMessage,
@@ -25,7 +26,6 @@ import type {
 	DiagnosticCode,
 	DiagnosticDetails,
 	HelperDefinition,
-	JSONSchema7,
 	TemplateDiagnostic,
 } from "./types.ts";
 import {
