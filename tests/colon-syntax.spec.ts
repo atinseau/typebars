@@ -317,7 +317,7 @@ describe("Colon syntax — identifier extraction from path segments", () => {
 	} {
 		const match = segment.match(/^(.+):(\d+)$/);
 		if (match) {
-			return { key: match[1]!, identifier: parseInt(match[2]!, 10) };
+			return { key: match[1] ?? "", identifier: parseInt(match[2] ?? "0", 10) };
 		}
 		return { key: segment, identifier: null };
 	}

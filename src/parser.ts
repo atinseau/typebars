@@ -39,7 +39,10 @@ export function parse(template: string): hbs.AST.Program {
 		// de l'extraire pour enrichir notre erreur.
 		const locMatch = message.match(/line\s+(\d+).*?column\s+(\d+)/i);
 		const loc = locMatch
-			? { line: parseInt(locMatch[1]!, 10), column: parseInt(locMatch[2]!, 10) }
+			? {
+					line: parseInt(locMatch[1] ?? "0", 10),
+					column: parseInt(locMatch[2] ?? "0", 10),
+				}
 			: undefined;
 
 		throw new TemplateParseError(message, loc);
@@ -221,7 +224,10 @@ export interface ParsedIdentifier {
 export function parseIdentifier(segment: string): ParsedIdentifier {
 	const match = segment.match(IDENTIFIER_RE);
 	if (match) {
-		return { key: match[1]!, identifier: parseInt(match[2]!, 10) };
+		return {
+			key: match[1] ?? segment,
+			identifier: parseInt(match[2] ?? "0", 10),
+		};
 	}
 	return { key: segment, identifier: null };
 }
@@ -262,7 +268,7 @@ export function extractExpressionIdentifier(
 		return { cleanSegments: [], identifier: null };
 	}
 
-	const lastSegment = segments[segments.length - 1]!;
+	const lastSegment = segments[segments.length - 1] as string;
 	const parsed = parseIdentifier(lastSegment);
 
 	if (parsed.identifier !== null) {
