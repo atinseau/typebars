@@ -4,6 +4,8 @@ import { MathHelpers } from "../src/helpers/math-helpers.ts";
 import { Typebars } from "../src/typebars.ts";
 import type { HelperConfig } from "../src/types.ts";
 
+const mathHelpers = new MathHelpers();
+
 // ─── Shared schema & data ────────────────────────────────────────────────────
 
 const schema: JSONSchema7 = {
@@ -49,7 +51,7 @@ describe("MathHelpers", () => {
 
 	describe("pre-registration (built-in)", () => {
 		it("all math helpers are available without calling register()", () => {
-			const names = MathHelpers.getHelperNames();
+			const names = mathHelpers.getHelperNames();
 			for (const name of names) {
 				expect(engine.hasHelper(name)).toBe(true);
 			}
@@ -66,18 +68,18 @@ describe("MathHelpers", () => {
 
 	describe("explicit register / unregister", () => {
 		it("unregister removes all helpers", () => {
-			MathHelpers.unregister(engine);
-			const names = MathHelpers.getHelperNames();
+			mathHelpers.unregister(engine);
+			const names = mathHelpers.getHelperNames();
 			for (const name of names) {
 				expect(engine.hasHelper(name)).toBe(false);
 			}
 		});
 
 		it("register re-registers after an unregister", () => {
-			MathHelpers.unregister(engine);
+			mathHelpers.unregister(engine);
 			expect(engine.hasHelper("add")).toBe(false);
 
-			MathHelpers.register(engine);
+			mathHelpers.register(engine);
 			expect(engine.hasHelper("add")).toBe(true);
 
 			const { value } = run(engine, "{{ add a b }}");
@@ -85,7 +87,7 @@ describe("MathHelpers", () => {
 		});
 
 		it("register is idempotent (no error if called twice)", () => {
-			MathHelpers.register(engine);
+			mathHelpers.register(engine);
 			expect(engine.hasHelper("add")).toBe(true);
 		});
 	});
@@ -94,15 +96,15 @@ describe("MathHelpers", () => {
 
 	describe("getDefinitions", () => {
 		it("returns a Map with all definitions", () => {
-			const defs = MathHelpers.getDefinitions();
+			const defs = mathHelpers.getDefinitions();
 			expect(defs).toBeInstanceOf(Map);
 			expect(defs.size).toBeGreaterThanOrEqual(
-				MathHelpers.getHelperNames().length,
+				mathHelpers.getHelperNames().length,
 			);
 		});
 
 		it("every definition has fn and returnType number", () => {
-			const defs = MathHelpers.getDefinitions();
+			const defs = mathHelpers.getDefinitions();
 			for (const [, def] of defs) {
 				expect(typeof def.fn).toBe("function");
 				expect(def.returnType).toEqual({ type: "number" });
@@ -114,7 +116,7 @@ describe("MathHelpers", () => {
 
 	describe("params metadata", () => {
 		it("every definition has a non-empty params array", () => {
-			const defs = MathHelpers.getDefinitions();
+			const defs = mathHelpers.getDefinitions();
 			for (const [_name, def] of defs) {
 				expect(def.params).toBeDefined();
 				expect(def.params?.length).toBeGreaterThan(0);
@@ -122,7 +124,7 @@ describe("MathHelpers", () => {
 		});
 
 		it("every param has a name and a type", () => {
-			const defs = MathHelpers.getDefinitions();
+			const defs = mathHelpers.getDefinitions();
 			for (const [, def] of defs) {
 				for (const param of def.params ?? []) {
 					expect(typeof param.name).toBe("string");
@@ -133,7 +135,7 @@ describe("MathHelpers", () => {
 		});
 
 		it("every definition has a description", () => {
-			const defs = MathHelpers.getDefinitions();
+			const defs = mathHelpers.getDefinitions();
 			for (const [, def] of defs) {
 				expect(typeof def.description).toBe("string");
 				expect(def.description?.length).toBeGreaterThan(0);
@@ -141,7 +143,7 @@ describe("MathHelpers", () => {
 		});
 
 		it("round has an optional precision parameter", () => {
-			const defs = MathHelpers.getDefinitions();
+			const defs = mathHelpers.getDefinitions();
 			const roundDef = defs.get("round");
 			expect(roundDef).toBeDefined();
 			expect(roundDef?.params?.length).toBe(2);
@@ -152,7 +154,7 @@ describe("MathHelpers", () => {
 		});
 
 		it("math has an operator parameter with enum", () => {
-			const defs = MathHelpers.getDefinitions();
+			const defs = mathHelpers.getDefinitions();
 			const mathDef = defs.get("math");
 			expect(mathDef).toBeDefined();
 			expect(mathDef?.params?.length).toBe(3);
@@ -166,7 +168,7 @@ describe("MathHelpers", () => {
 		});
 
 		it("binary helpers have exactly 2 params", () => {
-			const defs = MathHelpers.getDefinitions();
+			const defs = mathHelpers.getDefinitions();
 			const binaryHelpers = [
 				"add",
 				"subtract",
@@ -184,7 +186,7 @@ describe("MathHelpers", () => {
 		});
 
 		it("unary helpers have exactly 1 param", () => {
-			const defs = MathHelpers.getDefinitions();
+			const defs = mathHelpers.getDefinitions();
 			const unaryHelpers = ["abs", "ceil", "floor", "sqrt"];
 			for (const name of unaryHelpers) {
 				const def = defs.get(name);
@@ -197,14 +199,14 @@ describe("MathHelpers", () => {
 
 	describe("isMathHelper", () => {
 		it("returns true for a known math helper", () => {
-			expect(MathHelpers.isMathHelper("add")).toBe(true);
-			expect(MathHelpers.isMathHelper("math")).toBe(true);
-			expect(MathHelpers.isMathHelper("floor")).toBe(true);
+			expect(mathHelpers.isHelper("add")).toBe(true);
+			expect(mathHelpers.isHelper("math")).toBe(true);
+			expect(mathHelpers.isHelper("floor")).toBe(true);
 		});
 
 		it("returns false for an unknown helper", () => {
-			expect(MathHelpers.isMathHelper("uppercase")).toBe(false);
-			expect(MathHelpers.isMathHelper("unknown")).toBe(false);
+			expect(mathHelpers.isHelper("uppercase")).toBe(false);
+			expect(mathHelpers.isHelper("unknown")).toBe(false);
 		});
 	});
 

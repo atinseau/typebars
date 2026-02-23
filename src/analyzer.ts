@@ -419,7 +419,27 @@ function inferProgramType(
 		if (literalType) return { type: literalType };
 	}
 
-	// ── Case 4: mixed template (text + expressions, multiple blocks…) ──────
+	// ── Case 4: multiple blocks only (no significant text between them) ────
+	// When the effective body consists entirely of BlockStatements, collect
+	// each block's inferred type and combine them via oneOf. This handles
+	// templates like:
+	//   {{#if showName}}{{name}}{{/if}}
+	//   {{#if showAge}}{{age}}{{/if}}
+	// where the output could be string OR number depending on which branch
+	// is active.
+	const allBlocks = effective.every((s) => s.type === "BlockStatement");
+	if (allBlocks) {
+		const types: JSONSchema7[] = [];
+		for (const stmt of effective) {
+			const t = inferBlockType(stmt as hbs.AST.BlockStatement, ctx);
+			if (t) types.push(t);
+		}
+		if (types.length === 1) return types[0] as JSONSchema7;
+		if (types.length > 1) return simplifySchema({ oneOf: types });
+		return { type: "string" };
+	}
+
+	// ── Case 5: mixed template (text + expressions, blocks…) ───────────────
 	// Traverse all statements for validation (side-effects: diagnostics).
 	// The result is always string (concatenation).
 	for (const stmt of program.body) {
@@ -650,9 +670,14 @@ function resolveExpressionWithDiagnostics(
 		return ctx.current;
 	}
 
+	// ── SubExpression (nested helper call, e.g. `(lt account.balance 500)`) ──
+	if (expr.type === "SubExpression") {
+		return resolveSubExpression(expr as hbs.AST.SubExpression, ctx, parentNode);
+	}
+
 	const segments = extractPathSegments(expr);
 	if (segments.length === 0) {
-		// Expression that is not a PathExpression (e.g. literal, SubExpression)
+		// Expression that is not a PathExpression (e.g. literal)
 		if (expr.type === "StringLiteral") return { type: "string" };
 		if (expr.type === "NumberLiteral") return { type: "number" };
 		if (expr.type === "BooleanLiteral") return { type: "boolean" };
@@ -779,6 +804,93 @@ function resolveWithIdentifier(
  *
  * @returns The argument expression, or `undefined` if the block has no argument.
  */
+// ─── SubExpression Resolution ────────────────────────────────────────────────
+
+/**
+ * Resolves a SubExpression (nested helper call) such as `(lt account.balance 500)`.
+ *
+ * This mirrors the helper-call logic in `processMustache` but applies to
+ * expressions used as arguments (e.g. inside `{{#if (lt a b)}}`).
+ *
+ * Steps:
+ * 1. Extract the helper name from the SubExpression's path.
+ * 2. Look up the helper in `ctx.helpers`.
+ * 3. Validate argument count and types.
+ * 4. Return the helper's declared `returnType` (defaults to `{ type: "string" }`).
+ */
+function resolveSubExpression(
+	expr: hbs.AST.SubExpression,
+	ctx: AnalysisContext,
+	parentNode?: hbs.AST.Node,
+): JSONSchema7 | undefined {
+	const helperName = getExpressionName(expr.path);
+
+	const helper = ctx.helpers?.get(helperName);
+	if (!helper) {
+		addDiagnostic(
+			ctx,
+			"UNKNOWN_HELPER",
+			"warning",
+			`Unknown sub-expression helper "${helperName}" — cannot analyze statically`,
+			parentNode ?? expr,
+			{ helperName },
+		);
+		return { type: "string" };
+	}
+
+	const helperParams = helper.params;
+
+	// ── Check the number of required parameters ──────────────────────
+	if (helperParams) {
+		const requiredCount = helperParams.filter((p) => !p.optional).length;
+		if (expr.params.length < requiredCount) {
+			addDiagnostic(
+				ctx,
+				"MISSING_ARGUMENT",
+				"error",
+				`Helper "${helperName}" expects at least ${requiredCount} argument(s), but got ${expr.params.length}`,
+				parentNode ?? expr,
+				{
+					helperName,
+					expected: `${requiredCount} argument(s)`,
+					actual: `${expr.params.length} argument(s)`,
+				},
+			);
+		}
+	}
+
+	// ── Validate each parameter (existence + type) ───────────────────
+	for (let i = 0; i < expr.params.length; i++) {
+		const resolvedSchema = resolveExpressionWithDiagnostics(
+			expr.params[i] as hbs.AST.Expression,
+			ctx,
+			parentNode ?? expr,
+		);
+
+		const helperParam = helperParams?.[i];
+		if (resolvedSchema && helperParam?.type) {
+			const expectedType = helperParam.type;
+			if (!isParamTypeCompatible(resolvedSchema, expectedType)) {
+				const paramName = helperParam.name;
+				addDiagnostic(
+					ctx,
+					"TYPE_MISMATCH",
+					"error",
+					`Helper "${helperName}" parameter "${paramName}" expects ${schemaTypeLabel(expectedType)}, but got ${schemaTypeLabel(resolvedSchema)}`,
+					parentNode ?? expr,
+					{
+						helperName,
+						expected: schemaTypeLabel(expectedType),
+						actual: schemaTypeLabel(resolvedSchema),
+					},
+				);
+			}
+		}
+	}
+
+	return helper.returnType ?? { type: "string" };
+}
+
 function getBlockArgument(
 	stmt: hbs.AST.BlockStatement,
 ): hbs.AST.Expression | undefined {

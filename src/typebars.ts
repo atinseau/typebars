@@ -7,7 +7,7 @@ import {
 } from "./compiled-template.ts";
 import { TemplateAnalysisError } from "./errors.ts";
 import { executeFromAst } from "./executor.ts";
-import { MathHelpers } from "./helpers/index.ts";
+import { LogicalHelpers, MathHelpers } from "./helpers/index.ts";
 import { parse } from "./parser.ts";
 import type {
 	AnalysisResult,
@@ -78,8 +78,9 @@ export class Typebars {
 		this.astCache = new LRUCache(options.astCacheSize ?? 256);
 		this.compilationCache = new LRUCache(options.compilationCacheSize ?? 256);
 
-		// ── Built-in helpers (math) ──────────────────────────────────────
-		MathHelpers.register(this);
+		// ── Built-in helpers ─────────────────────────────────────────────
+		new MathHelpers().register(this);
+		new LogicalHelpers().register(this);
 
 		// ── Custom helpers via options ───────────────────────────────────
 		if (options.helpers) {

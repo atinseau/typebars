@@ -525,6 +525,107 @@ describe("analyzer", () => {
 		});
 	});
 
+	describe("output type inference — multiple blocks", () => {
+		test("two #if blocks with different types → oneOf", () => {
+			const result = analyze(
+				"{{#if active}}{{name}}{{/if}}\n{{#if active}}{{age}}{{/if}}",
+				userSchema,
+			);
+			expect(result.valid).toBe(true);
+			expect(result.outputSchema).toEqual({
+				oneOf: [{ type: "string" }, { type: "number" }],
+			});
+		});
+
+		test("two #if blocks with same type → single type", () => {
+			const result = analyze(
+				"{{#if active}}{{name}}{{/if}}\n{{#if active}}{{address.city}}{{/if}}",
+				userSchema,
+			);
+			expect(result.valid).toBe(true);
+			expect(result.outputSchema).toEqual({ type: "string" });
+		});
+
+		test("two #if blocks with surrounding whitespace → oneOf", () => {
+			const result = analyze(
+				"{{#if active}}\n  {{name}}\n{{/if}}\n\n{{#if active}}\n  {{age}}\n{{/if}}",
+				userSchema,
+			);
+			expect(result.valid).toBe(true);
+			expect(result.outputSchema).toEqual({
+				oneOf: [{ type: "string" }, { type: "number" }],
+			});
+		});
+
+		test("three #if blocks with three different types → oneOf with all types", () => {
+			const result = analyze(
+				"{{#if active}}{{name}}{{/if}}\n{{#if active}}{{age}}{{/if}}\n{{#if active}}{{active}}{{/if}}",
+				userSchema,
+			);
+			expect(result.valid).toBe(true);
+			expect(result.outputSchema).toEqual({
+				oneOf: [{ type: "string" }, { type: "number" }, { type: "boolean" }],
+			});
+		});
+
+		test("three #if blocks with duplicate types → deduplicated oneOf", () => {
+			const result = analyze(
+				"{{#if active}}{{name}}{{/if}}\n{{#if active}}{{age}}{{/if}}\n{{#if active}}{{address.city}}{{/if}}",
+				userSchema,
+			);
+			expect(result.valid).toBe(true);
+			// name and address.city are both string → deduplicated
+			expect(result.outputSchema).toEqual({
+				oneOf: [{ type: "string" }, { type: "number" }],
+			});
+		});
+
+		test("multiple blocks with text between them → string (concatenation)", () => {
+			const result = analyze(
+				"{{#if active}}{{name}}{{/if}} separator {{#if active}}{{age}}{{/if}}",
+				userSchema,
+			);
+			expect(result.valid).toBe(true);
+			expect(result.outputSchema).toEqual({ type: "string" });
+		});
+
+		test("#if and #unless blocks combined → oneOf", () => {
+			const result = analyze(
+				"{{#if active}}{{name}}{{/if}}\n{{#unless active}}{{age}}{{/unless}}",
+				userSchema,
+			);
+			expect(result.valid).toBe(true);
+			expect(result.outputSchema).toEqual({
+				oneOf: [{ type: "string" }, { type: "number" }],
+			});
+		});
+
+		test("#if block with else and another #if block → oneOf", () => {
+			const result = analyze(
+				"{{#if active}}{{age}}{{else}}{{score}}{{/if}}\n{{#if active}}{{name}}{{/if}}",
+				userSchema,
+			);
+			expect(result.valid).toBe(true);
+			// first block: oneOf(number, integer), second block: string
+			expect(result.outputSchema).toEqual({
+				oneOf: [
+					{ oneOf: [{ type: "number" }, { type: "integer" }] },
+					{ type: "string" },
+				],
+			});
+		});
+
+		test("multiple blocks still validate expressions (missing property → error)", () => {
+			const result = analyze(
+				"{{#if active}}{{name}}{{/if}}\n{{#if active}}{{nonExistent}}{{/if}}",
+				userSchema,
+			);
+			expect(result.valid).toBe(false);
+			expect(result.diagnostics).toHaveLength(1);
+			expect(result.diagnostics[0]?.code).toBe("UNKNOWN_PROPERTY");
+		});
+	});
+
 	describe("diagnostics include a position (loc)", () => {
 		test("error includes position in the source", () => {
 			const result = analyze("Hello {{badProp}}", userSchema);
