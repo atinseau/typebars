@@ -67,6 +67,15 @@ The output schema is inferred **statically** from the template structure and the
   - [`{{#each}}`](#each)
   - [`{{#with}}`](#with)
 - [Built-in Math Helpers](#built-in-math-helpers)
+- [Built-in Logical & Comparison Helpers](#built-in-logical--comparison-helpers)
+  - [Why Sub-Expressions?](#why-sub-expressions)
+  - [Comparison Helpers](#comparison-helpers)
+  - [Equality Helpers](#equality-helpers)
+  - [Logical Operators](#logical-operators)
+  - [Collection Helpers](#collection-helpers)
+  - [Generic `compare` Helper](#generic-compare-helper)
+  - [Nested Sub-Expressions](#nested-sub-expressions)
+  - [Static Analysis of Sub-Expressions](#static-analysis-of-sub-expressions)
 - [Custom Helpers](#custom-helpers)
   - [`registerHelper`](#registerhelper)
   - [`defineHelper` (Type-Safe)](#definehelper-type-safe)
@@ -847,15 +856,33 @@ const analysis = engine.analyze(
 
 ### `{{#if}}` / `{{#unless}}`
 
-Conditional rendering. The analyzer validates the condition and both branches:
+Conditional rendering. The analyzer validates the condition and both branches.
+
+The condition can be a simple property reference **or a sub-expression** using one of the [built-in logical helpers](#built-in-logical--comparison-helpers):
 
 ```ts
+// Simple property condition
 engine.execute("{{#if active}}Online{{else}}Offline{{/if}}", data);
 // → "Online"
 
 engine.execute("{{#unless active}}No{{else}}Yes{{/unless}}", { active: false });
 // → "No"
+
+// Sub-expression condition (see "Built-in Logical & Comparison Helpers")
+engine.execute(
+  "{{#if (gt age 18)}}Adult{{else}}Minor{{/if}}",
+  { age: 30 },
+);
+// → "Adult"
+
+engine.execute(
+  '{{#if (eq role "admin")}}Full access{{else}}Limited{{/if}}',
+  { role: "admin" },
+);
+// → "Full access"
 ```
+
+> **Note:** Handlebars natively only supports simple property references as `{{#if}}` conditions (e.g. `{{#if active}}`). Sub-expression conditions like `{{#if (gt age 18)}}` are made possible by the logical helpers that Typebars pre-registers on every engine instance. See [Built-in Logical & Comparison Helpers](#built-in-logical--comparison-helpers) for details.
 
 ### `{{#each}}`
 
@@ -987,6 +1014,245 @@ const { analysis: a2 } = engine.analyzeAndExecute(
   { a: 10, label: "hello" },
 );
 // a2.valid → false (string passed to a number parameter)
+```
+
+---
+
+## Built-in Logical & Comparison Helpers
+
+Pre-registered on every `Typebars` instance. All return `{ type: "boolean" }` for static analysis.
+
+These helpers enable **conditional logic** inside templates via Handlebars [sub-expressions](https://handlebarsjs.com/guide/subexpressions.html) — the `(helper arg1 arg2)` syntax used as arguments to block helpers like `{{#if}}` and `{{#unless}}`.
+
+### Why Sub-Expressions?
+
+Standard Handlebars only supports simple truthiness checks:
+
+```handlebars
+{{!-- Native Handlebars: can only test if "active" is truthy --}}
+{{#if active}}yes{{else}}no{{/if}}
+```
+
+There is **no built-in way** to compare values, combine conditions, or negate expressions. Handlebars deliberately delegates this to helpers.
+
+Typebars ships a complete set of logical and comparison helpers that unlock expressive conditions out of the box:
+
+```handlebars
+{{!-- Typebars: compare, combine, negate — all statically analyzed --}}
+{{#if (gt age 18)}}adult{{else}}minor{{/if}}
+{{#if (and active (eq role "admin"))}}full access{{/if}}
+{{#if (not suspended)}}welcome{{/if}}
+```
+
+These helpers are **fully integrated with the static analyzer**: argument types are validated, missing properties are caught, and the output schema is correctly inferred from the branches — not from the boolean condition.
+
+### Comparison Helpers
+
+| Helper | Aliases | Usage | Description |
+|--------|---------|-------|-------------|
+| `lt` | — | `(lt a b)` | `a < b` (numeric) |
+| `lte` | `le` | `(lte a b)` | `a <= b` (numeric) |
+| `gt` | — | `(gt a b)` | `a > b` (numeric) |
+| `gte` | `ge` | `(gte a b)` | `a >= b` (numeric) |
+
+Both parameters must resolve to `{ type: "number" }`. A type mismatch is reported as an error:
+
+```ts
+const schema = {
+  type: "object",
+  properties: {
+    age: { type: "number" },
+    score: { type: "number" },
+    name: { type: "string" },
+    account: {
+      type: "object",
+      properties: { balance: { type: "number" } },
+    },
+  },
+};
+
+// ✅ Both arguments are numbers
+engine.analyze("{{#if (lt age 18)}}minor{{else}}adult{{/if}}", schema);
+// valid: true, no diagnostics
+
+// ✅ Nested property access works
+engine.analyze("{{#if (lt account.balance 500)}}low{{else}}ok{{/if}}", schema);
+// valid: true
+
+// ✅ Number literals are accepted
+engine.analyze("{{#if (gte score 90)}}A{{else}}B{{/if}}", schema);
+// valid: true
+
+// ❌ String where number is expected → TYPE_MISMATCH
+engine.analyze("{{#if (lt name 500)}}yes{{/if}}", schema);
+// valid: false — "name" is string, "lt" expects number
+```
+
+### Equality Helpers
+
+| Helper | Aliases | Usage | Description |
+|--------|---------|-------|-------------|
+| `eq` | — | `(eq a b)` | Strict equality (`===`) |
+| `ne` | `neq` | `(ne a b)` | Strict inequality (`!==`) |
+
+These accept any type — no type constraint on parameters:
+
+```ts
+// String comparison
+engine.execute('{{#if (eq role "admin")}}yes{{else}}no{{/if}}', { role: "admin" });
+// → "yes"
+
+// Number comparison
+engine.execute("{{#if (ne score 0)}}scored{{else}}zero{{/if}}", { score: 85 });
+// → "scored"
+```
+
+### Logical Operators
+
+| Helper | Usage | Description |
+|--------|-------|-------------|
+| `not` | `(not value)` | Logical negation — `true` if value is falsy |
+| `and` | `(and a b)` | Logical AND — `true` if both are truthy |
+| `or` | `(or a b)` | Logical OR — `true` if at least one is truthy |
+
+```ts
+engine.execute("{{#if (not active)}}inactive{{else}}active{{/if}}", { active: false });
+// → "inactive"
+
+engine.execute(
+  "{{#if (and active premium)}}VIP{{else}}standard{{/if}}",
+  { active: true, premium: true },
+);
+// → "VIP"
+
+engine.execute(
+  "{{#if (or isAdmin isModerator)}}staff{{else}}user{{/if}}",
+  { isAdmin: false, isModerator: true },
+);
+// → "staff"
+```
+
+### Collection Helpers
+
+| Helper | Usage | Description |
+|--------|-------|-------------|
+| `contains` | `(contains haystack needle)` | `true` if the string contains the substring, or the array contains the element |
+| `in` | `(in value ...candidates)` | `true` if value is one of the candidates (variadic) |
+
+```ts
+engine.execute(
+  '{{#if (contains name "ali")}}match{{else}}no match{{/if}}',
+  { name: "Alice" },
+);
+// → "match"
+
+engine.execute(
+  '{{#if (in status "active" "pending")}}ok{{else}}blocked{{/if}}',
+  { status: "active" },
+);
+// → "ok"
+```
+
+### Generic `compare` Helper
+
+A single helper with the operator as a string parameter:
+
+```ts
+engine.execute('{{#if (compare a "<" b)}}yes{{else}}no{{/if}}', { a: 3, b: 10 });
+// → "yes"
+
+engine.execute('{{#if (compare name "===" "Alice")}}hi Alice{{/if}}', { name: "Alice" });
+// → "hi Alice"
+```
+
+Supported operators: `==`, `===`, `!=`, `!==`, `<`, `<=`, `>`, `>=`
+
+### Nested Sub-Expressions
+
+Sub-expressions can be **nested** to build complex conditions. Each level is fully analyzed:
+
+```ts
+// AND + comparison
+engine.execute(
+  '{{#if (and (eq role "admin") (gt score 90))}}top admin{{else}}other{{/if}}',
+  { role: "admin", score: 95 },
+);
+// → "top admin"
+
+// OR + NOT
+engine.execute(
+  "{{#if (or (not active) (lt score 10))}}alert{{else}}ok{{/if}}",
+  { active: true, score: 85 },
+);
+// → "ok"
+
+// Deeply nested
+engine.execute(
+  '{{#if (and (or (lt age 18) (gt age 65)) (eq role "special"))}}discount{{else}}full price{{/if}}',
+  { age: 70, role: "special" },
+);
+// → "discount"
+```
+
+### Static Analysis of Sub-Expressions
+
+Sub-expressions are **fully integrated** with the static analyzer. The key behaviors:
+
+**1. Argument validation** — every argument is resolved against the schema:
+
+```ts
+// ❌ Unknown property in sub-expression argument
+engine.analyze("{{#if (lt nonExistent 500)}}yes{{/if}}", schema);
+// valid: false — UNKNOWN_PROPERTY
+
+// ❌ Missing nested property
+engine.analyze("{{#if (lt account.foo 500)}}yes{{/if}}", schema);
+// valid: false — UNKNOWN_PROPERTY
+
+// ❌ Too few arguments
+engine.analyze("{{#if (lt age)}}yes{{/if}}", schema);
+// valid: false — MISSING_ARGUMENT
+```
+
+**2. Type checking** — parameter types are validated against helper declarations:
+
+```ts
+// ❌ String where number is expected
+engine.analyze("{{#if (lt name 500)}}yes{{/if}}", schema);
+// valid: false — TYPE_MISMATCH: "lt" parameter "a" expects number, got string
+```
+
+**3. Output type inference** — the output schema is based on the **branches**, not the condition:
+
+```ts
+// The condition (lt ...) returns boolean, but the output type
+// comes from the branch content:
+
+engine.analyze("{{#if (lt age 18)}}{{name}}{{else}}{{age}}{{/if}}", schema).outputSchema;
+// → { oneOf: [{ type: "string" }, { type: "number" }] }
+// (NOT boolean — the condition type doesn't leak into the output)
+
+engine.analyze("{{#if (gt score 50)}}{{age}}{{else}}{{score}}{{/if}}", schema).outputSchema;
+// → { type: "number" }
+// (both branches are number → simplified to single type)
+
+engine.analyze("{{#if (eq age 18)}}42{{else}}true{{/if}}", schema).outputSchema;
+// → { oneOf: [{ type: "number" }, { type: "boolean" }] }
+
+// Chained else-if pattern
+engine.analyze(
+  "{{#if (lt age 18)}}minor{{else}}{{#if (lt age 65)}}adult{{else}}senior{{/if}}{{/if}}",
+  schema,
+).outputSchema;
+// → { type: "string" }
+// (all branches are string literals → simplified)
+```
+
+**4. Unknown helpers** — unregistered helpers emit a warning (not an error):
+
+```ts
+engine.analyze("{{#if (myCustomCheck age)}}yes{{/if}}", schema);
+// valid: true, but 1 warning: UNKNOWN_HELPER "myCustomCheck"
 ```
 
 ---
