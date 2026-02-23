@@ -9,6 +9,10 @@
 			"types": "./dist/index.d.ts"
 		}
 	},
+	"files": [
+		"dist",
+		"README.md"
+	],
 	"scripts": {
 		"postinstall": "lefthook install",
 		"build:bun": "bun build src/*.ts --outdir ./dist --production --minify --root src --sourcemap --splitting --target node --format esm --packages external --chunk-naming='chunk-[hash].js'",

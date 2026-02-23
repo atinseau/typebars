@@ -233,6 +233,17 @@ export interface ExecuteOptions {
 	identifierSchemas?: Record<number, JSONSchema7>;
 }
 
+// ─── Options d'analyse et exécution combinées ────────────────────────────────
+// Objet d'options optionnel pour `analyzeAndExecute()`, regroupant les
+// paramètres liés aux template identifiers.
+
+export interface AnalyzeAndExecuteOptions {
+	/** Schemas par identifiant `{ [id]: JSONSchema7 }` pour l'analyse statique */
+	identifierSchemas?: Record<number, JSONSchema7>;
+	/** Données par identifiant `{ [id]: { key: value } }` pour l'exécution */
+	identifierData?: Record<number, Record<string, unknown>>;
+}
+
 // ─── Helpers custom ──────────────────────────────────────────────────────────
 // Permet d'enregistrer des helpers personnalisés avec leur signature de type
 // pour l'analyse statique.

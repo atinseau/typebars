@@ -1,4 +1,4 @@
-import type { DiagnosticCode, TemplateDiagnostic } from "./types.ts";
+import type { TemplateDiagnostic } from "./types.ts";
 
 // ─── Classe de base ──────────────────────────────────────────────────────────
 // Toutes les erreurs du moteur de template héritent de cette classe pour
@@ -197,16 +197,4 @@ export function createUnknownHelperMessage(helperName: string): string {
  */
 export function createUnanalyzableMessage(nodeType: string): string {
 	return `Expression of type "${nodeType}" cannot be statically analyzed`;
-}
-
-/**
- * Détermine le DiagnosticCode approprié pour une erreur d'identifiant.
- */
-export function getIdentifierErrorCode(
-	hasSchemas: boolean,
-	hasSpecificSchema: boolean,
-): DiagnosticCode {
-	if (!hasSchemas) return "MISSING_IDENTIFIER_SCHEMAS";
-	if (!hasSpecificSchema) return "UNKNOWN_IDENTIFIER";
-	return "IDENTIFIER_PROPERTY_NOT_FOUND";
 }

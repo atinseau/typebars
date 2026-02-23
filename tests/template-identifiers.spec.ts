@@ -944,8 +944,10 @@ describe("Typebars with identifiers", () => {
 				"{{meetingId:1}}",
 				schema,
 				{},
-				idSchemas,
-				{ 1: { meetingId: 42 } },
+				{
+					identifierSchemas: idSchemas,
+					identifierData: { 1: { meetingId: 42 } },
+				},
 			);
 			expect(analysis.valid).toBe(true);
 			expect(analysis.outputSchema).toEqual({ type: "number" });

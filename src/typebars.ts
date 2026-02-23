@@ -8,9 +8,10 @@ import {
 import { TemplateAnalysisError } from "./errors.ts";
 import { executeFromAst } from "./executor.ts";
 import { MathHelpers } from "./helpers/index.ts";
-import { parse } from "./parser.ts";
+import { parse, parseUncached } from "./parser.ts";
 import type {
 	AnalysisResult,
+	AnalyzeAndExecuteOptions,
 	ExecuteOptions,
 	HelperDefinition,
 	TemplateEngineOptions,
@@ -256,9 +257,11 @@ export class Typebars {
 		// ── Passthrough pour les valeurs littérales ───────────────────────────
 		if (isLiteralInput(template)) return template;
 
+		// ── Parse une seule fois ─────────────────────────────────────────────
+		const ast = this.getCachedAst(template);
+
 		// ── Validation statique préalable ────────────────────────────────────
 		if (options?.schema) {
-			const ast = this.getCachedAst(template);
 			const analysis = analyzeFromAst(ast, template, options.schema, {
 				identifierSchemas: options.identifierSchemas,
 				helpers: this.helpers,
@@ -269,7 +272,6 @@ export class Typebars {
 		}
 
 		// ── Exécution ────────────────────────────────────────────────────────
-		const ast = this.getCachedAst(template);
 		return executeFromAst(ast, template, data, {
 			identifierData: options?.identifierData,
 			hbs: this.hbs,
@@ -286,11 +288,10 @@ export class Typebars {
 	 * Pour les objets, chaque propriété est analysée et exécutée récursivement.
 	 * L'objet entier est considéré invalide si au moins une propriété l'est.
 	 *
-	 * @param template           - Le template
-	 * @param inputSchema        - JSON Schema v7 décrivant les variables disponibles
-	 * @param data               - Les données de contexte pour le rendu
-	 * @param identifierSchemas  - (optionnel) Schemas par identifiant
-	 * @param identifierData     - (optionnel) Données par identifiant
+	 * @param template    - Le template
+	 * @param inputSchema - JSON Schema v7 décrivant les variables disponibles
+	 * @param data        - Les données de contexte pour le rendu
+	 * @param options     - (optionnel) Options pour les template identifiers
 	 * @returns Un objet `{ analysis, value }` où `value` est `undefined` si
 	 *          l'analyse a échoué.
 	 */
@@ -298,8 +299,7 @@ export class Typebars {
 		template: TemplateInput,
 		inputSchema: JSONSchema7,
 		data: Record<string, unknown>,
-		identifierSchemas?: Record<number, JSONSchema7>,
-		identifierData?: Record<number, Record<string, unknown>>,
+		options?: AnalyzeAndExecuteOptions,
 	): { analysis: AnalysisResult; value: unknown } {
 		if (isObjectInput(template)) {
 			return aggregateObjectAnalysisAndExecution(Object.keys(template), (key) =>
@@ -307,8 +307,7 @@ export class Typebars {
 					template[key] as TemplateInput,
 					inputSchema,
 					data,
-					identifierSchemas,
-					identifierData,
+					options,
 				),
 			);
 		}
@@ -326,7 +325,7 @@ export class Typebars {
 
 		const ast = this.getCachedAst(template);
 		const analysis = analyzeFromAst(ast, template, inputSchema, {
-			identifierSchemas,
+			identifierSchemas: options?.identifierSchemas,
 			helpers: this.helpers,
 		});
 
@@ -335,7 +334,7 @@ export class Typebars {
 		}
 
 		const value = executeFromAst(ast, template, data, {
-			identifierData,
+			identifierData: options?.identifierData,
 			hbs: this.hbs,
 			compilationCache: this.compilationCache,
 		});
@@ -410,7 +409,7 @@ export class Typebars {
 	private getCachedAst(template: string): hbs.AST.Program {
 		let ast = this.astCache.get(template);
 		if (!ast) {
-			ast = parse(template);
+			ast = parseUncached(template);
 			this.astCache.set(template, ast);
 		}
 		return ast;
