@@ -17,6 +17,7 @@ import {
 	parse,
 } from "./parser.ts";
 import {
+	assertNoConditionalSchema,
 	resolveArrayItems,
 	resolveSchemaPath,
 	simplifySchema,
@@ -154,6 +155,18 @@ export function analyzeFromAst(
 		helpers?: Map<string, HelperDefinition>;
 	},
 ): AnalysisResult {
+	// ── Reject unsupported schema features before analysis ────────────
+	// Conditional schemas (if/then/else) are non-resolvable without runtime
+	// data. Fail fast with a clear error rather than producing silently
+	// incorrect results.
+	assertNoConditionalSchema(inputSchema);
+
+	if (options?.identifierSchemas) {
+		for (const [id, idSchema] of Object.entries(options.identifierSchemas)) {
+			assertNoConditionalSchema(idSchema, `/identifierSchemas/${id}`);
+		}
+	}
+
 	const ctx: AnalysisContext = {
 		root: inputSchema,
 		current: inputSchema,

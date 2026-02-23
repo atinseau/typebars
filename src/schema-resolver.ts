@@ -1,4 +1,5 @@
 import type { JSONSchema7 } from "json-schema";
+import { UnsupportedSchemaError } from "./errors.ts";
 import { deepEqual } from "./utils.ts";
 
 // ─── JSON Schema Resolver ────────────────────────────────────────────────────
@@ -11,6 +12,140 @@ import { deepEqual } from "./utils.ts";
 // - Navigation through `items` (array elements)
 // - Combinators `allOf`, `anyOf`, `oneOf` (searches each branch)
 // - `additionalProperties` when the property is not explicitly declared
+//
+// Rejects:
+// - Conditional schemas (`if/then/else`) — non-resolvable without runtime data
+
+// ─── Conditional Schema Detection ────────────────────────────────────────────
+// JSON Schema Draft v7 introduced `if/then/else` conditional schemas.
+// These are fundamentally non-resolvable during static analysis because
+// they depend on runtime data values. Rather than silently ignoring them
+// (which would produce incorrect results — missing properties, wrong types),
+// we fail fast with a clear error pointing to the exact location in the schema.
+
+/**
+ * Recursively validates that a JSON Schema does not contain `if/then/else`
+ * conditional keywords. Throws an `UnsupportedSchemaError` if any are found.
+ *
+ * This check traverses the entire schema tree, including:
+ * - `properties` values
+ * - `additionalProperties` (when it's a schema)
+ * - `items` (single schema or tuple)
+ * - `allOf`, `anyOf`, `oneOf` branches
+ * - `not`
+ * - `definitions` / `$defs` values
+ *
+ * A `Set<object>` is used to track visited schemas and prevent infinite loops
+ * from circular structures.
+ *
+ * @param schema - The JSON Schema to validate
+ * @param path   - The current JSON pointer path (for error reporting)
+ * @param visited - Set of already-visited schema objects (cycle protection)
+ *
+ * @throws {UnsupportedSchemaError} if `if`, `then`, or `else` is found
+ *
+ * @example
+ * ```
+ * // Throws UnsupportedSchemaError:
+ * assertNoConditionalSchema({
+ *   type: "object",
+ *   if: { properties: { kind: { const: "a" } } },
+ *   then: { properties: { a: { type: "string" } } },
+ * });
+ *
+ * // OK — no conditional keywords:
+ * assertNoConditionalSchema({
+ *   type: "object",
+ *   properties: { name: { type: "string" } },
+ * });
+ * ```
+ */
+export function assertNoConditionalSchema(
+	schema: JSONSchema7,
+	path = "",
+	visited: Set<object> = new Set(),
+): void {
+	// Cycle protection — avoid infinite loops on circular schema structures
+	if (visited.has(schema)) return;
+	visited.add(schema);
+
+	// ── Detect if/then/else at the current level ─────────────────────────
+	if (schema.if !== undefined) {
+		throw new UnsupportedSchemaError("if/then/else", path || "/");
+	}
+	// `then` or `else` without `if` is unusual but still unsupported
+	if (schema.then !== undefined) {
+		throw new UnsupportedSchemaError("if/then/else", path || "/");
+	}
+	if (schema.else !== undefined) {
+		throw new UnsupportedSchemaError("if/then/else", path || "/");
+	}
+
+	// ── Recurse into properties ──────────────────────────────────────────
+	if (schema.properties) {
+		for (const [key, prop] of Object.entries(schema.properties)) {
+			if (prop && typeof prop !== "boolean") {
+				assertNoConditionalSchema(prop, `${path}/properties/${key}`, visited);
+			}
+		}
+	}
+
+	// ── Recurse into additionalProperties ────────────────────────────────
+	if (
+		schema.additionalProperties &&
+		typeof schema.additionalProperties === "object"
+	) {
+		assertNoConditionalSchema(
+			schema.additionalProperties,
+			`${path}/additionalProperties`,
+			visited,
+		);
+	}
+
+	// ── Recurse into items ───────────────────────────────────────────────
+	if (schema.items) {
+		if (Array.isArray(schema.items)) {
+			for (let i = 0; i < schema.items.length; i++) {
+				const item = schema.items[i];
+				if (item && typeof item !== "boolean") {
+					assertNoConditionalSchema(item, `${path}/items/${i}`, visited);
+				}
+			}
+		} else if (typeof schema.items !== "boolean") {
+			assertNoConditionalSchema(schema.items, `${path}/items`, visited);
+		}
+	}
+
+	// ── Recurse into combinators ─────────────────────────────────────────
+	for (const keyword of ["allOf", "anyOf", "oneOf"] as const) {
+		const branches = schema[keyword];
+		if (branches) {
+			for (let i = 0; i < branches.length; i++) {
+				const branch = branches[i];
+				if (branch && typeof branch !== "boolean") {
+					assertNoConditionalSchema(branch, `${path}/${keyword}/${i}`, visited);
+				}
+			}
+		}
+	}
+
+	// ── Recurse into not ─────────────────────────────────────────────────
+	if (schema.not && typeof schema.not !== "boolean") {
+		assertNoConditionalSchema(schema.not, `${path}/not`, visited);
+	}
+
+	// ── Recurse into definitions / $defs ─────────────────────────────────
+	for (const defsKey of ["definitions", "$defs"] as const) {
+		const defs = schema[defsKey];
+		if (defs) {
+			for (const [name, def] of Object.entries(defs)) {
+				if (def && typeof def !== "boolean") {
+					assertNoConditionalSchema(def, `${path}/${defsKey}/${name}`, visited);
+				}
+			}
+		}
+	}
+}
 
 // ─── $ref Resolution ─────────────────────────────────────────────────────────
 // Only supports internal references in the format `#/definitions/Foo`
