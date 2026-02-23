@@ -2,11 +2,7 @@ import { beforeEach, describe, expect, test } from "bun:test";
 import type { JSONSchema7 } from "json-schema";
 import { analyze } from "../src/analyzer.ts";
 import { clearCompilationCache, execute } from "../src/executor.ts";
-import {
-	clearParseCache,
-	extractExpressionIdentifier,
-	parseIdentifier,
-} from "../src/parser.ts";
+import { extractExpressionIdentifier, parseIdentifier } from "../src/parser.ts";
 import { Typebars } from "../src/typebars.ts";
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -57,7 +53,6 @@ function interpolateObject(
 
 describe("parseIdentifier", () => {
 	beforeEach(() => {
-		clearParseCache();
 		clearCompilationCache();
 	});
 
@@ -133,7 +128,6 @@ describe("extractExpressionIdentifier", () => {
 
 describe("execute() with identifierData", () => {
 	beforeEach(() => {
-		clearParseCache();
 		clearCompilationCache();
 	});
 
@@ -460,10 +454,6 @@ describe("interpolateObject with identifierData (old interpolateTemplateValues m
 // ═════════════════════════════════════════════════════════════════════════════
 
 describe("analyze() with identifierSchemas", () => {
-	beforeEach(() => {
-		clearParseCache();
-	});
-
 	describe("basic identifier validation", () => {
 		test("valid: identifier key exists in identifierSchemas", () => {
 			const schema: JSONSchema7 = {
@@ -793,7 +783,6 @@ describe("analyze() with identifierSchemas", () => {
 
 describe("Typebars with identifiers", () => {
 	beforeEach(() => {
-		clearParseCache();
 		clearCompilationCache();
 	});
 
@@ -976,7 +965,6 @@ describe("Typebars with identifiers", () => {
 
 describe("Exact migration of old interpolateTemplateValues tests with identifiers", () => {
 	beforeEach(() => {
-		clearParseCache();
 		clearCompilationCache();
 	});
 
@@ -1091,10 +1079,6 @@ describe("Exact migration of old interpolateTemplateValues tests with identifier
 // ═════════════════════════════════════════════════════════════════════════════
 
 describe("Exact migration of old validateTemplateUsage tests with prevSchemas", () => {
-	beforeEach(() => {
-		clearParseCache();
-	});
-
 	test("old: success if template has identifier and key exists in identifierSchemas", () => {
 		const schema: JSONSchema7 = {
 			type: "object",
@@ -1166,10 +1150,6 @@ describe("Exact migration of old validateTemplateUsage tests with prevSchemas", 
 // ═════════════════════════════════════════════════════════════════════════════
 
 describe("Exact migration of old findTemplateSchemaFromPrevSchemas behavior", () => {
-	beforeEach(() => {
-		clearParseCache();
-	});
-
 	// L'ancien findTemplateSchemaFromPrevSchemas(key, identifier, prevSchemas)
 	// cherchait un schema dans une liste ordonnée [id, schema][].
 	// Le nouveau système utilise identifierSchemas comme Record<number, JSONSchema7>
@@ -1281,7 +1261,6 @@ describe("Exact migration of old findTemplateSchemaFromPrevSchemas behavior", ()
 
 describe("Template identifier edge cases", () => {
 	beforeEach(() => {
-		clearParseCache();
 		clearCompilationCache();
 	});
 

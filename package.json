@@ -1,8 +1,6 @@
 {
 	"name": "typebars",
-	"module": "index.ts",
 	"type": "module",
-	"private": true,
 	"exports": {
 		".": {
 			"import": "./dist/index.js",

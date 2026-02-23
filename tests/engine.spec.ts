@@ -2,13 +2,11 @@ import { beforeEach, describe, expect, test } from "bun:test";
 import { analyze } from "../src/analyzer.ts";
 import { TemplateAnalysisError } from "../src/errors.ts";
 import { clearCompilationCache, execute } from "../src/executor.ts";
-import { clearParseCache } from "../src/parser.ts";
 import { Typebars } from "../src/typebars.ts";
 import { userData, userSchema } from "./fixtures.ts";
 
 describe("Typebars", () => {
 	beforeEach(() => {
-		clearParseCache();
 		clearCompilationCache();
 	});
 
@@ -113,7 +111,6 @@ describe("Typebars", () => {
 
 describe("literal input (non-string TemplateInput)", () => {
 	beforeEach(() => {
-		clearParseCache();
 		clearCompilationCache();
 	});
 
@@ -390,7 +387,6 @@ describe("literal input (non-string TemplateInput)", () => {
 
 describe("object template input (TemplateInputObject)", () => {
 	beforeEach(() => {
-		clearParseCache();
 		clearCompilationCache();
 	});
 

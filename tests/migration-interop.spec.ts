@@ -3,7 +3,6 @@ import type { JSONSchema7 } from "json-schema";
 import { analyze } from "../src/analyzer.ts";
 import { clearCompilationCache, execute } from "../src/executor.ts";
 import {
-	clearParseCache,
 	extractPathSegments,
 	getEffectivelySingleExpression,
 	isSingleExpression,
@@ -62,7 +61,6 @@ function interpolateObject(
 
 describe("Migration: interpolateTemplateValues → execute()", () => {
 	beforeEach(() => {
-		clearParseCache();
 		clearCompilationCache();
 	});
 
@@ -220,10 +218,6 @@ describe("Migration: interpolateTemplateValues → execute()", () => {
 // ═════════════════════════════════════════════════════════════════════════════
 
 describe("Migration: extractTemplateTokens → parse() + AST", () => {
-	beforeEach(() => {
-		clearParseCache();
-	});
-
 	test("Should be able to return a list of templates from a string", () => {
 		const ast = parse("coucou {{meetingId}}");
 		// On filtre les MustacheStatement pour trouver les expressions
@@ -265,7 +259,6 @@ describe("Migration: extractTemplateTokens → parse() + AST", () => {
 
 describe("Migration: normalizeTemplateTokens → Handlebars normalisation native", () => {
 	beforeEach(() => {
-		clearParseCache();
 		clearCompilationCache();
 	});
 
@@ -307,10 +300,6 @@ describe("Migration: normalizeTemplateTokens → Handlebars normalisation native
 // ═════════════════════════════════════════════════════════════════════════════
 
 describe("Migration: isUniqueTemplate → isSingleExpression()", () => {
-	beforeEach(() => {
-		clearParseCache();
-	});
-
 	test("Detect unique template string — text + template is NOT single", () => {
 		const ast = parse("coucou {{meetingId}}");
 		expect(isSingleExpression(ast)).toBe(false);
@@ -342,7 +331,6 @@ describe("Migration: isUniqueTemplate → isSingleExpression()", () => {
 
 describe("Migration: Type preservation rules", () => {
 	beforeEach(() => {
-		clearParseCache();
 		clearCompilationCache();
 	});
 
@@ -425,10 +413,6 @@ describe("Migration: Type preservation rules", () => {
 // ═════════════════════════════════════════════════════════════════════════════
 
 describe("Migration: validateTemplateUsage → analyze()", () => {
-	beforeEach(() => {
-		clearParseCache();
-	});
-
 	test("Should succeed if template key exists in schema", () => {
 		const schema: JSONSchema7 = {
 			type: "object",
@@ -523,10 +507,6 @@ describe("Migration: validateTemplateUsage → analyze()", () => {
 // ═════════════════════════════════════════════════════════════════════════════
 
 describe("Migration: compare → analyze() outputSchema inference", () => {
-	beforeEach(() => {
-		clearParseCache();
-	});
-
 	test("Should infer string type for string property", () => {
 		const schema: JSONSchema7 = {
 			type: "object",
@@ -622,7 +602,6 @@ describe("Migration: compare → analyze() outputSchema inference", () => {
 
 describe("Migration: validate → execute() runtime behavior", () => {
 	beforeEach(() => {
-		clearParseCache();
 		clearCompilationCache();
 	});
 
@@ -676,7 +655,6 @@ describe("Migration: validate → execute() runtime behavior", () => {
 
 describe("Migration: Template identifiers ({{key:id}}) — LIMITATIONS", () => {
 	beforeEach(() => {
-		clearParseCache();
 		clearCompilationCache();
 	});
 
@@ -757,10 +735,6 @@ describe("Migration: Template identifiers ({{key:id}}) — LIMITATIONS", () => {
 // ═════════════════════════════════════════════════════════════════════════════
 
 describe("Migration: findTemplateSchemaFromPrevSchemas → JSON Schema resolution", () => {
-	beforeEach(() => {
-		clearParseCache();
-	});
-
 	// L'ancien findTemplateSchemaFromPrevSchemas cherchait un type dans une
 	// liste de schemas précédents identifiés par un numéro.
 	// Avec JSON Schema, on structure les données en un seul schema avec des
@@ -822,7 +796,6 @@ describe("Migration: findTemplateSchemaFromPrevSchemas → JSON Schema resolutio
 
 describe("Migration: Typebars strict mode", () => {
 	beforeEach(() => {
-		clearParseCache();
 		clearCompilationCache();
 	});
 
@@ -867,7 +840,6 @@ describe("Migration: Typebars strict mode", () => {
 
 describe("Migration: end-to-end object interpolation pattern", () => {
 	beforeEach(() => {
-		clearParseCache();
 		clearCompilationCache();
 	});
 
@@ -952,7 +924,6 @@ describe("Migration: end-to-end object interpolation pattern", () => {
 
 describe("Bonus: New features not available in old system", () => {
 	beforeEach(() => {
-		clearParseCache();
 		clearCompilationCache();
 	});
 

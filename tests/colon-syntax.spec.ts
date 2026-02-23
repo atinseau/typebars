@@ -2,7 +2,6 @@ import { beforeEach, describe, expect, test } from "bun:test";
 import Handlebars from "handlebars";
 import { clearCompilationCache, execute } from "../src/executor.ts";
 import {
-	clearParseCache,
 	extractPathSegments,
 	isSingleExpression,
 	parse,
@@ -17,7 +16,6 @@ import {
 
 describe("Handlebars colon syntax — parsing", () => {
 	beforeEach(() => {
-		clearParseCache();
 		clearCompilationCache();
 	});
 

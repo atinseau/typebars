@@ -8,7 +8,7 @@ import {
 import { TemplateAnalysisError } from "./errors.ts";
 import { executeFromAst } from "./executor.ts";
 import { MathHelpers } from "./helpers/index.ts";
-import { parse, parseUncached } from "./parser.ts";
+import { parse } from "./parser.ts";
 import type {
 	AnalysisResult,
 	AnalyzeAndExecuteOptions,
@@ -215,7 +215,7 @@ export class Typebars {
 		}
 		if (isLiteralInput(template)) return true;
 		try {
-			parse(template);
+			this.getCachedAst(template);
 			return true;
 		} catch {
 			return false;
@@ -409,7 +409,7 @@ export class Typebars {
 	private getCachedAst(template: string): hbs.AST.Program {
 		let ast = this.astCache.get(template);
 		if (!ast) {
-			ast = parseUncached(template);
+			ast = parse(template);
 			this.astCache.set(template, ast);
 		}
 		return ast;

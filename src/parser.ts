@@ -1,6 +1,5 @@
 import Handlebars from "handlebars";
 import { TemplateParseError } from "./errors.ts";
-import { LRUCache } from "./utils.ts";
 
 // ─── Regex pour détecter un identifiant de template (ex: "meetingId:1") ──────
 // L'identifiant est toujours un entier positif ou zéro, séparé du nom de la
@@ -14,7 +13,10 @@ const IDENTIFIER_RE = /^(.+):(\d+)$/;
 // 1. Encapsuler les erreurs dans notre hiérarchie (`TemplateParseError`)
 // 2. Exposer des helpers d'introspection sur l'AST (ex: `isSingleExpression`)
 // 3. Isoler la dépendance directe à Handlebars du reste du code
-// 4. Cacher les ASTs parsés via un LRU cache pour éviter les re-parsings
+//
+// Le caching des AST est géré au niveau de chaque instance `Typebars`
+// (via son propre LRU cache configurable), pas ici. Ce module se contente
+// de parser et de wrapper les erreurs.
 
 // ─── Regex pour détecter un littéral numérique (entier ou décimal, signé) ────
 // Conservateur volontairement : pas de notation scientifique (1e5), pas de
@@ -22,31 +24,19 @@ const IDENTIFIER_RE = /^(.+):(\d+)$/;
 // qu'un humain écrirait comme valeur numérique dans un template.
 const NUMERIC_LITERAL_RE = /^-?\d+(\.\d+)?$/;
 
-// ─── Cache global d'AST ──────────────────────────────────────────────────────
-// Le parsing Handlebars est coûteux. Ce cache module-level évite de re-parser
-// le même template string lors d'appels répétés à `parse()`.
-// Taille par défaut : 128 entrées (suffisant pour la majorité des usages).
-const globalAstCache = new LRUCache<string, hbs.AST.Program>(128);
-
 /**
  * Parse un template string et retourne l'AST Handlebars.
  *
- * Les résultats sont cachés automatiquement : appeler `parse()` deux fois
- * avec le même template ne re-parse pas.
+ * Cette fonction ne cache pas le résultat — le caching est géré au niveau
+ * de chaque instance `Typebars` via son propre LRU cache configurable.
  *
  * @param template - La chaîne de template à parser (ex: `"Hello {{name}}"`)
  * @returns L'AST racine (`hbs.AST.Program`)
  * @throws {TemplateParseError} si la syntaxe du template est invalide
  */
 export function parse(template: string): hbs.AST.Program {
-	// Vérifier le cache en premier
-	const cached = globalAstCache.get(template);
-	if (cached) return cached;
-
 	try {
-		const ast = Handlebars.parse(template);
-		globalAstCache.set(template, ast);
-		return ast;
+		return Handlebars.parse(template);
 	} catch (error: unknown) {
 		// Handlebars lève une Error classique avec un message descriptif.
 		// On la transforme en TemplateParseError pour un traitement uniforme.
@@ -64,38 +54,6 @@ export function parse(template: string): hbs.AST.Program {
 
 		throw new TemplateParseError(message, loc);
 	}
-}
-
-/**
- * Parse un template sans utiliser le cache. Utile pour les benchmarks
- * ou quand on veut un AST frais garanti.
- *
- * @param template - La chaîne de template à parser
- * @returns L'AST racine (`hbs.AST.Program`)
- * @throws {TemplateParseError} si la syntaxe du template est invalide
- */
-export function parseUncached(template: string): hbs.AST.Program {
-	try {
-		return Handlebars.parse(template);
-	} catch (error: unknown) {
-		const message = error instanceof Error ? error.message : String(error);
-		const locMatch = message.match(/line\s+(\d+).*?column\s+(\d+)/i);
-		const loc = locMatch
-			? {
-					line: parseInt(locMatch[1] ?? "0", 10),
-					column: parseInt(locMatch[2] ?? "0", 10),
-				}
-			: undefined;
-		throw new TemplateParseError(message, loc);
-	}
-}
-
-/**
- * Vide le cache global d'AST. Utile pour les tests ou pour libérer
- * la mémoire si beaucoup de templates uniques ont été parsés.
- */
-export function clearParseCache(): void {
-	globalAstCache.clear();
 }
 
 /**

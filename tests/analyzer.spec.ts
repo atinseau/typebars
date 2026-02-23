@@ -1,14 +1,9 @@
-import { beforeEach, describe, expect, test } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import type { JSONSchema7 } from "json-schema";
 import { analyze } from "../src/analyzer.ts";
-import { clearParseCache } from "../src/parser.ts";
 import { userSchema } from "./fixtures.ts";
 
 describe("analyzer", () => {
-	beforeEach(() => {
-		clearParseCache();
-	});
-
 	describe("inférence du type de sortie (outputSchema)", () => {
 		test("expression unique string → { type: 'string' }", () => {
 			const result = analyze("{{name}}", userSchema);
