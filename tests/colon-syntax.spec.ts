@@ -1,11 +1,8 @@
 import { beforeEach, describe, expect, test } from "bun:test";
 import Handlebars from "handlebars";
+import { clearCompilationCache, execute } from "../src/executor.ts";
 import {
-	clearCompilationCache,
 	clearParseCache,
-	execute,
-} from "../src/index.ts";
-import {
 	extractPathSegments,
 	isSingleExpression,
 	parse,

@@ -1,8 +1,14 @@
 {
-	"name": "bun-playground",
+	"name": "typebars",
 	"module": "index.ts",
 	"type": "module",
 	"private": true,
+	"exports": {
+		".": {
+			"import": "./dist/index.js",
+			"types": "./dist/index.d.ts"
+		}
+	},
 	"scripts": {
 		"postinstall": "lefthook install",
 		"build:bun": "bun build src/*.ts --outdir ./dist --production --minify --root src --sourcemap --splitting --target node --format esm --packages external --chunk-naming='chunk-[hash].js'",

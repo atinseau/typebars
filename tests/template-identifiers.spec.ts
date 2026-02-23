@@ -1,14 +1,13 @@
 import { beforeEach, describe, expect, test } from "bun:test";
 import type { JSONSchema7 } from "json-schema";
+import { analyze } from "../src/analyzer.ts";
+import { clearCompilationCache, execute } from "../src/executor.ts";
 import {
-	analyze,
-	clearCompilationCache,
 	clearParseCache,
-	execute,
 	extractExpressionIdentifier,
 	parseIdentifier,
-	TemplateEngine,
-} from "../src/index.ts";
+} from "../src/parser.ts";
+import { Typebars } from "../src/typebars.ts";
 
 // ═════════════════════════════════════════════════════════════════════════════
 // Template Identifiers ({{key:N}}) — Full Feature Tests
@@ -792,14 +791,14 @@ describe("analyze() with identifierSchemas", () => {
 // SECTION 5 : TemplateEngine class with identifiers
 // ═════════════════════════════════════════════════════════════════════════════
 
-describe("TemplateEngine with identifiers", () => {
+describe("Typebars with identifiers", () => {
 	beforeEach(() => {
 		clearParseCache();
 		clearCompilationCache();
 	});
 
 	describe("analyze()", () => {
-		const engine = new TemplateEngine();
+		const engine = new Typebars();
 
 		test("passes identifierSchemas through to analyze", () => {
 			const schema: JSONSchema7 = { type: "object", properties: {} };
@@ -824,7 +823,7 @@ describe("TemplateEngine with identifiers", () => {
 
 	describe("execute() with identifierData", () => {
 		test("resolves identifier from identifierData", () => {
-			const engine = new TemplateEngine();
+			const engine = new Typebars();
 			const result = engine.execute(
 				"{{meetingId:1}}",
 				{},
@@ -836,7 +835,7 @@ describe("TemplateEngine with identifiers", () => {
 		});
 
 		test("preserves type for single identifier expression", () => {
-			const engine = new TemplateEngine();
+			const engine = new Typebars();
 			const result = engine.execute(
 				"{{count:1}}",
 				{},
@@ -849,7 +848,7 @@ describe("TemplateEngine with identifiers", () => {
 		});
 
 		test("mixed data and identifierData", () => {
-			const engine = new TemplateEngine();
+			const engine = new Typebars();
 			const result = engine.execute(
 				"{{name}} {{greeting:1}}",
 				{ name: "Alice" },
@@ -861,7 +860,7 @@ describe("TemplateEngine with identifiers", () => {
 
 	describe("execute() strict mode with identifierSchemas", () => {
 		test("succeeds when both schema and identifierSchemas validate", () => {
-			const engine = new TemplateEngine();
+			const engine = new Typebars();
 			const schema: JSONSchema7 = {
 				type: "object",
 				properties: { name: { type: "string" } },
@@ -886,7 +885,7 @@ describe("TemplateEngine with identifiers", () => {
 		});
 
 		test("throws when identifier key is missing from identifierSchemas", () => {
-			const engine = new TemplateEngine();
+			const engine = new Typebars();
 			const schema: JSONSchema7 = {
 				type: "object",
 				properties: { name: { type: "string" } },
@@ -912,7 +911,7 @@ describe("TemplateEngine with identifiers", () => {
 		});
 
 		test("throws when identifier N not in identifierSchemas", () => {
-			const engine = new TemplateEngine();
+			const engine = new Typebars();
 			const schema: JSONSchema7 = { type: "object", properties: {} };
 			const idSchemas: Record<number, JSONSchema7> = {};
 
@@ -932,7 +931,7 @@ describe("TemplateEngine with identifiers", () => {
 
 	describe("analyzeAndExecute()", () => {
 		test("returns analysis and value for valid identifier template", () => {
-			const engine = new TemplateEngine();
+			const engine = new Typebars();
 			const schema: JSONSchema7 = { type: "object", properties: {} };
 			const idSchemas: Record<number, JSONSchema7> = {
 				1: {
@@ -954,7 +953,7 @@ describe("TemplateEngine with identifiers", () => {
 		});
 
 		test("returns undefined value for invalid identifier template", () => {
-			const engine = new TemplateEngine();
+			const engine = new Typebars();
 			const schema: JSONSchema7 = { type: "object", properties: {} };
 
 			const { analysis, value } = engine.analyzeAndExecute(

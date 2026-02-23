@@ -41,7 +41,7 @@ import { LRUCache } from "./utils.ts";
 //
 // Deux niveaux de cache :
 // - **Cache global** (module-level) pour les fonctions standalone `execute()`
-// - **Cache d'instance** pour `TemplateEngine` (passé via `ExecutorContext`)
+// - **Cache d'instance** pour `Typebars` (passé via `ExecutorContext`)
 //
 // ─── Template Identifiers ────────────────────────────────────────────────────
 // La syntaxe `{{key:N}}` permet de résoudre une variable depuis une source
@@ -50,7 +50,7 @@ import { LRUCache } from "./utils.ts";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
-/** Contexte optionnel pour l'exécution (utilisé par TemplateEngine/CompiledTemplate) */
+/** Contexte optionnel pour l'exécution (utilisé par Typebars/CompiledTemplate) */
 export interface ExecutorContext {
 	/** Données par identifiant `{ [id]: { key: value } }` */
 	identifierData?: Record<number, Record<string, unknown>>;
@@ -64,7 +64,7 @@ export interface ExecutorContext {
 
 // ─── Cache global de compilation ─────────────────────────────────────────────
 // Utilisé par la fonction standalone `execute()` et `renderWithHandlebars()`.
-// Les instances de `TemplateEngine` utilisent leur propre cache.
+// Les instances de `Typebars` utilisent leur propre cache.
 const globalCompilationCache = new LRUCache<string, HandlebarsTemplateDelegate>(
 	128,
 );
@@ -113,7 +113,7 @@ function executeObjectTemplate(
 	return result;
 }
 
-// ─── API interne (pour TemplateEngine / CompiledTemplate) ────────────────────
+// ─── API interne (pour Typebars / CompiledTemplate) ────────────────────
 
 /**
  * Exécute un template à partir d'un AST déjà parsé.
@@ -121,7 +121,7 @@ function executeObjectTemplate(
  * Cette fonction est le cœur de l'exécution. Elle est utilisée par :
  * - `execute()` (wrapper backward-compatible)
  * - `CompiledTemplate.execute()` (avec AST pré-parsé et cache)
- * - `TemplateEngine.execute()` (avec cache et helpers)
+ * - `Typebars.execute()` (avec cache et helpers)
  *
  * @param ast       - L'AST Handlebars déjà parsé
  * @param template  - Le template source (pour la compilation Handlebars si nécessaire)
@@ -369,7 +369,7 @@ function mergeDataWithIdentifiers(
  * Utilise un cache de compilation (LRU) pour éviter de recompiler le même
  * template lors d'appels répétés. Le cache est soit :
  * - Le cache global (pour la fonction standalone `execute()`)
- * - Le cache d'instance fourni via `ExecutorContext` (pour `TemplateEngine`)
+ * - Le cache d'instance fourni via `ExecutorContext` (pour `Typebars`)
  *
  * @param template - La chaîne de template
  * @param data     - Les données de contexte

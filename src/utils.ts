@@ -227,7 +227,7 @@ export function getSchemaPropertyNames(schema: JSONSchema7): string[] {
 //
 // Utilisé par :
 // - `analyzer.ts` (analyzeObjectTemplate)
-// - `TemplateEngine.analyzeObject()` (index.ts)
+// - `Typebars.analyzeObject()` (typebars.ts)
 // - `CompiledTemplate.analyze()` en mode objet (compiled-template.ts)
 
 /**

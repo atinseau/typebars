@@ -13,7 +13,7 @@ import type { HelperDefinition } from "../types.ts";
 //
 // ─── Enregistrement ──────────────────────────────────────────────────────────
 // Les MathHelpers sont pré-enregistrés automatiquement par le constructeur
-// de `TemplateEngine`. Il est aussi possible de les enregistrer manuellement
+// de `Typebars`. Il est aussi possible de les enregistrer manuellement
 // sur n'importe quel objet implémentant `HelperRegistry` :
 //
 //   MathHelpers.register(engine);   // enregistre tous les helpers
@@ -29,7 +29,7 @@ import type { HelperDefinition } from "../types.ts";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
-/** Interface minimale pour l'enregistrement — évite le couplage avec TemplateEngine */
+/** Interface minimale pour l'enregistrement — évite le couplage avec Typebars */
 interface HelperRegistry {
 	registerHelper(name: string, definition: HelperDefinition): unknown;
 	unregisterHelper(name: string): unknown;
@@ -385,11 +385,11 @@ export class MathHelpers {
 	// ─── Enregistrement / Désenregistrement ──────────────────────────────
 
 	/**
-	 * Enregistre tous les helpers mathématiques sur un `TemplateEngine`
+	 * Enregistre tous les helpers mathématiques sur un `Typebars`
 	 * (ou tout objet implémentant `HelperRegistry`).
 	 *
 	 * **Note :** les MathHelpers sont pré-enregistrés automatiquement par
-	 * le constructeur de `TemplateEngine`. Cette méthode n'est utile que
+	 * le constructeur de `Typebars`. Cette méthode n'est utile que
 	 * si vous avez appelé `unregister()` et souhaitez les ré-activer,
 	 * ou si vous enregistrez sur un registre custom.
 	 *
@@ -397,7 +397,7 @@ export class MathHelpers {
 	 *
 	 * @example
 	 * ```
-	 * const engine = new TemplateEngine();
+	 * const engine = new Typebars();
 	 * // Les math helpers sont déjà disponibles !
 	 * engine.analyzeAndExecute("{{ divide total count }}", schema, data);
 	 * engine.analyzeAndExecute("{{ math price '*' quantity }}", schema, data);

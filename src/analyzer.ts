@@ -136,7 +136,7 @@ function analyzeObjectTemplate(
 /**
  * Analyse statiquement un template à partir d'un AST déjà parsé.
  *
- * C'est la fonction interne utilisée par `TemplateEngine.compile()` et
+ * C'est la fonction interne utilisée par `Typebars.compile()` et
  * `CompiledTemplate.analyze()` pour éviter un re-parsing coûteux.
  *
  * @param ast               - L'AST Handlebars déjà parsé
@@ -432,7 +432,7 @@ function inferProgramType(
  * Infère le type de sortie d'un BlockStatement et valide son contenu.
  *
  * Supporte les helpers built-in (`if`, `unless`, `each`, `with`) et les
- * helpers custom enregistrés via `TemplateEngine.registerHelper()`.
+ * helpers custom enregistrés via `Typebars.registerHelper()`.
  *
  * Utilise le pattern **save/restore** pour le contexte : au lieu de créer
  * un nouvel objet `{ ...ctx, current: X }` à chaque récursion, on sauvegarde

@@ -1,22 +1,19 @@
 import { beforeEach, describe, expect, test } from "bun:test";
 import type { JSONSchema7 } from "json-schema";
+import { analyze } from "../src/analyzer.ts";
+import { clearCompilationCache, execute } from "../src/executor.ts";
 import {
-	analyze,
-	clearCompilationCache,
 	clearParseCache,
-	execute,
-	parse,
-	TemplateEngine,
-} from "../src/index.ts";
-import {
 	extractPathSegments,
 	getEffectivelySingleExpression,
 	isSingleExpression,
+	parse,
 } from "../src/parser.ts";
+import { Typebars } from "../src/typebars.ts";
 
 // ─── Migration / Interop Tests ───────────────────────────────────────────────
 // Ces tests vérifient que les comportements de l'ancien système (SchemaIOService)
-// sont réalisables avec le nouveau moteur de template (TemplateEngine).
+// sont réalisables avec le nouveau moteur de template (Typebars).
 //
 // L'ancien système travaillait au niveau objet : on passait un objet
 // `{ key: "{{template}}" }` et on récupérait `{ key: valeurInterpolée }`.
@@ -823,13 +820,13 @@ describe("Migration: findTemplateSchemaFromPrevSchemas → JSON Schema resolutio
 // SECTION 11 : Strict mode validation (old validate + compare combined)
 // ═════════════════════════════════════════════════════════════════════════════
 
-describe("Migration: TemplateEngine strict mode", () => {
+describe("Migration: Typebars strict mode", () => {
 	beforeEach(() => {
 		clearParseCache();
 		clearCompilationCache();
 	});
 
-	const engine = new TemplateEngine();
+	const engine = new Typebars();
 
 	test("Execute succeeds with valid schema", () => {
 		const schema: JSONSchema7 = {

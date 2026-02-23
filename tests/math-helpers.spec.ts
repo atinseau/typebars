@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from "bun:test";
 import type { JSONSchema7 } from "json-schema";
-import { MathHelpers, TemplateEngine } from "../src/index.ts";
+import { MathHelpers } from "../src/helpers/math-helpers.ts";
+import { Typebars } from "../src/typebars.ts";
 import type { HelperConfig } from "../src/types.ts";
 
 // ─── Schema & données partagées ──────────────────────────────────────────────
@@ -31,17 +32,17 @@ const data = {
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-function run(engine: TemplateEngine, template: string) {
+function run(engine: Typebars, template: string) {
 	return engine.analyzeAndExecute(template, schema, data);
 }
 
 // ─── Tests ───────────────────────────────────────────────────────────────────
 
 describe("MathHelpers", () => {
-	let engine: TemplateEngine;
+	let engine: Typebars;
 
 	beforeEach(() => {
-		engine = new TemplateEngine();
+		engine = new Typebars();
 	});
 
 	// ─── Built-in registration ───────────────────────────────────────────
@@ -675,9 +676,9 @@ describe("MathHelpers", () => {
 
 // ─── Tests du système helpers via options du constructeur ─────────────────────
 
-describe("TemplateEngine({ helpers: [...] })", () => {
+describe("Typebars({ helpers: [...] })", () => {
 	it("enregistre des helpers custom via les options", () => {
-		const engine = new TemplateEngine({
+		const engine = new Typebars({
 			helpers: [
 				{
 					name: "uppercase",
@@ -699,7 +700,7 @@ describe("TemplateEngine({ helpers: [...] })", () => {
 	});
 
 	it("les helpers custom fonctionnent à l'exécution", () => {
-		const engine = new TemplateEngine({
+		const engine = new Typebars({
 			helpers: [
 				{
 					name: "double",
@@ -726,7 +727,7 @@ describe("TemplateEngine({ helpers: [...] })", () => {
 	});
 
 	it("les helpers custom coexistent avec les math helpers built-in", () => {
-		const engine = new TemplateEngine({
+		const engine = new Typebars({
 			helpers: [
 				{
 					name: "uppercase",
@@ -753,7 +754,7 @@ describe("TemplateEngine({ helpers: [...] })", () => {
 	});
 
 	it("un helper custom peut overrider un math helper built-in", () => {
-		const engine = new TemplateEngine({
+		const engine = new Typebars({
 			helpers: [
 				{
 					name: "add",
@@ -805,7 +806,7 @@ describe("TemplateEngine({ helpers: [...] })", () => {
 			},
 		];
 
-		const engine = new TemplateEngine({ helpers });
+		const engine = new Typebars({ helpers });
 
 		expect(engine.hasHelper("greet")).toBe(true);
 		expect(engine.hasHelper("shout")).toBe(true);
@@ -813,18 +814,18 @@ describe("TemplateEngine({ helpers: [...] })", () => {
 	});
 
 	it("fonctionne avec un tableau vide de helpers", () => {
-		const engine = new TemplateEngine({ helpers: [] });
+		const engine = new Typebars({ helpers: [] });
 		// Math helpers built-in toujours disponibles
 		expect(engine.hasHelper("add")).toBe(true);
 	});
 
 	it("fonctionne sans l'option helpers (undefined)", () => {
-		const engine = new TemplateEngine({});
+		const engine = new Typebars({});
 		expect(engine.hasHelper("add")).toBe(true);
 	});
 
 	it("un helper custom avec params et description est introspecable via registerHelper", () => {
-		const engine = new TemplateEngine({
+		const engine = new Typebars({
 			helpers: [
 				{
 					name: "tax",
@@ -869,7 +870,7 @@ describe("TemplateEngine({ helpers: [...] })", () => {
 	});
 
 	it("un helper custom avec paramètre optionnel", () => {
-		const engine = new TemplateEngine({
+		const engine = new Typebars({
 			helpers: [
 				{
 					name: "repeat",

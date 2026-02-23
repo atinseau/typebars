@@ -1,22 +1,19 @@
 import { beforeEach, describe, expect, test } from "bun:test";
-import {
-	analyze,
-	clearCompilationCache,
-	clearParseCache,
-	execute,
-	TemplateAnalysisError,
-	TemplateEngine,
-} from "../src/index.ts";
+import { analyze } from "../src/analyzer.ts";
+import { TemplateAnalysisError } from "../src/errors.ts";
+import { clearCompilationCache, execute } from "../src/executor.ts";
+import { clearParseCache } from "../src/parser.ts";
+import { Typebars } from "../src/typebars.ts";
 import { userData, userSchema } from "./fixtures.ts";
 
-describe("TemplateEngine", () => {
+describe("Typebars", () => {
 	beforeEach(() => {
 		clearParseCache();
 		clearCompilationCache();
 	});
 
 	describe("isValidSyntax", () => {
-		const engine = new TemplateEngine();
+		const engine = new Typebars();
 
 		test("retourne true pour un template simple valide", () => {
 			expect(engine.isValidSyntax("Hello {{name}}")).toBe(true);
@@ -44,7 +41,7 @@ describe("TemplateEngine", () => {
 	});
 
 	describe("mode strict (défaut)", () => {
-		const engine = new TemplateEngine();
+		const engine = new Typebars();
 
 		test("execute lève TemplateAnalysisError si le schema invalide le template", () => {
 			expect(() =>
@@ -66,7 +63,7 @@ describe("TemplateEngine", () => {
 	});
 
 	describe("analyze", () => {
-		const engine = new TemplateEngine();
+		const engine = new Typebars();
 
 		test("retourne un AnalysisResult avec valid, diagnostics, outputSchema", () => {
 			const result = engine.analyze("{{name}}", userSchema);
@@ -89,7 +86,7 @@ describe("TemplateEngine", () => {
 	});
 
 	describe("analyzeAndExecute", () => {
-		const engine = new TemplateEngine();
+		const engine = new Typebars();
 
 		test("retourne analysis et value quand le template est valide", () => {
 			const { analysis, value } = engine.analyzeAndExecute(
@@ -120,7 +117,7 @@ describe("literal input (non-string TemplateInput)", () => {
 		clearCompilationCache();
 	});
 
-	const engine = new TemplateEngine();
+	const engine = new Typebars();
 
 	describe("analyze", () => {
 		test("number entier → { type: 'integer' }", () => {
@@ -397,7 +394,7 @@ describe("object template input (TemplateInputObject)", () => {
 		clearCompilationCache();
 	});
 
-	const engine = new TemplateEngine();
+	const engine = new Typebars();
 
 	describe("analyze", () => {
 		test("objet simple avec templates string → outputSchema object avec types résolus", () => {

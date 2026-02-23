@@ -47,7 +47,7 @@ import {
 
 // ─── Types internes ──────────────────────────────────────────────────────────
 
-/** Options internes passées par le TemplateEngine lors de la compilation */
+/** Options internes passées par le Typebars lors de la compilation */
 export interface CompiledTemplateOptions {
 	/** Helpers custom enregistrés sur l'engine */
 	helpers: Map<string, HelperDefinition>;
@@ -76,7 +76,7 @@ export class CompiledTemplate {
 	/** État interne discriminé */
 	private readonly state: TemplateState;
 
-	/** Options héritées du TemplateEngine parent */
+	/** Options héritées du Typebars parent */
 	private readonly options: CompiledTemplateOptions;
 
 	/** Template Handlebars compilé (lazy — créé au premier `execute()` qui en a besoin) */
@@ -106,7 +106,7 @@ export class CompiledTemplate {
 	 *
 	 * @param ast     - L'AST Handlebars pré-parsé
 	 * @param source  - Le template source original
-	 * @param options - Options héritées du TemplateEngine
+	 * @param options - Options héritées du Typebars
 	 */
 	static fromTemplate(
 		ast: hbs.AST.Program,
@@ -121,7 +121,7 @@ export class CompiledTemplate {
 	 * (number, boolean, null). Aucun parsing ni compilation n'est effectué.
 	 *
 	 * @param value   - La valeur primitive
-	 * @param options - Options héritées du TemplateEngine
+	 * @param options - Options héritées du Typebars
 	 * @returns Un CompiledTemplate qui retourne toujours `value`
 	 */
 	static fromLiteral(
@@ -137,7 +137,7 @@ export class CompiledTemplate {
 	 * récursivement aux enfants.
 	 *
 	 * @param children - Les templates enfants compilés `{ [key]: CompiledTemplate }`
-	 * @param options  - Options héritées du TemplateEngine
+	 * @param options  - Options héritées du Typebars
 	 * @returns Un CompiledTemplate qui délègue aux enfants
 	 */
 	static fromObject(

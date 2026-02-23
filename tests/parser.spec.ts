@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, test } from "bun:test";
-import { clearParseCache, parse, TemplateParseError } from "../src/index.ts";
+import { TemplateParseError } from "../src/errors.ts";
+import { clearParseCache, parse } from "../src/parser.ts";
 
 describe("parser", () => {
 	beforeEach(() => {

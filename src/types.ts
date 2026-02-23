@@ -202,7 +202,7 @@ export interface TemplateEngineOptions {
 	 *
 	 * @example
 	 * ```
-	 * const engine = new TemplateEngine({
+	 * const engine = new Typebars({
 	 *   helpers: [
 	 *     {
 	 *       name: "uppercase",
@@ -302,7 +302,7 @@ export interface HelperDefinition {
 
 /**
  * Configuration complète d'un helper pour l'enregistrement via les options
- * du constructeur `TemplateEngine({ helpers: [...] })`.
+ * du constructeur `Typebars({ helpers: [...] })`.
  *
  * Étend `HelperDefinition` avec un `name` obligatoire.
  *
