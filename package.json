@@ -1,12 +1,17 @@
 {
 	"name": "typebars",
-	"type": "module",
-	"exports": {
-		".": {
-			"import": "./dist/index.js",
-			"types": "./dist/index.d.ts"
-		}
+	"version": "1.0.0",
+	"license": "MIT",
+	"description": "Typebars is a type-safe handlebars based template engine for generating object or content with static type checking",
+	"author": {
+		"email": "arthurtinseau@live.fr",
+		"url": "https://github.com/atinseau/typebars",
+		"name": "atinseau"
 	},
+	"main": "dist/index.js",
+	"types": "dist/index.d.ts",
+	"type": "module",
+	"sideEffects": false,
 	"files": [
 		"dist",
 		"README.md"
