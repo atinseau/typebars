@@ -1,41 +1,19 @@
-import type { JSONSchema7 } from "json-schema";
 import { Typebars } from "./src";
 
-const tb = new Typebars();
+const tp = new Typebars();
 
-const schema: JSONSchema7 = {
+const schema = {
 	type: "object",
 	properties: {
-		showAge: { type: "boolean" },
-		showName: { type: "boolean" },
-		name: { type: "string" },
 		age: { type: "number" },
+		score: { type: "number" },
+		name: { type: "string" },
 		account: {
 			type: "object",
-			properties: {
-				id: { type: "string" },
-				balance: { type: "number" },
-			},
-			required: ["id", "balance"],
+			properties: { balance: { type: "number" } },
 		},
 	},
-	required: ["name", "age"],
 };
 
-const template = `
-{{#if showName}}
-  {{account.balance}}
-{{/if}}
-
-{{#if showAge}}
-  {{#if (lt account.balance 500)}}
-    {{showAge}}
-  {{else}}
-    {{name}}
-  {{/if}}
-{{/if}}
-`;
-
-const result = tb.analyze(template, schema);
-
-console.log(JSON.stringify(result, null, 2));
+// ❌ String where number is expected → TYPE_MISMATCH
+console.log(tp.analyze("{{#if (lt name 500)}}yes{{/if}}", schema));
