@@ -9,17 +9,17 @@ import { userSchema } from "./fixtures.ts";
 
 describe("schema-resolver", () => {
 	describe("resolveSchemaPath", () => {
-		test("résout une propriété de premier niveau", () => {
+		test("resolves a top-level property", () => {
 			const result = resolveSchemaPath(userSchema, ["name"]);
 			expect(result).toEqual({ type: "string" });
 		});
 
-		test("résout un chemin imbriqué", () => {
+		test("resolves a nested path", () => {
 			const result = resolveSchemaPath(userSchema, ["address", "city"]);
 			expect(result).toEqual({ type: "string" });
 		});
 
-		test("résout une propriété avec enum", () => {
+		test("resolves a property with enum", () => {
 			const result = resolveSchemaPath(userSchema, ["metadata", "role"]);
 			expect(result).toEqual({
 				type: "string",
@@ -27,22 +27,22 @@ describe("schema-resolver", () => {
 			});
 		});
 
-		test("retourne undefined pour un chemin inexistant", () => {
+		test("returns undefined for a non-existent path", () => {
 			expect(resolveSchemaPath(userSchema, ["nonexistent"])).toBeUndefined();
 		});
 
-		test("retourne undefined pour un chemin profond inexistant", () => {
+		test("returns undefined for a non-existent deeply nested path", () => {
 			expect(
 				resolveSchemaPath(userSchema, ["address", "country"]),
 			).toBeUndefined();
 		});
 
-		test("retourne le schema racine pour un chemin vide", () => {
+		test("returns the root schema for an empty path", () => {
 			const result = resolveSchemaPath(userSchema, []);
 			expect(result).toEqual(userSchema);
 		});
 
-		test("résout un $ref vers definitions", () => {
+		test("resolves a $ref to definitions", () => {
 			const schema: JSONSchema7 = {
 				type: "object",
 				definitions: {
@@ -61,7 +61,7 @@ describe("schema-resolver", () => {
 			expect(result).toEqual({ type: "string" });
 		});
 
-		test("résout un $ref imbriqué (ref vers ref)", () => {
+		test("resolves a nested $ref (ref to ref)", () => {
 			const schema: JSONSchema7 = {
 				type: "object",
 				definitions: {
@@ -81,16 +81,16 @@ describe("schema-resolver", () => {
 			expect(result).toEqual({ type: "string" });
 		});
 
-		test("gère additionalProperties: true", () => {
+		test("handles additionalProperties: true", () => {
 			const schema: JSONSchema7 = {
 				type: "object",
 				additionalProperties: true,
 			};
 			const result = resolveSchemaPath(schema, ["anything"]);
-			expect(result).toEqual({}); // type inconnu
+			expect(result).toEqual({}); // unknown type
 		});
 
-		test("gère additionalProperties avec un schema", () => {
+		test("handles additionalProperties with a schema", () => {
 			const schema: JSONSchema7 = {
 				type: "object",
 				additionalProperties: { type: "number" },
@@ -99,7 +99,7 @@ describe("schema-resolver", () => {
 			expect(result).toEqual({ type: "number" });
 		});
 
-		test("retourne undefined quand additionalProperties: false", () => {
+		test("returns undefined when additionalProperties: false", () => {
 			const schema: JSONSchema7 = {
 				type: "object",
 				properties: { name: { type: "string" } },
@@ -108,7 +108,7 @@ describe("schema-resolver", () => {
 			expect(resolveSchemaPath(schema, ["unknown"])).toBeUndefined();
 		});
 
-		test("résout via allOf", () => {
+		test("resolves via allOf", () => {
 			const schema: JSONSchema7 = {
 				type: "object",
 				allOf: [
@@ -120,7 +120,7 @@ describe("schema-resolver", () => {
 			expect(resolveSchemaPath(schema, ["b"])).toEqual({ type: "number" });
 		});
 
-		test("résout via oneOf", () => {
+		test("resolves via oneOf", () => {
 			const schema: JSONSchema7 = {
 				type: "object",
 				oneOf: [
@@ -132,8 +132,8 @@ describe("schema-resolver", () => {
 		});
 	});
 
-	describe("propriétés intrinsèques des tableaux", () => {
-		test("résout .length sur un tableau → { type: 'integer' }", () => {
+	describe("intrinsic array properties", () => {
+		test("resolves .length on an array → { type: 'integer' }", () => {
 			const schema: JSONSchema7 = {
 				type: "object",
 				properties: {
@@ -144,7 +144,7 @@ describe("schema-resolver", () => {
 			expect(result).toEqual({ type: "integer" });
 		});
 
-		test("résout .length sur un tableau d'objets → { type: 'integer' }", () => {
+		test("resolves .length on an array of objects → { type: 'integer' }", () => {
 			const schema: JSONSchema7 = {
 				type: "object",
 				properties: {
@@ -161,7 +161,7 @@ describe("schema-resolver", () => {
 			expect(result).toEqual({ type: "integer" });
 		});
 
-		test("résout .length sur un tableau sans items → { type: 'integer' }", () => {
+		test("resolves .length on an array without items → { type: 'integer' }", () => {
 			const schema: JSONSchema7 = {
 				type: "object",
 				properties: {
@@ -172,7 +172,7 @@ describe("schema-resolver", () => {
 			expect(result).toEqual({ type: "integer" });
 		});
 
-		test("ne résout pas .length sur un non-tableau", () => {
+		test("does not resolve .length on a non-array", () => {
 			const schema: JSONSchema7 = {
 				type: "object",
 				properties: {
@@ -182,7 +182,7 @@ describe("schema-resolver", () => {
 			expect(resolveSchemaPath(schema, ["name", "length"])).toBeUndefined();
 		});
 
-		test("résout .length sur un tableau avec type multi (inclut 'array')", () => {
+		test("resolves .length on an array with multi-type (includes 'array')", () => {
 			const schema: JSONSchema7 = {
 				type: "object",
 				properties: {
@@ -193,7 +193,7 @@ describe("schema-resolver", () => {
 			expect(result).toEqual({ type: "integer" });
 		});
 
-		test("ne résout pas une propriété inconnue sur un tableau", () => {
+		test("does not resolve an unknown property on an array", () => {
 			const schema: JSONSchema7 = {
 				type: "object",
 				properties: {
@@ -205,13 +205,13 @@ describe("schema-resolver", () => {
 	});
 
 	describe("resolveArrayItems", () => {
-		test("résout les items d'un tableau simple", () => {
+		test("resolves items of a simple array", () => {
 			const schema: JSONSchema7 = { type: "array", items: { type: "string" } };
 			const result = resolveArrayItems(schema, schema);
 			expect(result).toEqual({ type: "string" });
 		});
 
-		test("résout les items d'un tableau d'objets", () => {
+		test("resolves items of an array of objects", () => {
 			const schema: JSONSchema7 = {
 				type: "array",
 				items: {
@@ -226,17 +226,17 @@ describe("schema-resolver", () => {
 			});
 		});
 
-		test("retourne un schema vide pour un array sans items", () => {
+		test("returns an empty schema for an array without items", () => {
 			const schema: JSONSchema7 = { type: "array" };
 			expect(resolveArrayItems(schema, schema)).toEqual({});
 		});
 
-		test("retourne undefined pour un non-tableau", () => {
+		test("returns undefined for a non-array", () => {
 			const schema: JSONSchema7 = { type: "string" };
 			expect(resolveArrayItems(schema, schema)).toBeUndefined();
 		});
 
-		test("gère un tuple (items tableau)", () => {
+		test("handles a tuple (array items)", () => {
 			const schema: JSONSchema7 = {
 				type: "array",
 				items: [{ type: "string" }, { type: "number" }],
@@ -249,25 +249,25 @@ describe("schema-resolver", () => {
 	});
 
 	describe("simplifySchema", () => {
-		test("déplie un oneOf à un seul élément", () => {
+		test("unwraps a oneOf with a single element", () => {
 			expect(simplifySchema({ oneOf: [{ type: "string" }] })).toEqual({
 				type: "string",
 			});
 		});
 
-		test("déplie un anyOf à un seul élément", () => {
+		test("unwraps an anyOf with a single element", () => {
 			expect(simplifySchema({ anyOf: [{ type: "number" }] })).toEqual({
 				type: "number",
 			});
 		});
 
-		test("déplie un allOf à un seul élément", () => {
+		test("unwraps an allOf with a single element", () => {
 			expect(simplifySchema({ allOf: [{ type: "boolean" }] })).toEqual({
 				type: "boolean",
 			});
 		});
 
-		test("déduplique les entrées identiques dans oneOf", () => {
+		test("deduplicates identical entries in oneOf", () => {
 			const result = simplifySchema({
 				oneOf: [{ type: "string" }, { type: "string" }, { type: "number" }],
 			});
@@ -276,14 +276,14 @@ describe("schema-resolver", () => {
 			});
 		});
 
-		test("simplifie un oneOf dédupliqué à un seul élément restant", () => {
+		test("simplifies a deduplicated oneOf to a single remaining element", () => {
 			const result = simplifySchema({
 				oneOf: [{ type: "string" }, { type: "string" }],
 			});
 			expect(result).toEqual({ type: "string" });
 		});
 
-		test("retourne le schema inchangé s'il est déjà simple", () => {
+		test("returns the schema unchanged if already simple", () => {
 			const schema: JSONSchema7 = { type: "string" };
 			expect(simplifySchema(schema)).toEqual(schema);
 		});

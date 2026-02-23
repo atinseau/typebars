@@ -4,7 +4,7 @@ import { MathHelpers } from "../src/helpers/math-helpers.ts";
 import { Typebars } from "../src/typebars.ts";
 import type { HelperConfig } from "../src/types.ts";
 
-// ─── Schema & données partagées ──────────────────────────────────────────────
+// ─── Shared schema & data ────────────────────────────────────────────────────
 
 const schema: JSONSchema7 = {
 	type: "object",
@@ -47,15 +47,15 @@ describe("MathHelpers", () => {
 
 	// ─── Built-in registration ───────────────────────────────────────────
 
-	describe("pré-enregistrement (built-in)", () => {
-		it("tous les math helpers sont disponibles sans appel à register()", () => {
+	describe("pre-registration (built-in)", () => {
+		it("all math helpers are available without calling register()", () => {
 			const names = MathHelpers.getHelperNames();
 			for (const name of names) {
 				expect(engine.hasHelper(name)).toBe(true);
 			}
 		});
 
-		it("un engine frais peut directement utiliser les math helpers", () => {
+		it("a fresh engine can directly use math helpers", () => {
 			const { analysis, value } = run(engine, "{{ add a b }}");
 			expect(analysis.valid).toBe(true);
 			expect(value).toBe(13);
@@ -64,8 +64,8 @@ describe("MathHelpers", () => {
 
 	// ─── Register / unregister explicite ─────────────────────────────────
 
-	describe("register / unregister explicite", () => {
-		it("unregister supprime tous les helpers", () => {
+	describe("explicit register / unregister", () => {
+		it("unregister removes all helpers", () => {
 			MathHelpers.unregister(engine);
 			const names = MathHelpers.getHelperNames();
 			for (const name of names) {
@@ -73,7 +73,7 @@ describe("MathHelpers", () => {
 			}
 		});
 
-		it("register ré-enregistre après un unregister", () => {
+		it("register re-registers after an unregister", () => {
 			MathHelpers.unregister(engine);
 			expect(engine.hasHelper("add")).toBe(false);
 
@@ -84,7 +84,7 @@ describe("MathHelpers", () => {
 			expect(value).toBe(13);
 		});
 
-		it("register est idempotent (pas d'erreur si appelé deux fois)", () => {
+		it("register is idempotent (no error if called twice)", () => {
 			MathHelpers.register(engine);
 			expect(engine.hasHelper("add")).toBe(true);
 		});
@@ -93,7 +93,7 @@ describe("MathHelpers", () => {
 	// ─── getDefinitions ──────────────────────────────────────────────────
 
 	describe("getDefinitions", () => {
-		it("retourne une Map avec toutes les définitions", () => {
+		it("returns a Map with all definitions", () => {
 			const defs = MathHelpers.getDefinitions();
 			expect(defs).toBeInstanceOf(Map);
 			expect(defs.size).toBeGreaterThanOrEqual(
@@ -101,7 +101,7 @@ describe("MathHelpers", () => {
 			);
 		});
 
-		it("chaque définition a fn et returnType number", () => {
+		it("every definition has fn and returnType number", () => {
 			const defs = MathHelpers.getDefinitions();
 			for (const [, def] of defs) {
 				expect(typeof def.fn).toBe("function");
@@ -113,7 +113,7 @@ describe("MathHelpers", () => {
 	// ─── params metadata ────────────────────────────────────────────────
 
 	describe("params metadata", () => {
-		it("chaque définition a un tableau params non vide", () => {
+		it("every definition has a non-empty params array", () => {
 			const defs = MathHelpers.getDefinitions();
 			for (const [_name, def] of defs) {
 				expect(def.params).toBeDefined();
@@ -121,7 +121,7 @@ describe("MathHelpers", () => {
 			}
 		});
 
-		it("chaque param a un name et un type", () => {
+		it("every param has a name and a type", () => {
 			const defs = MathHelpers.getDefinitions();
 			for (const [, def] of defs) {
 				for (const param of def.params ?? []) {
@@ -132,7 +132,7 @@ describe("MathHelpers", () => {
 			}
 		});
 
-		it("chaque définition a une description", () => {
+		it("every definition has a description", () => {
 			const defs = MathHelpers.getDefinitions();
 			for (const [, def] of defs) {
 				expect(typeof def.description).toBe("string");
@@ -140,7 +140,7 @@ describe("MathHelpers", () => {
 			}
 		});
 
-		it("round a un paramètre precision optionnel", () => {
+		it("round has an optional precision parameter", () => {
 			const defs = MathHelpers.getDefinitions();
 			const roundDef = defs.get("round");
 			expect(roundDef).toBeDefined();
@@ -151,7 +151,7 @@ describe("MathHelpers", () => {
 			expect(precisionParam?.optional).toBe(true);
 		});
 
-		it("math a un paramètre operator avec enum", () => {
+		it("math has an operator parameter with enum", () => {
 			const defs = MathHelpers.getDefinitions();
 			const mathDef = defs.get("math");
 			expect(mathDef).toBeDefined();
@@ -165,7 +165,7 @@ describe("MathHelpers", () => {
 			});
 		});
 
-		it("les helpers binaires ont exactement 2 params", () => {
+		it("binary helpers have exactly 2 params", () => {
 			const defs = MathHelpers.getDefinitions();
 			const binaryHelpers = [
 				"add",
@@ -183,7 +183,7 @@ describe("MathHelpers", () => {
 			}
 		});
 
-		it("les helpers unaires ont exactement 1 param", () => {
+		it("unary helpers have exactly 1 param", () => {
 			const defs = MathHelpers.getDefinitions();
 			const unaryHelpers = ["abs", "ceil", "floor", "sqrt"];
 			for (const name of unaryHelpers) {
@@ -196,13 +196,13 @@ describe("MathHelpers", () => {
 	// ─── isMathHelper ────────────────────────────────────────────────────
 
 	describe("isMathHelper", () => {
-		it("retourne true pour un helper math connu", () => {
+		it("returns true for a known math helper", () => {
 			expect(MathHelpers.isMathHelper("add")).toBe(true);
 			expect(MathHelpers.isMathHelper("math")).toBe(true);
 			expect(MathHelpers.isMathHelper("floor")).toBe(true);
 		});
 
-		it("retourne false pour un helper inconnu", () => {
+		it("returns false for an unknown helper", () => {
 			expect(MathHelpers.isMathHelper("uppercase")).toBe(false);
 			expect(MathHelpers.isMathHelper("unknown")).toBe(false);
 		});
@@ -211,33 +211,33 @@ describe("MathHelpers", () => {
 	// ─── add ─────────────────────────────────────────────────────────────
 
 	describe("add", () => {
-		it("additionne deux propriétés", () => {
+		it("adds two properties", () => {
 			const { analysis, value } = run(engine, "{{ add a b }}");
 			expect(analysis.valid).toBe(true);
 			expect(value).toBe(13);
 		});
 
-		it("additionne une propriété et un littéral", () => {
+		it("adds a property and a literal", () => {
 			const { value } = run(engine, "{{ add a 5 }}");
 			expect(value).toBe(15);
 		});
 
-		it("additionne avec un nombre négatif", () => {
+		it("adds with a negative number", () => {
 			const { value } = run(engine, "{{ add a negative }}");
 			expect(value).toBe(3);
 		});
 
-		it("additionne avec zéro", () => {
+		it("adds with zero", () => {
 			const { value } = run(engine, "{{ add a zero }}");
 			expect(value).toBe(10);
 		});
 
-		it("additionne des décimaux", () => {
+		it("adds decimals", () => {
 			const { value } = run(engine, "{{ add decimal 1 }}");
 			expect(value).toBeCloseTo(4.14159, 5);
 		});
 
-		it("analyse statique retourne outputSchema number", () => {
+		it("static analysis returns outputSchema number", () => {
 			const { analysis } = run(engine, "{{ add a b }}");
 			expect(analysis.outputSchema).toEqual({ type: "number" });
 		});
@@ -246,22 +246,22 @@ describe("MathHelpers", () => {
 	// ─── subtract / sub ──────────────────────────────────────────────────
 
 	describe("subtract / sub", () => {
-		it("soustrait deux propriétés avec subtract", () => {
+		it("subtracts two properties with subtract", () => {
 			const { value } = run(engine, "{{ subtract a b }}");
 			expect(value).toBe(7);
 		});
 
-		it("soustrait avec l'alias sub", () => {
+		it("subtracts with the sub alias", () => {
 			const { value } = run(engine, "{{ sub a b }}");
 			expect(value).toBe(7);
 		});
 
-		it("soustrait un littéral", () => {
+		it("subtracts a literal", () => {
 			const { value } = run(engine, "{{ sub a 3 }}");
 			expect(value).toBe(7);
 		});
 
-		it("résultat négatif", () => {
+		it("negative result", () => {
 			const { value } = run(engine, "{{ sub b a }}");
 			expect(value).toBe(-7);
 		});
@@ -270,27 +270,27 @@ describe("MathHelpers", () => {
 	// ─── multiply / mul ──────────────────────────────────────────────────
 
 	describe("multiply / mul", () => {
-		it("multiplie deux propriétés avec multiply", () => {
+		it("multiplies two properties with multiply", () => {
 			const { value } = run(engine, "{{ multiply a b }}");
 			expect(value).toBe(30);
 		});
 
-		it("multiplie avec l'alias mul", () => {
+		it("multiplies with the mul alias", () => {
 			const { value } = run(engine, "{{ mul a b }}");
 			expect(value).toBe(30);
 		});
 
-		it("multiplie par zéro", () => {
+		it("multiplies by zero", () => {
 			const { value } = run(engine, "{{ mul a zero }}");
 			expect(value).toBe(0);
 		});
 
-		it("multiplie par un négatif", () => {
+		it("multiplies by a negative", () => {
 			const { value } = run(engine, "{{ mul a negative }}");
 			expect(value).toBe(-70);
 		});
 
-		it("multiplie des décimaux", () => {
+		it("multiplies decimals", () => {
 			const { value } = run(engine, "{{ mul decimal 2 }}");
 			expect(value).toBeCloseTo(6.28318, 4);
 		});
@@ -299,32 +299,32 @@ describe("MathHelpers", () => {
 	// ─── divide / div ────────────────────────────────────────────────────
 
 	describe("divide / div", () => {
-		it("divise deux propriétés avec divide", () => {
+		it("divides two properties with divide", () => {
 			const { value } = run(engine, "{{ divide a b }}");
 			expect(value).toBeCloseTo(3.3333, 3);
 		});
 
-		it("divise avec l'alias div", () => {
+		it("divides with the div alias", () => {
 			const { value } = run(engine, "{{ div a b }}");
 			expect(value).toBeCloseTo(3.3333, 3);
 		});
 
-		it("division entière exacte", () => {
+		it("exact integer division", () => {
 			const { value } = run(engine, "{{ divide a 2 }}");
 			expect(value).toBe(5);
 		});
 
-		it("division par zéro retourne Infinity", () => {
+		it("division by zero returns Infinity", () => {
 			const { value } = run(engine, "{{ divide a zero }}");
 			expect(value).toBeDefined();
 		});
 
-		it("divise un littéral par une propriété", () => {
+		it("divides a literal by a property", () => {
 			const { value } = run(engine, "{{ divide 100 a }}");
 			expect(value).toBe(10);
 		});
 
-		it("divise avec .length d'un tableau", () => {
+		it("divides with array .length", () => {
 			const { value } = run(engine, "{{ divide items.length 5 }}");
 			expect(value).toBe(1);
 		});
@@ -333,22 +333,22 @@ describe("MathHelpers", () => {
 	// ─── modulo / mod ────────────────────────────────────────────────────
 
 	describe("modulo / mod", () => {
-		it("calcule le modulo avec modulo", () => {
+		it("computes modulo with modulo", () => {
 			const { value } = run(engine, "{{ modulo a b }}");
 			expect(value).toBe(1);
 		});
 
-		it("calcule le modulo avec l'alias mod", () => {
+		it("computes modulo with the mod alias", () => {
 			const { value } = run(engine, "{{ mod a b }}");
 			expect(value).toBe(1);
 		});
 
-		it("modulo avec diviseur plus grand", () => {
+		it("modulo with a larger divisor", () => {
 			const { value } = run(engine, "{{ mod b a }}");
 			expect(value).toBe(3);
 		});
 
-		it("modulo par zéro retourne NaN", () => {
+		it("modulo by zero returns NaN", () => {
 			const { value } = run(engine, "{{ mod a zero }}");
 			expect(value).toBeDefined();
 		});
@@ -357,27 +357,27 @@ describe("MathHelpers", () => {
 	// ─── pow ─────────────────────────────────────────────────────────────
 
 	describe("pow", () => {
-		it("élève à la puissance", () => {
+		it("raises to the power", () => {
 			const { value } = run(engine, "{{ pow a 2 }}");
 			expect(value).toBe(100);
 		});
 
-		it("puissance 0 retourne 1", () => {
+		it("power 0 returns 1", () => {
 			const { value } = run(engine, "{{ pow a 0 }}");
 			expect(value).toBe(1);
 		});
 
-		it("puissance 1 retourne la valeur elle-même", () => {
+		it("power 1 returns the value itself", () => {
 			const { value } = run(engine, "{{ pow a 1 }}");
 			expect(value).toBe(10);
 		});
 
-		it("puissance avec base 0", () => {
+		it("power with base 0", () => {
 			const { value } = run(engine, "{{ pow zero 5 }}");
 			expect(value).toBe(0);
 		});
 
-		it("puissance avec exposant négatif", () => {
+		it("power with negative exponent", () => {
 			const { value } = run(engine, "{{ pow a -1 }}");
 			expect(value).toBeCloseTo(0.1, 5);
 		});
@@ -386,17 +386,17 @@ describe("MathHelpers", () => {
 	// ─── abs ─────────────────────────────────────────────────────────────
 
 	describe("abs", () => {
-		it("retourne la valeur absolue d'un nombre négatif", () => {
+		it("returns the absolute value of a negative number", () => {
 			const { value } = run(engine, "{{ abs negative }}");
 			expect(value).toBe(7);
 		});
 
-		it("retourne la valeur absolue d'un nombre positif (inchangé)", () => {
+		it("returns the absolute value of a positive number (unchanged)", () => {
 			const { value } = run(engine, "{{ abs a }}");
 			expect(value).toBe(10);
 		});
 
-		it("retourne 0 pour zéro", () => {
+		it("returns 0 for zero", () => {
 			const { value } = run(engine, "{{ abs zero }}");
 			expect(value).toBe(0);
 		});
@@ -405,17 +405,17 @@ describe("MathHelpers", () => {
 	// ─── ceil ────────────────────────────────────────────────────────────
 
 	describe("ceil", () => {
-		it("arrondit un décimal vers le haut", () => {
+		it("rounds a decimal up", () => {
 			const { value } = run(engine, "{{ ceil decimal }}");
 			expect(value).toBe(4);
 		});
 
-		it("un entier reste inchangé", () => {
+		it("an integer stays unchanged", () => {
 			const { value } = run(engine, "{{ ceil a }}");
 			expect(value).toBe(10);
 		});
 
-		it("arrondit un négatif vers le haut (vers zéro)", () => {
+		it("rounds a negative up (toward zero)", () => {
 			const { value } = run(engine, "{{ ceil negative }}");
 			expect(value).toBe(-7);
 		});
@@ -424,17 +424,17 @@ describe("MathHelpers", () => {
 	// ─── floor ───────────────────────────────────────────────────────────
 
 	describe("floor", () => {
-		it("arrondit un décimal vers le bas", () => {
+		it("rounds a decimal down", () => {
 			const { value } = run(engine, "{{ floor decimal }}");
 			expect(value).toBe(3);
 		});
 
-		it("un entier reste inchangé", () => {
+		it("an integer stays unchanged", () => {
 			const { value } = run(engine, "{{ floor a }}");
 			expect(value).toBe(10);
 		});
 
-		it("arrondit un négatif vers le bas (loin de zéro)", () => {
+		it("rounds a negative down (away from zero)", () => {
 			const { value } = run(engine, "{{ floor negative }}");
 			expect(value).toBe(-7);
 		});
@@ -443,22 +443,22 @@ describe("MathHelpers", () => {
 	// ─── round ───────────────────────────────────────────────────────────
 
 	describe("round", () => {
-		it("arrondit à l'entier le plus proche", () => {
+		it("rounds to the nearest integer", () => {
 			const { value } = run(engine, "{{ round decimal }}");
 			expect(value).toBe(3);
 		});
 
-		it("arrondit avec précision 2", () => {
+		it("rounds with precision 2", () => {
 			const { value } = run(engine, "{{ round decimal 2 }}");
 			expect(value).toBe(3.14);
 		});
 
-		it("arrondit avec précision 0 (identique à sans précision)", () => {
+		it("rounds with precision 0 (same as without precision)", () => {
 			const { value } = run(engine, "{{ round decimal 0 }}");
 			expect(value).toBe(3);
 		});
 
-		it("un entier reste inchangé", () => {
+		it("an integer stays unchanged", () => {
 			const { value } = run(engine, "{{ round a }}");
 			expect(value).toBe(10);
 		});
@@ -467,7 +467,7 @@ describe("MathHelpers", () => {
 	// ─── sqrt ────────────────────────────────────────────────────────────
 
 	describe("sqrt", () => {
-		it("calcule la racine carrée", () => {
+		it("computes the square root", () => {
 			const result = engine.analyzeAndExecute(
 				"{{ sqrt val }}",
 				{
@@ -480,7 +480,7 @@ describe("MathHelpers", () => {
 			expect(result.value).toBe(3);
 		});
 
-		it("racine de zéro", () => {
+		it("square root of zero", () => {
 			const { value } = run(engine, "{{ sqrt zero }}");
 			expect(value).toBe(0);
 		});
@@ -489,126 +489,126 @@ describe("MathHelpers", () => {
 	// ─── min ─────────────────────────────────────────────────────────────
 
 	describe("min", () => {
-		it("retourne le plus petit de deux nombres", () => {
+		it("returns the smaller of two numbers", () => {
 			const { value } = run(engine, "{{ min a b }}");
 			expect(value).toBe(3);
 		});
 
-		it("retourne le plus petit avec un négatif", () => {
+		it("returns the smaller with a negative", () => {
 			const { value } = run(engine, "{{ min a negative }}");
 			expect(value).toBe(-7);
 		});
 
-		it("retourne le nombre si les deux sont égaux", () => {
-			const { value } = run(engine, "{{ min a a }}");
-			expect(value).toBe(10);
+		it("returns the number when both are equal", () => {
+			const { value } = run(engine, "{{ min b b }}");
+			expect(value).toBe(3);
 		});
 	});
 
 	// ─── max ─────────────────────────────────────────────────────────────
 
 	describe("max", () => {
-		it("retourne le plus grand de deux nombres", () => {
+		it("returns the larger of two numbers", () => {
 			const { value } = run(engine, "{{ max a b }}");
 			expect(value).toBe(10);
 		});
 
-		it("retourne le plus grand avec un négatif", () => {
+		it("returns the larger with a negative", () => {
 			const { value } = run(engine, "{{ max a negative }}");
 			expect(value).toBe(10);
 		});
 
-		it("retourne le nombre si les deux sont égaux", () => {
-			const { value } = run(engine, "{{ max b b }}");
-			expect(value).toBe(3);
+		it("returns the number when both are equal", () => {
+			const { value } = run(engine, "{{ max a a }}");
+			expect(value).toBe(10);
 		});
 	});
 
-	// ─── math (helper générique) ─────────────────────────────────────────
+	// ─── math (generic helper) ───────────────────────────────────────────
 
-	describe("math (helper générique)", () => {
-		it('addition avec "+"', () => {
+	describe("math (generic helper)", () => {
+		it('addition with "+"', () => {
 			const { value } = run(engine, '{{ math a "+" b }}');
 			expect(value).toBe(13);
 		});
 
-		it('soustraction avec "-"', () => {
+		it('subtraction with "-"', () => {
 			const { value } = run(engine, '{{ math a "-" b }}');
 			expect(value).toBe(7);
 		});
 
-		it('multiplication avec "*"', () => {
+		it('multiplication with "*"', () => {
 			const { value } = run(engine, '{{ math a "*" b }}');
 			expect(value).toBe(30);
 		});
 
-		it('division avec "/"', () => {
+		it('division with "/"', () => {
 			const { value } = run(engine, '{{ math a "/" b }}');
 			expect(value).toBeCloseTo(3.3333, 3);
 		});
 
-		it('modulo avec "%"', () => {
+		it('modulo with "%"', () => {
 			const { value } = run(engine, '{{ math a "%" b }}');
 			expect(value).toBe(1);
 		});
 
-		it('exponentiation avec "**"', () => {
+		it('exponentiation with "**"', () => {
 			const { value } = run(engine, '{{ math b "**" 3 }}');
 			expect(value).toBe(27);
 		});
 
-		it('division par zéro avec "/"', () => {
+		it('division by zero with "/"', () => {
 			const { value } = run(engine, '{{ math a "/" zero }}');
 			expect(value).toBeDefined();
 		});
 
-		it("analyse statique retourne outputSchema number", () => {
+		it("static analysis returns outputSchema number", () => {
 			const { analysis } = run(engine, '{{ math a "+" b }}');
 			expect(analysis.valid).toBe(true);
 			expect(analysis.outputSchema).toEqual({ type: "number" });
 		});
 
-		it("fonctionne avec des littéraux numériques des deux côtés", () => {
+		it("works with numeric literals on both sides", () => {
 			const { value } = run(engine, '{{ math 6 "*" 7 }}');
 			expect(value).toBe(42);
 		});
 	});
 
-	// ─── Combinaison avec .length ────────────────────────────────────────
+	// ─── Combination with .length ────────────────────────────────────────
 
-	describe("combinaison avec .length", () => {
-		it("divise la longueur d'un tableau par un nombre", () => {
+	describe("combination with .length", () => {
+		it("divides an array's length by a number", () => {
 			const { analysis, value } = run(engine, "{{ divide items.length 5 }}");
 			expect(analysis.valid).toBe(true);
 			expect(value).toBe(1);
 		});
 
-		it("multiplie la longueur d'un tableau", () => {
+		it("multiplies an array's length", () => {
 			const { value } = run(engine, "{{ mul items.length 10 }}");
 			expect(value).toBe(50);
 		});
 
-		it("utilise math avec .length", () => {
+		it("uses math with .length", () => {
 			const { value } = run(engine, '{{ math items.length "+" 100 }}');
 			expect(value).toBe(105);
 		});
 	});
 
-	// ─── Intégration dans des templates mixtes ───────────────────────────
+	// ─── Integration in mixed templates ──────────────────────────────────
 
-	describe("intégration dans des templates mixtes", () => {
-		it("helper math dans un template avec du texte", () => {
+	describe("integration in mixed templates", () => {
+		it("math helper in a template with text", () => {
 			const { analysis, value } = run(engine, "Total: {{ mul a b }} items");
 			expect(analysis.valid).toBe(true);
 			expect(value).toBe("Total: 30 items");
 		});
 
-		it("plusieurs helpers math dans un même template", () => {
+		it("multiple math helpers in the same template", () => {
 			const { value } = run(engine, "{{ add a b }} and {{ sub a b }}");
 			expect(value).toBe("13 and 7");
 		});
 
-		it("helper math dans un bloc #if", () => {
+		it("math helper inside a #if block", () => {
 			const result = engine.analyzeAndExecute(
 				"{{#if a}}{{ mul a 2 }}{{/if}}",
 				schema,
@@ -618,22 +618,22 @@ describe("MathHelpers", () => {
 		});
 	});
 
-	// ─── Coercion de types ───────────────────────────────────────────────
+	// ─── Type coercion ───────────────────────────────────────────────────
 
-	describe("coercion de types", () => {
-		it("expression unique helper retourne un number (pas une string)", () => {
+	describe("type coercion", () => {
+		it("single helper expression returns a number (not a string)", () => {
 			const { value } = run(engine, "{{ add a b }}");
 			expect(typeof value).toBe("number");
 			expect(value).toBe(13);
 		});
 
-		it("expression unique avec whitespace retourne un number", () => {
+		it("single expression with whitespace returns a number", () => {
 			const { value } = run(engine, "  {{ add a b }}  ");
 			expect(typeof value).toBe("number");
 			expect(value).toBe(13);
 		});
 
-		it("template mixte retourne toujours une string", () => {
+		it("mixed template always returns a string", () => {
 			const { value } = run(engine, "result: {{ add a b }}");
 			expect(typeof value).toBe("string");
 		});
@@ -642,7 +642,7 @@ describe("MathHelpers", () => {
 	// ─── Edge cases ──────────────────────────────────────────────────────
 
 	describe("edge cases", () => {
-		it("opération sur une propriété string détecte un TYPE_MISMATCH", () => {
+		it("operation on a string property detects a TYPE_MISMATCH", () => {
 			const { analysis, value } = run(engine, "{{ add label 5 }}");
 			expect(analysis.valid).toBe(false);
 			expect(value).toBeUndefined();
@@ -654,7 +654,7 @@ describe("MathHelpers", () => {
 			expect(analysis.diagnostics[0]?.details?.actual).toBe("string");
 		});
 
-		it("opération avec un très grand nombre", () => {
+		it("operation with a very large number", () => {
 			const result = engine.analyzeAndExecute(
 				"{{ mul val 2 }}",
 				{
@@ -667,17 +667,17 @@ describe("MathHelpers", () => {
 			expect(result.value).toBe(Number.MAX_SAFE_INTEGER * 2);
 		});
 
-		it("chaînage conceptuel — résultat en template mixte", () => {
+		it("conceptual chaining — result in mixed template", () => {
 			const { value } = run(engine, "{{ add a 5 }} + {{ mul b 2 }}");
 			expect(value).toBe("15 + 6");
 		});
 	});
 });
 
-// ─── Tests du système helpers via options du constructeur ─────────────────────
+// ─── Tests for the helper system via constructor options ─────────────────────
 
 describe("Typebars({ helpers: [...] })", () => {
-	it("enregistre des helpers custom via les options", () => {
+	it("registers custom helpers via options", () => {
 		const engine = new Typebars({
 			helpers: [
 				{
@@ -699,7 +699,7 @@ describe("Typebars({ helpers: [...] })", () => {
 		expect(engine.hasHelper("uppercase")).toBe(true);
 	});
 
-	it("les helpers custom fonctionnent à l'exécution", () => {
+	it("custom helpers work at execution time", () => {
 		const engine = new Typebars({
 			helpers: [
 				{
@@ -726,7 +726,7 @@ describe("Typebars({ helpers: [...] })", () => {
 		expect(result.value).toBe(50);
 	});
 
-	it("les helpers custom coexistent avec les math helpers built-in", () => {
+	it("custom helpers coexist with built-in math helpers", () => {
 		const engine = new Typebars({
 			helpers: [
 				{
@@ -753,7 +753,7 @@ describe("Typebars({ helpers: [...] })", () => {
 		expect(mathResult.value).toBe(8);
 	});
 
-	it("un helper custom peut overrider un math helper built-in", () => {
+	it("a custom helper can override a built-in math helper", () => {
 		const engine = new Typebars({
 			helpers: [
 				{
@@ -784,7 +784,7 @@ describe("Typebars({ helpers: [...] })", () => {
 		expect(result.value).toBe("hello-world");
 	});
 
-	it("supporte plusieurs helpers custom dans le même tableau", () => {
+	it("supports multiple custom helpers in the same array", () => {
 		const helpers: HelperConfig[] = [
 			{
 				name: "greet",
@@ -813,18 +813,18 @@ describe("Typebars({ helpers: [...] })", () => {
 		expect(engine.hasHelper("negate")).toBe(true);
 	});
 
-	it("fonctionne avec un tableau vide de helpers", () => {
+	it("works with an empty helpers array", () => {
 		const engine = new Typebars({ helpers: [] });
 		// Math helpers built-in toujours disponibles
 		expect(engine.hasHelper("add")).toBe(true);
 	});
 
-	it("fonctionne sans l'option helpers (undefined)", () => {
+	it("works without the helpers option (undefined)", () => {
 		const engine = new Typebars({});
 		expect(engine.hasHelper("add")).toBe(true);
 	});
 
-	it("un helper custom avec params et description est introspecable via registerHelper", () => {
+	it("a custom helper with params and description is introspectable via registerHelper", () => {
 		const engine = new Typebars({
 			helpers: [
 				{
@@ -869,7 +869,7 @@ describe("Typebars({ helpers: [...] })", () => {
 		expect(result.value).toBe(120);
 	});
 
-	it("un helper custom avec paramètre optionnel", () => {
+	it("a custom helper with an optional parameter", () => {
 		const engine = new Typebars({
 			helpers: [
 				{

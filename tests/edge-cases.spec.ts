@@ -9,34 +9,34 @@ describe("edge cases", () => {
 		clearCompilationCache();
 	});
 
-	test("template vide → string vide", () => {
+	test("empty template → empty string", () => {
 		const result = execute("", {});
 		expect(result).toBe("");
 	});
 
-	test("template vide analysé → valid, outputSchema string", () => {
+	test("empty template analyzed → valid, outputSchema string", () => {
 		const result = analyze("", userSchema);
 		expect(result.valid).toBe(true);
-		// Un template vide produit une string vide
+		// An empty template produces an empty string
 		expect(result.outputSchema).toEqual({ type: "string" });
 	});
 
-	test("commentaire Handlebars seul", () => {
+	test("Handlebars comment only", () => {
 		const result = analyze("{{!-- un commentaire --}}", userSchema);
 		expect(result.valid).toBe(true);
 	});
 
-	test("commentaire inline", () => {
+	test("inline comment", () => {
 		const result = analyze("{{! commentaire }}", userSchema);
 		expect(result.valid).toBe(true);
 	});
 
-	test("schema vide → toute propriété est inconnue", () => {
+	test("empty schema → any property is unknown", () => {
 		const result = analyze("{{anything}}", {});
 		expect(result.valid).toBe(false);
 	});
 
-	test("this dans un each retourne le contexte courant", () => {
+	test("this inside an each returns the current context", () => {
 		const schema: JSONSchema7 = {
 			type: "object",
 			properties: {
@@ -47,14 +47,14 @@ describe("edge cases", () => {
 		expect(result.valid).toBe(true);
 	});
 
-	test("exécution de this dans un each", () => {
+	test("execution of this inside an each", () => {
 		const result = execute("{{#each items}}{{this}} {{/each}}", {
 			items: [1, 2, 3],
 		});
 		expect(result).toBe("1 2 3 ");
 	});
 
-	test("schema avec type tableau (multi-types)", () => {
+	test("schema with array type (multi-types)", () => {
 		const schema: JSONSchema7 = {
 			type: "object",
 			properties: {
@@ -66,13 +66,13 @@ describe("edge cases", () => {
 		expect(result.outputSchema).toEqual({ type: ["string", "null"] });
 	});
 
-	test("accès à une propriété sur un schema sans properties", () => {
+	test("accessing a property on a schema without properties", () => {
 		const schema: JSONSchema7 = { type: "object" };
 		const result = analyze("{{anything}}", schema);
 		expect(result.valid).toBe(false);
 	});
 
-	test("#each imbriqué avec contexte correct", () => {
+	test("nested #each with correct context", () => {
 		const schema: JSONSchema7 = {
 			type: "object",
 			properties: {
@@ -97,7 +97,7 @@ describe("edge cases", () => {
 		expect(result.valid).toBe(true);
 	});
 
-	test("exécution de #each imbriqué", () => {
+	test("execution of nested #each", () => {
 		const data = {
 			groups: [{ members: ["a", "b"] }, { members: ["c"] }],
 		};
@@ -108,7 +108,7 @@ describe("edge cases", () => {
 		expect(result).toBe("[ab][c]");
 	});
 
-	test("données runtime null ne cassent pas l'exécution (dot notation)", () => {
+	test("null runtime data does not break execution (dot notation)", () => {
 		const result = execute("{{a.b.c}}", { a: null });
 		expect(result).toBeUndefined();
 	});

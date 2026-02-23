@@ -1,21 +1,21 @@
 import type { JSONSchema7 } from "json-schema";
 import type { AnalysisResult, TemplateDiagnostic } from "./types.ts";
 
-// ─── Utilitaires ─────────────────────────────────────────────────────────────
-// Fonctions et classes utilitaires partagées par les différents modules
-// du moteur de template.
+// ─── Utilities ───────────────────────────────────────────────────────────────
+// Shared utility functions and classes used across the different modules
+// of the template engine.
 
 // ─── Deep Equality ───────────────────────────────────────────────────────────
-// Comparaison structurelle profonde pour des valeurs JSON-compatibles.
-// Plus robuste que `JSON.stringify` car indépendant de l'ordre des clés
-// et sans allocation de strings intermédiaires.
+// Deep structural comparison for JSON-compatible values.
+// More robust than `JSON.stringify` because it is independent of key order
+// and does not allocate intermediate strings.
 
 /**
- * Compare récursivement deux valeurs JSON-compatibles.
+ * Recursively compares two JSON-compatible values.
  *
- * @param a - Première valeur
- * @param b - Seconde valeur
- * @returns `true` si les deux valeurs sont structurellement identiques
+ * @param a - First value
+ * @param b - Second value
+ * @returns `true` if the two values are structurally identical
  *
  * @example
  * ```
@@ -25,14 +25,14 @@ import type { AnalysisResult, TemplateDiagnostic } from "./types.ts";
  * ```
  */
 export function deepEqual(a: unknown, b: unknown): boolean {
-	// Identité stricte (couvre primitives, même ref, NaN !== NaN volontaire)
+	// Strict identity (covers primitives, same ref; NaN !== NaN is intentional)
 	if (a === b) return true;
 
-	// null est typeof "object" en JS — on le traite à part
+	// null is typeof "object" in JS — handle it separately
 	if (a === null || b === null) return false;
 	if (typeof a !== typeof b) return false;
 
-	// ── Tableaux ────────────────────────────────────────────────────────────
+	// ── Arrays ───────────────────────────────────────────────────────────────
 	if (Array.isArray(a)) {
 		if (!Array.isArray(b)) return false;
 		if (a.length !== b.length) return false;
@@ -42,7 +42,7 @@ export function deepEqual(a: unknown, b: unknown): boolean {
 		return true;
 	}
 
-	// ── Objets ──────────────────────────────────────────────────────────────
+	// ── Objects ──────────────────────────────────────────────────────────────
 	if (typeof a === "object") {
 		const objA = a as Record<string, unknown>;
 		const objB = b as Record<string, unknown>;
@@ -57,25 +57,25 @@ export function deepEqual(a: unknown, b: unknown): boolean {
 		return true;
 	}
 
-	// Primitives différentes (déjà couvert par a === b au début)
+	// Different primitives (already covered by a === b at the top)
 	return false;
 }
 
 // ─── LRU Cache ───────────────────────────────────────────────────────────────
-// Cache à capacité fixe avec éviction LRU (Least Recently Used).
-// Utilise l'ordre d'insertion de `Map` pour tracker l'accès : l'entrée
-// la plus ancienne est toujours en première position.
+// Fixed-capacity cache with Least Recently Used (LRU) eviction.
+// Leverages `Map` insertion order to track access: the oldest entry
+// is always in the first position.
 
 /**
- * Cache LRU simple à capacité fixe.
+ * Simple fixed-capacity LRU cache.
  *
  * @example
  * ```
  * const cache = new LRUCache<string, number>(2);
  * cache.set("a", 1);
  * cache.set("b", 2);
- * cache.get("a");      // → 1 (marque "a" comme récemment utilisé)
- * cache.set("c", 3);   // évince "b" (le moins récemment utilisé)
+ * cache.get("a");      // → 1 (marks "a" as recently used)
+ * cache.set("c", 3);   // evicts "b" (least recently used)
  * cache.get("b");      // → undefined
  * ```
  */
@@ -89,13 +89,13 @@ export class LRUCache<K, V> {
 	}
 
 	/**
-	 * Récupère une valeur du cache. Retourne `undefined` si absente.
-	 * Marque l'entrée comme récemment utilisée.
+	 * Retrieves a value from the cache. Returns `undefined` if absent.
+	 * Marks the entry as recently used.
 	 */
 	get(key: K): V | undefined {
 		if (!this.cache.has(key)) return undefined;
 
-		// Déplacer en fin de Map (= plus récent)
+		// Move to the end of the Map (= most recently used)
 		const value = this.cache.get(key) as V;
 		this.cache.delete(key);
 		this.cache.set(key, value);
@@ -103,14 +103,14 @@ export class LRUCache<K, V> {
 	}
 
 	/**
-	 * Insère ou met à jour une valeur dans le cache.
-	 * Si le cache est plein, évince l'entrée la moins récemment utilisée.
+	 * Inserts or updates a value in the cache.
+	 * If the cache is full, evicts the least recently used entry.
 	 */
 	set(key: K, value: V): void {
 		if (this.cache.has(key)) {
 			this.cache.delete(key);
 		} else if (this.cache.size >= this.capacity) {
-			// Évince la première entrée (la plus ancienne)
+			// Evict the first entry (the oldest one)
 			const oldestKey = this.cache.keys().next().value;
 			if (oldestKey !== undefined) {
 				this.cache.delete(oldestKey);
@@ -120,41 +120,40 @@ export class LRUCache<K, V> {
 	}
 
 	/**
-	 * Vérifie si une clé existe dans le cache (sans modifier l'ordre LRU).
+	 * Checks whether a key exists in the cache (without affecting LRU order).
 	 */
 	has(key: K): boolean {
 		return this.cache.has(key);
 	}
 
 	/**
-	 * Supprime une entrée du cache.
-	 * @returns `true` si l'entrée existait et a été supprimée
+	 * Removes an entry from the cache.
+	 * @returns `true` if the entry existed and was removed
 	 */
 	delete(key: K): boolean {
 		return this.cache.delete(key);
 	}
 
-	/** Vide entièrement le cache. */
+	/** Clears the entire cache. */
 	clear(): void {
 		this.cache.clear();
 	}
 
-	/** Nombre d'entrées actuellement dans le cache. */
+	/** Number of entries currently in the cache. */
 	get size(): number {
 		return this.cache.size;
 	}
 }
 
-// ─── Extraction de snippet source ────────────────────────────────────────────
-// Utilisé pour enrichir les diagnostics avec le fragment de template
-// qui a causé l'erreur.
+// ─── Source Snippet Extraction ────────────────────────────────────────────────
+// Used to enrich diagnostics with the template fragment that caused the error.
 
 /**
- * Extrait un fragment de template autour d'une position donnée.
+ * Extracts a template fragment around a given position.
  *
- * @param template - Le template source complet
- * @param loc      - La position (ligne/colonne, 1-based) de l'erreur
- * @returns Le fragment de code correspondant (trimé)
+ * @param template - The full template source
+ * @param loc      - The position (line/column, 1-based) of the error
+ * @returns The corresponding code fragment (trimmed)
  */
 export function extractSourceSnippet(
 	template: string,
@@ -170,12 +169,12 @@ export function extractSourceSnippet(
 	if (startLine < 0 || startLine >= lines.length) return "";
 
 	if (startLine === endLine) {
-		// Même ligne — extraire la portion entre start.column et end.column
+		// Same line — extract the portion between start.column and end.column
 		const line = lines[startLine] ?? "";
 		return line.trim();
 	}
 
-	// Multi-lignes — retourner les lignes concernées
+	// Multi-line — return the affected lines
 	const clampedEnd = Math.min(endLine, lines.length - 1);
 	return lines
 		.slice(startLine, clampedEnd + 1)
@@ -185,24 +184,24 @@ export function extractSourceSnippet(
 }
 
 // ─── Schema Properties ──────────────────────────────────────────────────────
-// Utilitaire pour lister les propriétés disponibles dans un schema,
-// utilisé pour enrichir les messages d'erreur (suggestions).
+// Utility for listing available properties in a schema, used to enrich
+// error messages with suggestions.
 
 /**
- * Liste les noms de propriétés déclarées dans un JSON Schema.
- * Retourne un tableau vide si le schema n'a pas de `properties`.
+ * Lists the declared property names in a JSON Schema.
+ * Returns an empty array if the schema has no `properties`.
  */
 export function getSchemaPropertyNames(schema: JSONSchema7): string[] {
 	const names = new Set<string>();
 
-	// Propriétés directes
+	// Direct properties
 	if (schema.properties) {
 		for (const key of Object.keys(schema.properties)) {
 			names.add(key);
 		}
 	}
 
-	// Propriétés dans les combinateurs
+	// Properties within combinators
 	for (const combinator of ["allOf", "anyOf", "oneOf"] as const) {
 		const branches = schema[combinator];
 		if (branches) {
@@ -220,23 +219,23 @@ export function getSchemaPropertyNames(schema: JSONSchema7): string[] {
 	return Array.from(names).sort();
 }
 
-// ─── Agrégation d'analyses d'objets ──────────────────────────────────────────
-// Factorise le pattern commun de récursion sur un objet template :
-// itérer les clés, analyser chaque entrée via un callback, accumuler
-// les diagnostics, construire le outputSchema objet.
+// ─── Object Analysis Aggregation ─────────────────────────────────────────────
+// Factorizes the common recursion pattern over template objects:
+// iterate the keys, analyze each entry via a callback, accumulate
+// diagnostics, and build the output object schema.
 //
-// Utilisé par :
+// Used by:
 // - `analyzer.ts` (analyzeObjectTemplate)
 // - `Typebars.analyzeObject()` (typebars.ts)
-// - `CompiledTemplate.analyze()` en mode objet (compiled-template.ts)
+// - `CompiledTemplate.analyze()` in object mode (compiled-template.ts)
 
 /**
- * Agrège les résultats d'analyse d'un ensemble d'entrées nommées en un
- * seul `AnalysisResult` avec un `outputSchema` de type objet.
+ * Aggregates analysis results from a set of named entries into a single
+ * `AnalysisResult` with an object-typed `outputSchema`.
  *
- * @param keys         - Les clés de l'objet à analyser
- * @param analyzeEntry - Callback qui analyse une entrée par sa clé
- * @returns Un `AnalysisResult` agrégé
+ * @param keys         - The keys of the object to analyze
+ * @param analyzeEntry - Callback that analyzes an entry by its key
+ * @returns An aggregated `AnalysisResult`
  *
  * @example
  * ```
@@ -273,13 +272,13 @@ export function aggregateObjectAnalysis(
 }
 
 /**
- * Agrège les résultats d'analyse **et** d'exécution d'un ensemble d'entrées
- * nommées. Retourne à la fois l'`AnalysisResult` agrégé et l'objet des
- * valeurs exécutées (ou `undefined` si au moins une entrée est invalide).
+ * Aggregates both analysis **and** execution results from a set of named
+ * entries. Returns the aggregated `AnalysisResult` and the object of
+ * executed values (or `undefined` if at least one entry is invalid).
  *
- * @param keys         - Les clés de l'objet
- * @param processEntry - Callback qui analyse et exécute une entrée par sa clé
- * @returns `{ analysis, value }` agrégés
+ * @param keys         - The keys of the object
+ * @param processEntry - Callback that analyzes and executes an entry by its key
+ * @returns Aggregated `{ analysis, value }`
  */
 export function aggregateObjectAnalysisAndExecution(
 	keys: string[],

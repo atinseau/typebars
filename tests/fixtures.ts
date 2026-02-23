@@ -1,7 +1,7 @@
 import type { JSONSchema7 } from "json-schema";
 
 // ─── Fixtures ────────────────────────────────────────────────────────────────
-// Schema et données réutilisés dans la majorité des tests.
+// Shared schema and data reused across the majority of test suites.
 
 export const userSchema: JSONSchema7 = {
 	type: "object",

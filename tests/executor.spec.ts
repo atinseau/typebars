@@ -7,125 +7,125 @@ describe("executor", () => {
 		clearCompilationCache();
 	});
 
-	describe("préservation des types — expression unique", () => {
-		test("retourne un string pour {{name}}", () => {
+	describe("type preservation — single expression", () => {
+		test("returns a string for {{name}}", () => {
 			const result = execute("{{name}}", userData);
 			expect(result).toBe("Alice");
 			expect(typeof result).toBe("string");
 		});
 
-		test("retourne un number pour {{age}}", () => {
+		test("returns a number for {{age}}", () => {
 			const result = execute("{{age}}", userData);
 			expect(result).toBe(30);
 			expect(typeof result).toBe("number");
 		});
 
-		test("retourne un boolean pour {{active}}", () => {
+		test("returns a boolean for {{active}}", () => {
 			const result = execute("{{active}}", userData);
 			expect(result).toBe(true);
 			expect(typeof result).toBe("boolean");
 		});
 
-		test("retourne un object pour {{address}}", () => {
+		test("returns an object for {{address}}", () => {
 			const result = execute("{{address}}", userData);
 			expect(result).toEqual({ city: "Paris", zip: "75001" });
 			expect(typeof result).toBe("object");
 		});
 
-		test("retourne un array pour {{tags}}", () => {
+		test("returns an array for {{tags}}", () => {
 			const result = execute("{{tags}}", userData);
 			expect(result).toEqual(["developer", "typescript", "open-source"]);
 			expect(Array.isArray(result)).toBe(true);
 		});
 
-		test("retourne undefined pour une propriété absente", () => {
+		test("returns undefined for a missing property", () => {
 			const result = execute("{{missing}}", userData);
 			expect(result).toBeUndefined();
 		});
 
-		test("retourne null pour une propriété null", () => {
+		test("returns null for a null property", () => {
 			const result = execute("{{val}}", { val: null });
 			expect(result).toBeNull();
 		});
 
-		test("retourne 0 pour une propriété valant 0", () => {
+		test("returns 0 for a property equal to 0", () => {
 			const result = execute("{{val}}", { val: 0 });
 			expect(result).toBe(0);
 		});
 
-		test("retourne false pour une propriété valant false", () => {
+		test("returns false for a property equal to false", () => {
 			const result = execute("{{val}}", { val: false });
 			expect(result).toBe(false);
 		});
 
-		test("retourne une string vide pour une propriété string vide", () => {
+		test("returns an empty string for an empty string property", () => {
 			const result = execute("{{val}}", { val: "" });
 			expect(result).toBe("");
 		});
 	});
 
 	describe("dot notation", () => {
-		test("résout un chemin imbriqué", () => {
+		test("resolves a nested path", () => {
 			expect(execute("{{address.city}}", userData)).toBe("Paris");
 		});
 
-		test("résout un chemin profond", () => {
+		test("resolves a deeply nested path", () => {
 			expect(execute("{{metadata.role}}", userData)).toBe("admin");
 		});
 
-		test("retourne undefined si un segment intermédiaire est absent", () => {
+		test("returns undefined if an intermediate segment is missing", () => {
 			expect(execute("{{foo.bar.baz}}", {})).toBeUndefined();
 		});
 	});
 
-	describe("template mixte → string", () => {
-		test("texte + expression", () => {
+	describe("mixed template → string", () => {
+		test("text + expression", () => {
 			const result = execute("Hello {{name}}!", userData);
 			expect(result).toBe("Hello Alice!");
 			expect(typeof result).toBe("string");
 		});
 
-		test("plusieurs expressions", () => {
+		test("multiple expressions", () => {
 			const result = execute("{{name}} ({{age}})", userData);
 			expect(result).toBe("Alice (30)");
 		});
 
-		test("texte pur sans expression", () => {
+		test("plain text without expression", () => {
 			const result = execute("Just text", {});
 			expect(result).toBe("Just text");
 		});
 	});
 
-	describe("bloc #if / #unless", () => {
-		test("#if truthy → branche principale", () => {
+	describe("#if / #unless blocks", () => {
+		test("#if truthy → main branch", () => {
 			expect(execute("{{#if active}}yes{{else}}no{{/if}}", userData)).toBe(
 				"yes",
 			);
 		});
 
-		test("#if falsy → branche else", () => {
+		test("#if falsy → else branch", () => {
 			expect(
 				execute("{{#if active}}yes{{else}}no{{/if}}", { active: false }),
 			).toBe("no");
 		});
 
-		test("#if sans else, condition falsy → string vide", () => {
+		test("#if without else, falsy condition → empty string", () => {
 			expect(execute("{{#if active}}yes{{/if}}", { active: false })).toBe("");
 		});
 
-		test("#if avec expression dans le corps", () => {
+		test("#if with expression in body", () => {
 			expect(execute("{{#if active}}Hello {{name}}{{/if}}", userData)).toBe(
 				"Hello Alice",
 			);
 		});
 
-		test("#unless truthy → branche else", () => {
+		test("#unless truthy → else branch", () => {
 			expect(
 				execute("{{#unless active}}no{{else}}yes{{/unless}}", userData),
 			).toBe("yes");
 		});
 
-		test("#unless falsy → branche principale", () => {
+		test("#unless falsy → main branch", () => {
 			expect(
 				execute("{{#unless active}}no{{else}}yes{{/unless}}", {
 					active: false,
@@ -134,8 +134,8 @@ describe("executor", () => {
 		});
 	});
 
-	describe("coercion de type — bloc unique", () => {
-		test("#if avec littéraux numériques → retourne un number", () => {
+	describe("type coercion — single block", () => {
+		test("#if with numeric literals → returns a number", () => {
 			const result = execute(
 				"{{#if active}}\n  10\n{{else}}\n  20\n{{/if}}",
 				userData,
@@ -144,7 +144,7 @@ describe("executor", () => {
 			expect(typeof result).toBe("number");
 		});
 
-		test("#if branche else avec littéral numérique → retourne un number", () => {
+		test("#if else branch with numeric literal → returns a number", () => {
 			const result = execute("{{#if active}}\n  10\n{{else}}\n  20\n{{/if}}", {
 				active: false,
 			});
@@ -152,24 +152,24 @@ describe("executor", () => {
 			expect(typeof result).toBe("number");
 		});
 
-		test("#if avec littéraux numériques inline", () => {
+		test("#if with inline numeric literals", () => {
 			expect(execute("{{#if active}}42{{else}}0{{/if}}", userData)).toBe(42);
 			expect(
 				execute("{{#if active}}42{{else}}0{{/if}}", { active: false }),
 			).toBe(0);
 		});
 
-		test("#if avec littéral décimal → retourne un number décimal", () => {
+		test("#if with decimal literal → returns a decimal number", () => {
 			expect(execute("{{#if active}}3.14{{else}}2.71{{/if}}", userData)).toBe(
 				3.14,
 			);
 		});
 
-		test("#if avec littéral négatif → retourne un number négatif", () => {
+		test("#if with negative literal → returns a negative number", () => {
 			expect(execute("{{#if active}}-5{{else}}5{{/if}}", userData)).toBe(-5);
 		});
 
-		test("#if avec littéral booléen true → retourne un boolean", () => {
+		test("#if with boolean literal true → returns a boolean", () => {
 			const result = execute(
 				"{{#if active}}true{{else}}false{{/if}}",
 				userData,
@@ -178,7 +178,7 @@ describe("executor", () => {
 			expect(typeof result).toBe("boolean");
 		});
 
-		test("#if avec littéral booléen false → retourne un boolean", () => {
+		test("#if with boolean literal false → returns a boolean", () => {
 			const result = execute("{{#if active}}true{{else}}false{{/if}}", {
 				active: false,
 			});
@@ -186,7 +186,7 @@ describe("executor", () => {
 			expect(typeof result).toBe("boolean");
 		});
 
-		test("#if avec littéral null → retourne null", () => {
+		test("#if with null literal → returns null", () => {
 			const result = execute(
 				"{{#if active}}null{{else}}fallback{{/if}}",
 				userData,
@@ -194,7 +194,7 @@ describe("executor", () => {
 			expect(result).toBeNull();
 		});
 
-		test("#if avec texte non-littéral → retourne une string brute", () => {
+		test("#if with non-literal text → returns a raw string", () => {
 			const result = execute(
 				"{{#if active}}hello{{else}}world{{/if}}",
 				userData,
@@ -203,45 +203,45 @@ describe("executor", () => {
 			expect(typeof result).toBe("string");
 		});
 
-		test("expression unique avec whitespace → retourne la valeur brute", () => {
+		test("single expression with whitespace → returns the raw value", () => {
 			const result = execute("  {{age}}  ", userData);
 			expect(result).toBe(30);
 			expect(typeof result).toBe("number");
 		});
 	});
 
-	describe("bloc #each", () => {
-		test("#each sur un tableau de strings", () => {
+	describe("#each block", () => {
+		test("#each on an array of strings", () => {
 			const result = execute("{{#each tags}}[{{this}}]{{/each}}", userData);
 			expect(result).toBe("[developer][typescript][open-source]");
 		});
 
-		test("#each sur un tableau d'objets", () => {
+		test("#each on an array of objects", () => {
 			const result = execute("{{#each orders}}{{product}} {{/each}}", userData);
 			expect(result).toBe("Keyboard Monitor Mouse ");
 		});
 
-		test("#each avec branche else (tableau vide)", () => {
+		test("#each with else branch (empty array)", () => {
 			const result = execute("{{#each items}}{{this}}{{else}}empty{{/each}}", {
 				items: [],
 			});
 			expect(result).toBe("empty");
 		});
 
-		test("#each produit toujours une string", () => {
+		test("#each always produces a string", () => {
 			const result = execute("{{#each tags}}{{this}} {{/each}}", userData);
 			expect(typeof result).toBe("string");
 		});
 	});
 
-	describe("bloc #with", () => {
-		test("#with change le contexte", () => {
+	describe("#with block", () => {
+		test("#with changes the context", () => {
 			expect(
 				execute("{{#with address}}{{city}}, {{zip}}{{/with}}", userData),
 			).toBe("Paris, 75001");
 		});
 
-		test("#with imbriqué", () => {
+		test("nested #with", () => {
 			const data = { a: { b: { c: "deep" } } };
 			expect(
 				execute("{{#with a}}{{#with b}}{{c}}{{/with}}{{/with}}", data),
@@ -249,7 +249,7 @@ describe("executor", () => {
 		});
 	});
 
-	describe("combinaisons complexes", () => {
+	describe("complex combinations", () => {
 		test("#if + #each", () => {
 			const result = execute(
 				"{{#if active}}{{#each tags}}{{this}} {{/each}}{{else}}disabled{{/if}}",
@@ -266,7 +266,7 @@ describe("executor", () => {
 			expect(result).toBe("read write delete ");
 		});
 
-		test("texte + expression + #if + #each", () => {
+		test("text + expression + #if + #each", () => {
 			const result = execute(
 				"User: {{name}} | Tags: {{#each tags}}{{this}}{{#unless @last}}, {{/unless}}{{/each}}",
 				userData,

@@ -1,25 +1,25 @@
 import type { HelperDefinition } from "../types.ts";
 
 // ─── MathHelpers ─────────────────────────────────────────────────────────────
-// Classe regroupant tous les helpers mathématiques pour le moteur de template.
+// Aggregates all math-related helpers for the template engine.
 //
-// Fournit deux types de helpers :
+// Provides two kinds of helpers:
 //
-// 1. **Helpers nommés** — un helper par opération (`add`, `subtract`, `divide`, …)
-//    Usage : `{ { add a b } } `, `{ { abs value } } `, `{ { round value 2 } } `
+// 1. **Named helpers** — one helper per operation (`add`, `subtract`, `divide`, …)
+//    Usage: `{{ add a b }}`, `{{ abs value }}`, `{{ round value 2 }}`
 //
-// 2. **Helper générique `math`** — un seul helper avec l'opérateur en paramètre
-//    Usage : `{ { math a "+" b } } `, `{ { math a "/" b } } `, `{ { math a "**" b } } `
+// 2. **Generic `math` helper** — single helper with the operator as a parameter
+//    Usage: `{{ math a "+" b }}`, `{{ math a "/" b }}`, `{{ math a "**" b }}`
 //
-// ─── Enregistrement ──────────────────────────────────────────────────────────
-// Les MathHelpers sont pré-enregistrés automatiquement par le constructeur
-// de `Typebars`. Il est aussi possible de les enregistrer manuellement
-// sur n'importe quel objet implémentant `HelperRegistry` :
+// ─── Registration ────────────────────────────────────────────────────────────
+// MathHelpers are automatically pre-registered by the `Typebars` constructor.
+// They can also be registered manually on any object implementing
+// `HelperRegistry`:
 //
-//   MathHelpers.register(engine);   // enregistre tous les helpers
-//   MathHelpers.unregister(engine); // les supprime tous
+//   MathHelpers.register(engine);   // registers all helpers
+//   MathHelpers.unregister(engine); // removes all helpers
 //
-// ─── Opérateurs supportés (helper `math`) ────────────────────────────────────
+// ─── Supported operators (generic `math` helper) ─────────────────────────────
 //   +   Addition
 //   -   Subtraction
 //   *   Multiplication
@@ -29,22 +29,22 @@ import type { HelperDefinition } from "../types.ts";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
-/** Interface minimale pour l'enregistrement — évite le couplage avec Typebars */
+/** Minimal registration interface — avoids tight coupling with Typebars */
 interface HelperRegistry {
 	registerHelper(name: string, definition: HelperDefinition): unknown;
 	unregisterHelper(name: string): unknown;
 }
 
-/** Opérateurs supportés par le helper générique `math` */
+/** Operators supported by the generic `math` helper */
 type MathOperator = "+" | "-" | "*" | "/" | "%" | "**";
 
 const SUPPORTED_OPERATORS = new Set<string>(["+", "-", "*", "/", "%", "**"]);
 
-// ─── Utilitaires internes ────────────────────────────────────────────────────
+// ─── Internal utilities ─────────────────────────────────────────────────────
 
 /**
- * Convertit une valeur inconnue en nombre. Retourne `0` si la conversion
- * échoue (string non numérique, objet, etc.).
+ * Converts an unknown value to a number.
+ * Returns `0` when conversion fails (non-numeric string, object, etc.).
  */
 function toNumber(value: unknown): number {
 	if (typeof value === "number") return value;
@@ -56,7 +56,7 @@ function toNumber(value: unknown): number {
 }
 
 /**
- * Applique un opérateur binaire sur deux opérandes.
+ * Applies a binary operator to two operands.
  */
 function applyOperator(a: number, op: MathOperator, b: number): number {
 	switch (op) {
@@ -75,13 +75,13 @@ function applyOperator(a: number, op: MathOperator, b: number): number {
 	}
 }
 
-// ─── Classe principale ──────────────────────────────────────────────────────
+// ─── Main class ─────────────────────────────────────────────────────────────
 
 export class MathHelpers {
-	// ─── Noms de tous les helpers enregistrés ─────────────────────────────
-	// Utilisé par `register()` et `unregister()` pour itérer.
+	// ─── All registered helper names ─────────────────────────────────────
+	// Used by `register()` and `unregister()` to iterate.
 	private static readonly HELPER_NAMES: readonly string[] = [
-		// Opérateurs binaires
+		// Binary operators
 		"add",
 		"subtract",
 		"sub",
@@ -93,29 +93,29 @@ export class MathHelpers {
 		"mod",
 		"pow",
 
-		// Fonctions unaires
+		// Unary functions
 		"abs",
 		"ceil",
 		"floor",
 		"round",
 		"sqrt",
 
-		// Min / Max (binaires)
+		// Min / Max (binary)
 		"min",
 		"max",
 
-		// Helper générique
+		// Generic helper
 		"math",
 	];
 
-	/** Set dérivé de `HELPER_NAMES` pour un lookup O(1) dans `isMathHelper()` */
+	/** Set derived from `HELPER_NAMES` for O(1) lookup in `isMathHelper()` */
 	private static readonly HELPER_NAMES_SET: ReadonlySet<string> = new Set(
 		MathHelpers.HELPER_NAMES,
 	);
 
-	// ─── Définitions des helpers ─────────────────────────────────────────
+	// ─── Helper definitions ─────────────────────────────────────────────
 
-	/** Retourne toutes les définitions sous forme de `Map<name, HelperDefinition>` */
+	/** Returns all definitions as a `Map<name, HelperDefinition>` */
 	static getDefinitions(): Map<string, HelperDefinition> {
 		const defs = new Map<string, HelperDefinition>();
 
@@ -127,9 +127,9 @@ export class MathHelpers {
 		return defs;
 	}
 
-	// ── Opérateurs binaires ──────────────────────────────────────────
+	// ── Binary operators ─────────────────────────────────────────────
 
-	/** Enregistre add, subtract/sub, multiply/mul, divide/div, modulo/mod, pow */
+	/** Registers add, subtract/sub, multiply/mul, divide/div, modulo/mod, pow */
 	private static registerBinaryOperators(
 		defs: Map<string, HelperDefinition>,
 	): void {
@@ -145,7 +145,7 @@ export class MathHelpers {
 		};
 		defs.set("add", addDef);
 
-		// subtract / sub — Soustraction : {{ subtract a b }} ou {{ sub a b }}
+		// subtract / sub — Subtraction: {{ subtract a b }} or {{ sub a b }}
 		const subtractDef: HelperDefinition = {
 			fn: (a: unknown, b: unknown) => toNumber(a) - toNumber(b),
 			params: [
@@ -166,7 +166,7 @@ export class MathHelpers {
 		defs.set("subtract", subtractDef);
 		defs.set("sub", subtractDef);
 
-		// multiply / mul — Multiplication : {{ multiply a b }} ou {{ mul a b }}
+		// multiply / mul — Multiplication: {{ multiply a b }} or {{ mul a b }}
 		const multiplyDef: HelperDefinition = {
 			fn: (a: unknown, b: unknown) => toNumber(a) * toNumber(b),
 			params: [
@@ -179,7 +179,7 @@ export class MathHelpers {
 		defs.set("multiply", multiplyDef);
 		defs.set("mul", multiplyDef);
 
-		// divide / div — Division : {{ divide a b }} ou {{ div a b }}
+		// divide / div — Division: {{ divide a b }} or {{ div a b }}
 		const divideDef: HelperDefinition = {
 			fn: (a: unknown, b: unknown) => {
 				const divisor = toNumber(b);
@@ -196,7 +196,7 @@ export class MathHelpers {
 		defs.set("divide", divideDef);
 		defs.set("div", divideDef);
 
-		// modulo / mod — Modulo : {{ modulo a b }} ou {{ mod a b }}
+		// modulo / mod — Modulo: {{ modulo a b }} or {{ mod a b }}
 		const moduloDef: HelperDefinition = {
 			fn: (a: unknown, b: unknown) => {
 				const divisor = toNumber(b);
@@ -230,13 +230,13 @@ export class MathHelpers {
 		});
 	}
 
-	// ── Fonctions unaires ────────────────────────────────────────────
+	// ── Unary functions ──────────────────────────────────────────────
 
-	/** Enregistre abs, ceil, floor, round, sqrt */
+	/** Registers abs, ceil, floor, round, sqrt */
 	private static registerUnaryFunctions(
 		defs: Map<string, HelperDefinition>,
 	): void {
-		// abs — Valeur absolue : {{ abs value }}
+		// abs — Absolute value: {{ abs value }}
 		defs.set("abs", {
 			fn: (value: unknown) => Math.abs(toNumber(value)),
 			params: [
@@ -246,7 +246,7 @@ export class MathHelpers {
 			description: "Returns the absolute value: {{ abs value }}",
 		});
 
-		// ceil — Arrondi supérieur : {{ ceil value }}
+		// ceil — Round up: {{ ceil value }}
 		defs.set("ceil", {
 			fn: (value: unknown) => Math.ceil(toNumber(value)),
 			params: [
@@ -260,7 +260,7 @@ export class MathHelpers {
 			description: "Rounds up to the nearest integer: {{ ceil value }}",
 		});
 
-		// floor — Arrondi inférieur : {{ floor value }}
+		// floor — Round down: {{ floor value }}
 		defs.set("floor", {
 			fn: (value: unknown) => Math.floor(toNumber(value)),
 			params: [
@@ -274,13 +274,13 @@ export class MathHelpers {
 			description: "Rounds down to the nearest integer: {{ floor value }}",
 		});
 
-		// round — Arrondi : {{ round value }} ou {{ round value precision }}
-		// Avec précision : {{ round 3.14159 2 }} → 3.14
+		// round — Rounding: {{ round value }} or {{ round value precision }}
+		// With precision: {{ round 3.14159 2 }} → 3.14
 		defs.set("round", {
 			fn: (value: unknown, precision: unknown) => {
 				const n = toNumber(value);
-				// Si precision est un objet Handlebars options (pas un nombre),
-				// c'est que le second paramètre n'a pas été fourni.
+				// If precision is a Handlebars options object (not a number),
+				// it means the second parameter was not provided.
 				if (
 					precision === undefined ||
 					precision === null ||
@@ -310,7 +310,7 @@ export class MathHelpers {
 				"Rounds to the nearest integer or to a given precision: {{ round value }} or {{ round value 2 }}",
 		});
 
-		// sqrt — Racine carrée : {{ sqrt value }}
+		// sqrt — Square root: {{ sqrt value }}
 		defs.set("sqrt", {
 			fn: (value: unknown) => Math.sqrt(toNumber(value)),
 			params: [
@@ -323,7 +323,7 @@ export class MathHelpers {
 
 	// ── Min / Max ────────────────────────────────────────────────────
 
-	/** Enregistre min et max */
+	/** Registers min and max */
 	private static registerMinMax(defs: Map<string, HelperDefinition>): void {
 		// min — Minimum : {{ min a b }}
 		defs.set("min", {
@@ -348,9 +348,9 @@ export class MathHelpers {
 		});
 	}
 
-	// ── Helper générique ─────────────────────────────────────────────
+	// ── Generic helper ───────────────────────────────────────────────
 
-	/** Enregistre le helper générique `math` avec opérateur en paramètre */
+	/** Registers the generic `math` helper with operator as a parameter */
 	private static registerGenericMath(
 		defs: Map<string, HelperDefinition>,
 	): void {
@@ -382,23 +382,23 @@ export class MathHelpers {
 		});
 	}
 
-	// ─── Enregistrement / Désenregistrement ──────────────────────────────
+	// ─── Registration / Unregistration ───────────────────────────────────
 
 	/**
-	 * Enregistre tous les helpers mathématiques sur un `Typebars`
-	 * (ou tout objet implémentant `HelperRegistry`).
+	 * Registers all math helpers on a `Typebars` instance
+	 * (or any object implementing `HelperRegistry`).
 	 *
-	 * **Note :** les MathHelpers sont pré-enregistrés automatiquement par
-	 * le constructeur de `Typebars`. Cette méthode n'est utile que
-	 * si vous avez appelé `unregister()` et souhaitez les ré-activer,
-	 * ou si vous enregistrez sur un registre custom.
+	 * **Note:** MathHelpers are automatically pre-registered by the
+	 * `Typebars` constructor. This method is only useful if you have
+	 * called `unregister()` and want to re-enable them, or if you are
+	 * registering on a custom registry.
 	 *
-	 * @param registry - L'engine ou le registre cible
+	 * @param registry - The engine or target registry
 	 *
 	 * @example
 	 * ```
 	 * const engine = new Typebars();
-	 * // Les math helpers sont déjà disponibles !
+	 * // Math helpers are already available!
 	 * engine.analyzeAndExecute("{{ divide total count }}", schema, data);
 	 * engine.analyzeAndExecute("{{ math price '*' quantity }}", schema, data);
 	 * ```
@@ -411,9 +411,9 @@ export class MathHelpers {
 	}
 
 	/**
-	 * Supprime tous les helpers mathématiques du registre.
+	 * Removes all math helpers from the registry.
 	 *
-	 * @param registry - L'engine ou le registre cible
+	 * @param registry - The engine or target registry
 	 */
 	static unregister(registry: HelperRegistry): void {
 		for (const name of MathHelpers.HELPER_NAMES) {
@@ -422,17 +422,17 @@ export class MathHelpers {
 	}
 
 	/**
-	 * Retourne la liste des noms de tous les helpers mathématiques.
-	 * Utile pour vérifier si un helper donné fait partie du pack math.
+	 * Returns the list of all math helper names.
+	 * Useful for checking whether a given helper belongs to the math pack.
 	 */
 	static getHelperNames(): readonly string[] {
 		return MathHelpers.HELPER_NAMES;
 	}
 
 	/**
-	 * Vérifie si un nom de helper fait partie du pack mathématique.
+	 * Checks whether a helper name belongs to the math pack.
 	 *
-	 * @param name - Le nom du helper à vérifier
+	 * @param name - The helper name to check
 	 */
 	static isMathHelper(name: string): boolean {
 		return MathHelpers.HELPER_NAMES_SET.has(name);

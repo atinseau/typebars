@@ -17,47 +17,47 @@ import {
 } from "./utils.ts";
 
 // ─── CompiledTemplate ────────────────────────────────────────────────────────
-// Template pré-parsé et prêt à être exécuté ou analysé sans re-parsing.
+// Pre-parsed template ready to be executed or analyzed without re-parsing.
 //
-// Le pattern compile-once / execute-many évite le coût du parsing Handlebars
-// à chaque appel. L'AST est parsé une seule fois lors de la compilation,
-// et le template Handlebars est compilé paresseusement au premier `execute()`.
+// The compile-once / execute-many pattern avoids the cost of Handlebars
+// parsing on every call. The AST is parsed once at compile time, and the
+// Handlebars template is lazily compiled on the first `execute()`.
 //
-// Usage :
+// Usage:
 //   const tpl = engine.compile("Hello {{name}}");
-//   tpl.execute({ name: "Alice" });   // pas de re-parsing
-//   tpl.execute({ name: "Bob" });     // pas de re-parsing ni recompilation
-//   tpl.analyze(schema);              // pas de re-parsing
+//   tpl.execute({ name: "Alice" });   // no re-parsing
+//   tpl.execute({ name: "Bob" });     // no re-parsing or recompilation
+//   tpl.analyze(schema);              // no re-parsing
 //
-// ─── État interne (TemplateState) ────────────────────────────────────────────
-// Le CompiledTemplate fonctionne en 3 modes exclusifs, modélisés par un
-// discriminated union `TemplateState` :
+// ─── Internal State (TemplateState) ──────────────────────────────────────────
+// CompiledTemplate operates in 3 exclusive modes, modeled by a discriminated
+// union `TemplateState`:
 //
-// - `"template"` — template Handlebars parsé (AST + source string)
-// - `"literal"`  — valeur primitive passthrough (number, boolean, null)
-// - `"object"`   — objet dont chaque propriété est un CompiledTemplate enfant
+// - `"template"` — parsed Handlebars template (AST + source string)
+// - `"literal"`  — primitive passthrough value (number, boolean, null)
+// - `"object"`   — object where each property is a child CompiledTemplate
 //
-// Ce design élimine les champs optionnels et les `!` assertions en faveur
-// d'un narrowing TypeScript naturel via `switch (this.state.kind)`.
+// This design eliminates optional fields and `!` assertions in favor of
+// natural TypeScript narrowing via `switch (this.state.kind)`.
 //
-// ─── Avantages par rapport à l'API directe ───────────────────────────────────
-// - **Performance** : parsing et compilation ne sont faits qu'une seule fois
-// - **API simplifiée** : pas besoin de repasser le template string à chaque appel
-// - **Cohérence** : le même AST est utilisé pour l'analyse et l'exécution
+// ─── Advantages Over the Direct API ──────────────────────────────────────────
+// - **Performance**: parsing and compilation happen only once
+// - **Simplified API**: no need to re-pass the template string on each call
+// - **Consistency**: the same AST is used for both analysis and execution
 
-// ─── Types internes ──────────────────────────────────────────────────────────
+// ─── Internal Types ──────────────────────────────────────────────────────────
 
-/** Options internes passées par le Typebars lors de la compilation */
+/** Internal options passed by Typebars during compilation */
 export interface CompiledTemplateOptions {
-	/** Helpers custom enregistrés sur l'engine */
+	/** Custom helpers registered on the engine */
 	helpers: Map<string, HelperDefinition>;
-	/** Environnement Handlebars isolé (avec les helpers enregistrés) */
+	/** Isolated Handlebars environment (with registered helpers) */
 	hbs: typeof Handlebars;
-	/** Cache de compilation partagé par l'engine */
+	/** Compilation cache shared by the engine */
 	compilationCache: LRUCache<string, HandlebarsTemplateDelegate>;
 }
 
-/** État interne discriminé du CompiledTemplate */
+/** Discriminated internal state of the CompiledTemplate */
 type TemplateState =
 	| {
 			readonly kind: "template";
@@ -70,26 +70,26 @@ type TemplateState =
 			readonly children: Record<string, CompiledTemplate>;
 	  };
 
-// ─── Classe publique ─────────────────────────────────────────────────────────
+// ─── Public Class ────────────────────────────────────────────────────────────
 
 export class CompiledTemplate {
-	/** État interne discriminé */
+	/** Discriminated internal state */
 	private readonly state: TemplateState;
 
-	/** Options héritées du Typebars parent */
+	/** Options inherited from the parent Typebars instance */
 	private readonly options: CompiledTemplateOptions;
 
-	/** Template Handlebars compilé (lazy — créé au premier `execute()` qui en a besoin) */
+	/** Compiled Handlebars template (lazy — created on the first `execute()` that needs it) */
 	private hbsCompiled: HandlebarsTemplateDelegate | null = null;
 
-	// ─── Accesseurs publics (backward-compatible) ────────────────────────
+	// ─── Public Accessors (backward-compatible) ──────────────────────────
 
-	/** L'AST Handlebars pré-parsé — `null` en mode littéral ou objet */
+	/** The pre-parsed Handlebars AST — `null` in literal or object mode */
 	get ast(): hbs.AST.Program | null {
 		return this.state.kind === "template" ? this.state.ast : null;
 	}
 
-	/** Le template source original — string vide en mode littéral ou objet */
+	/** The original template source — empty string in literal or object mode */
 	get template(): string {
 		return this.state.kind === "template" ? this.state.source : "";
 	}
@@ -102,11 +102,11 @@ export class CompiledTemplate {
 	}
 
 	/**
-	 * Crée un CompiledTemplate pour un template Handlebars parsé.
+	 * Creates a CompiledTemplate for a parsed Handlebars template.
 	 *
-	 * @param ast     - L'AST Handlebars pré-parsé
-	 * @param source  - Le template source original
-	 * @param options - Options héritées du Typebars
+	 * @param ast     - The pre-parsed Handlebars AST
+	 * @param source  - The original template source
+	 * @param options - Options inherited from Typebars
 	 */
 	static fromTemplate(
 		ast: hbs.AST.Program,
@@ -117,12 +117,12 @@ export class CompiledTemplate {
 	}
 
 	/**
-	 * Crée un CompiledTemplate en mode passthrough pour une valeur littérale
-	 * (number, boolean, null). Aucun parsing ni compilation n'est effectué.
+	 * Creates a CompiledTemplate in passthrough mode for a literal value
+	 * (number, boolean, null). No parsing or compilation is performed.
 	 *
-	 * @param value   - La valeur primitive
-	 * @param options - Options héritées du Typebars
-	 * @returns Un CompiledTemplate qui retourne toujours `value`
+	 * @param value   - The primitive value
+	 * @param options - Options inherited from Typebars
+	 * @returns A CompiledTemplate that always returns `value`
 	 */
 	static fromLiteral(
 		value: number | boolean | null,
@@ -132,13 +132,13 @@ export class CompiledTemplate {
 	}
 
 	/**
-	 * Crée un CompiledTemplate en mode objet, où chaque propriété est un
-	 * CompiledTemplate enfant. Toutes les opérations sont déléguées
-	 * récursivement aux enfants.
+	 * Creates a CompiledTemplate in object mode, where each property is a
+	 * child CompiledTemplate. All operations are recursively delegated
+	 * to the children.
 	 *
-	 * @param children - Les templates enfants compilés `{ [key]: CompiledTemplate }`
-	 * @param options  - Options héritées du Typebars
-	 * @returns Un CompiledTemplate qui délègue aux enfants
+	 * @param children - The compiled child templates `{ [key]: CompiledTemplate }`
+	 * @param options  - Options inherited from Typebars
+	 * @returns A CompiledTemplate that delegates to children
 	 */
 	static fromObject(
 		children: Record<string, CompiledTemplate>,
@@ -147,20 +147,20 @@ export class CompiledTemplate {
 		return new CompiledTemplate({ kind: "object", children }, options);
 	}
 
-	// ─── Analyse statique ────────────────────────────────────────────────
+	// ─── Static Analysis ─────────────────────────────────────────────────
 
 	/**
-	 * Analyse statiquement ce template par rapport à un JSON Schema v7.
+	 * Statically analyzes this template against a JSON Schema v7.
 	 *
-	 * Retourne un `AnalysisResult` contenant :
-	 * - `valid`        — `true` si aucune erreur
-	 * - `diagnostics`  — liste de diagnostics (erreurs + warnings)
-	 * - `outputSchema` — JSON Schema décrivant le type de retour
+	 * Returns an `AnalysisResult` containing:
+	 * - `valid`        — `true` if no errors
+	 * - `diagnostics`  — list of diagnostics (errors + warnings)
+	 * - `outputSchema` — JSON Schema describing the return type
 	 *
-	 * L'AST étant pré-parsé, cette méthode ne re-parse jamais le template.
+	 * Since the AST is pre-parsed, this method never re-parses the template.
 	 *
-	 * @param inputSchema        - JSON Schema décrivant les variables disponibles
-	 * @param identifierSchemas  - (optionnel) Schemas par identifiant `{ [id]: JSONSchema7 }`
+	 * @param inputSchema        - JSON Schema describing the available variables
+	 * @param identifierSchemas  - (optional) Schemas by identifier `{ [id]: JSONSchema7 }`
 	 */
 	analyze(
 		inputSchema: JSONSchema7,
@@ -194,15 +194,15 @@ export class CompiledTemplate {
 	// ─── Validation ──────────────────────────────────────────────────────
 
 	/**
-	 * Valide le template contre un schema sans retourner le type de sortie.
+	 * Validates the template against a schema without returning the output type.
 	 *
-	 * C'est un raccourci d'API pour `analyze()` qui ne retourne que `valid`
-	 * et `diagnostics`, sans `outputSchema`. L'analyse complète (y compris
-	 * l'inférence de type) est exécutée en interne — cette méthode ne
-	 * fournit pas de gain de performance, uniquement une API simplifiée.
+	 * This is an API shortcut for `analyze()` that only returns `valid` and
+	 * `diagnostics`, without `outputSchema`. The full analysis (including type
+	 * inference) is executed internally — this method provides no performance
+	 * gain, only a simplified API.
 	 *
-	 * @param inputSchema        - JSON Schema décrivant les variables disponibles
-	 * @param identifierSchemas  - (optionnel) Schemas par identifiant
+	 * @param inputSchema        - JSON Schema describing the available variables
+	 * @param identifierSchemas  - (optional) Schemas by identifier
 	 */
 	validate(
 		inputSchema: JSONSchema7,
@@ -215,24 +215,23 @@ export class CompiledTemplate {
 		};
 	}
 
-	// ─── Exécution ───────────────────────────────────────────────────────
+	// ─── Execution ───────────────────────────────────────────────────────
 
 	/**
-	 * Exécute ce template avec les données fournies.
+	 * Executes this template with the provided data.
 	 *
-	 * Le type de retour dépend de la structure du template :
-	 * - Expression unique `{{expr}}` → valeur brute (number, boolean, object…)
-	 * - Template mixte ou avec blocs → `string`
-	 * - Littéral primitif → la valeur telle quelle
-	 * - Objet template → objet avec les valeurs résolues
+	 * The return type depends on the template structure:
+	 * - Single expression `{{expr}}` → raw value (number, boolean, object…)
+	 * - Mixed template or with blocks → `string`
+	 * - Primitive literal → the value as-is
+	 * - Object template → object with resolved values
 	 *
-	 * Si un `schema` est fourni dans les options, l'analyse statique est
-	 * lancée avant l'exécution. Une `TemplateAnalysisError` est levée en
-	 * cas d'erreur.
+	 * If a `schema` is provided in options, static analysis is performed
+	 * before execution. A `TemplateAnalysisError` is thrown on errors.
 	 *
-	 * @param data    - Les données de contexte pour le rendu
-	 * @param options - Options d'exécution (schema, identifierData, etc.)
-	 * @returns Le résultat de l'exécution
+	 * @param data    - The context data for rendering
+	 * @param options - Execution options (schema, identifierData, etc.)
+	 * @returns The execution result
 	 */
 	execute(data: Record<string, unknown>, options?: ExecuteOptions): unknown {
 		switch (this.state.kind) {
@@ -249,7 +248,7 @@ export class CompiledTemplate {
 				return this.state.value;
 
 			case "template": {
-				// Validation statique préalable si un schema est fourni
+				// Pre-execution static validation if a schema is provided
 				if (options?.schema) {
 					const analysis = this.analyze(
 						options.schema,
@@ -270,17 +269,17 @@ export class CompiledTemplate {
 		}
 	}
 
-	// ─── Raccourcis combinés ─────────────────────────────────────────────
+	// ─── Combined Shortcuts ──────────────────────────────────────────────
 
 	/**
-	 * Analyse et exécute le template en un seul appel.
+	 * Analyzes and executes the template in a single call.
 	 *
-	 * Retourne à la fois le résultat d'analyse et la valeur exécutée.
-	 * Si l'analyse échoue, `value` est `undefined`.
+	 * Returns both the analysis result and the executed value.
+	 * If analysis fails, `value` is `undefined`.
 	 *
-	 * @param inputSchema        - JSON Schema décrivant les variables disponibles
-	 * @param data               - Les données de contexte pour le rendu
-	 * @param options            - Options supplémentaires
+	 * @param inputSchema        - JSON Schema describing the available variables
+	 * @param data               - The context data for rendering
+	 * @param options            - Additional options
 	 * @returns `{ analysis, value }`
 	 */
 	analyzeAndExecute(
@@ -335,10 +334,10 @@ export class CompiledTemplate {
 	// ─── Internals ───────────────────────────────────────────────────────
 
 	/**
-	 * Construit le contexte d'exécution pour `executeFromAst`.
+	 * Builds the execution context for `executeFromAst`.
 	 *
-	 * Utilise la compilation Handlebars lazy : le template n'est compilé
-	 * qu'au premier appel qui en a besoin (pas les expressions uniques).
+	 * Uses lazy Handlebars compilation: the template is only compiled
+	 * on the first call that needs it (not for single expressions).
 	 */
 	private buildExecutorContext(options?: ExecuteOptions): ExecutorContext {
 		return {
@@ -350,16 +349,16 @@ export class CompiledTemplate {
 	}
 
 	/**
-	 * Compile le template Handlebars de manière lazy et le met en cache.
+	 * Lazily compiles the Handlebars template and caches it.
 	 *
-	 * La compilation n'est faite qu'une seule fois — les appels suivants
-	 * retournent le template compilé en mémoire.
+	 * Compilation happens only once — subsequent calls return the
+	 * in-memory compiled template.
 	 *
-	 * Pré-condition : cette méthode n'est appelée que depuis le mode "template".
+	 * Precondition: this method is only called from "template" mode.
 	 */
 	private getOrCompileHbs(): HandlebarsTemplateDelegate {
 		if (!this.hbsCompiled) {
-			// En mode "template", `this.template` retourne la source string
+			// In "template" mode, `this.template` returns the source string
 			this.hbsCompiled = this.options.hbs.compile(this.template, {
 				noEscape: true,
 				strict: false,

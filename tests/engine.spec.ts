@@ -13,48 +13,48 @@ describe("Typebars", () => {
 	describe("isValidSyntax", () => {
 		const engine = new Typebars();
 
-		test("retourne true pour un template simple valide", () => {
+		test("returns true for a valid simple template", () => {
 			expect(engine.isValidSyntax("Hello {{name}}")).toBe(true);
 		});
 
-		test("retourne true pour un bloc valide", () => {
+		test("returns true for a valid block", () => {
 			expect(engine.isValidSyntax("{{#if x}}yes{{/if}}")).toBe(true);
 		});
 
-		test("retourne false pour un tag fermant incorrect", () => {
+		test("returns false for an incorrect closing tag", () => {
 			expect(engine.isValidSyntax("{{#if x}}oops{{/each}}")).toBe(false);
 		});
 
-		test("retourne false pour un bloc non fermé", () => {
+		test("returns false for an unclosed block", () => {
 			expect(engine.isValidSyntax("{{#if x}}")).toBe(false);
 		});
 
-		test("retourne true pour du texte pur", () => {
+		test("returns true for plain text", () => {
 			expect(engine.isValidSyntax("no expressions")).toBe(true);
 		});
 
-		test("retourne true pour un template vide", () => {
+		test("returns true for an empty template", () => {
 			expect(engine.isValidSyntax("")).toBe(true);
 		});
 	});
 
-	describe("mode strict (défaut)", () => {
+	describe("strict mode (default)", () => {
 		const engine = new Typebars();
 
-		test("execute lève TemplateAnalysisError si le schema invalide le template", () => {
+		test("execute throws TemplateAnalysisError when schema invalidates the template", () => {
 			expect(() =>
 				engine.execute("{{badProp}}", { badProp: "x" }, { schema: userSchema }),
 			).toThrow(TemplateAnalysisError);
 		});
 
-		test("execute fonctionne si le schema valide le template", () => {
+		test("execute works when schema validates the template", () => {
 			const result = engine.execute("{{name}}", userData, {
 				schema: userSchema,
 			});
 			expect(result).toBe("Alice");
 		});
 
-		test("execute fonctionne sans schema (pas de validation)", () => {
+		test("execute works without schema (no validation)", () => {
 			const result = engine.execute("{{anything}}", { anything: 42 });
 			expect(result).toBe(42);
 		});
@@ -63,20 +63,20 @@ describe("Typebars", () => {
 	describe("analyze", () => {
 		const engine = new Typebars();
 
-		test("retourne un AnalysisResult avec valid, diagnostics, outputSchema", () => {
+		test("returns an AnalysisResult with valid, diagnostics, outputSchema", () => {
 			const result = engine.analyze("{{name}}", userSchema);
 			expect(result).toHaveProperty("valid");
 			expect(result).toHaveProperty("diagnostics");
 			expect(result).toHaveProperty("outputSchema");
 		});
 
-		test("outputSchema reflète le type de l'expression unique", () => {
+		test("outputSchema reflects the type of a single expression", () => {
 			expect(engine.analyze("{{age}}", userSchema).outputSchema).toEqual({
 				type: "number",
 			});
 		});
 
-		test("outputSchema est string pour un template mixte", () => {
+		test("outputSchema is string for a mixed template", () => {
 			expect(engine.analyze("Hello {{name}}", userSchema).outputSchema).toEqual(
 				{ type: "string" },
 			);
@@ -86,7 +86,7 @@ describe("Typebars", () => {
 	describe("analyzeAndExecute", () => {
 		const engine = new Typebars();
 
-		test("retourne analysis et value quand le template est valide", () => {
+		test("returns analysis and value when the template is valid", () => {
 			const { analysis, value } = engine.analyzeAndExecute(
 				"{{age}}",
 				userSchema,
@@ -97,7 +97,7 @@ describe("Typebars", () => {
 			expect(value).toBe(30);
 		});
 
-		test("retourne value undefined quand le template est invalide en mode strict", () => {
+		test("returns undefined value when the template is invalid in strict mode", () => {
 			const { analysis, value } = engine.analyzeAndExecute(
 				"{{badProp}}",
 				userSchema,
@@ -117,14 +117,14 @@ describe("literal input (non-string TemplateInput)", () => {
 	const engine = new Typebars();
 
 	describe("analyze", () => {
-		test("number entier → { type: 'integer' }", () => {
+		test("integer number → { type: 'integer' }", () => {
 			const result = engine.analyze(10, { type: "number" });
 			expect(result.valid).toBe(true);
 			expect(result.diagnostics).toEqual([]);
 			expect(result.outputSchema).toEqual({ type: "integer" });
 		});
 
-		test("number décimal → { type: 'number' }", () => {
+		test("decimal number → { type: 'number' }", () => {
 			const result = engine.analyze(3.14, { type: "number" });
 			expect(result.valid).toBe(true);
 			expect(result.diagnostics).toEqual([]);
@@ -137,7 +137,7 @@ describe("literal input (non-string TemplateInput)", () => {
 			expect(result.outputSchema).toEqual({ type: "integer" });
 		});
 
-		test("number négatif → { type: 'integer' }", () => {
+		test("negative number → { type: 'integer' }", () => {
 			const result = engine.analyze(-5, { type: "number" });
 			expect(result.valid).toBe(true);
 			expect(result.outputSchema).toEqual({ type: "integer" });
@@ -163,13 +163,13 @@ describe("literal input (non-string TemplateInput)", () => {
 			expect(result.outputSchema).toEqual({ type: "null" });
 		});
 
-		test("inputSchema est ignoré pour les littéraux", () => {
+		test("inputSchema is ignored for literals", () => {
 			const result = engine.analyze(42, userSchema);
 			expect(result.valid).toBe(true);
 			expect(result.outputSchema).toEqual({ type: "integer" });
 		});
 
-		test("identifierSchemas est ignoré pour les littéraux", () => {
+		test("identifierSchemas is ignored for literals", () => {
 			const result = engine.analyze(42, userSchema, {
 				1: { type: "object", properties: { x: { type: "string" } } },
 			});
@@ -179,57 +179,57 @@ describe("literal input (non-string TemplateInput)", () => {
 	});
 
 	describe("execute", () => {
-		test("number retourne la valeur telle quelle", () => {
+		test("number returns the value as-is", () => {
 			expect(engine.execute(10, {})).toBe(10);
 		});
 
-		test("number 0 retourne 0", () => {
+		test("number 0 returns 0", () => {
 			expect(engine.execute(0, {})).toBe(0);
 		});
 
-		test("number décimal retourne la valeur", () => {
+		test("decimal number returns the value", () => {
 			expect(engine.execute(3.14, {})).toBe(3.14);
 		});
 
-		test("number négatif retourne la valeur", () => {
+		test("negative number returns the value", () => {
 			expect(engine.execute(-42, {})).toBe(-42);
 		});
 
-		test("boolean true retourne true", () => {
+		test("boolean true returns true", () => {
 			expect(engine.execute(true, {})).toBe(true);
 		});
 
-		test("boolean false retourne false", () => {
+		test("boolean false returns false", () => {
 			expect(engine.execute(false, {})).toBe(false);
 		});
 
-		test("null retourne null", () => {
+		test("null returns null", () => {
 			expect(engine.execute(null, {})).toBe(null);
 		});
 
-		test("les données sont ignorées pour les littéraux", () => {
+		test("data is ignored for literals", () => {
 			expect(engine.execute(99, userData)).toBe(99);
 		});
 
-		test("le schema est ignoré pour les littéraux (pas de validation)", () => {
+		test("schema is ignored for literals (no validation)", () => {
 			expect(engine.execute(99, userData, { schema: userSchema })).toBe(99);
 		});
 	});
 
 	describe("validate", () => {
-		test("number est toujours valide", () => {
+		test("number is always valid", () => {
 			const result = engine.validate(42, userSchema);
 			expect(result.valid).toBe(true);
 			expect(result.diagnostics).toEqual([]);
 		});
 
-		test("boolean est toujours valide", () => {
+		test("boolean is always valid", () => {
 			const result = engine.validate(true, userSchema);
 			expect(result.valid).toBe(true);
 			expect(result.diagnostics).toEqual([]);
 		});
 
-		test("null est toujours valide", () => {
+		test("null is always valid", () => {
 			const result = engine.validate(null, userSchema);
 			expect(result.valid).toBe(true);
 			expect(result.diagnostics).toEqual([]);
@@ -237,64 +237,64 @@ describe("literal input (non-string TemplateInput)", () => {
 	});
 
 	describe("isValidSyntax", () => {
-		test("number est syntaxiquement valide", () => {
+		test("number is syntactically valid", () => {
 			expect(engine.isValidSyntax(42)).toBe(true);
 		});
 
-		test("boolean est syntaxiquement valide", () => {
+		test("boolean is syntactically valid", () => {
 			expect(engine.isValidSyntax(false)).toBe(true);
 		});
 
-		test("null est syntaxiquement valide", () => {
+		test("null is syntactically valid", () => {
 			expect(engine.isValidSyntax(null)).toBe(true);
 		});
 	});
 
 	describe("compile", () => {
-		test("compile un number et exécute → retourne la valeur", () => {
+		test("compiles a number and executes → returns the value", () => {
 			const tpl = engine.compile(42);
 			expect(tpl.execute({})).toBe(42);
 		});
 
-		test("compile un boolean et exécute → retourne la valeur", () => {
+		test("compiles a boolean and executes → returns the value", () => {
 			const tpl = engine.compile(true);
 			expect(tpl.execute({})).toBe(true);
 		});
 
-		test("compile null et exécute → retourne null", () => {
+		test("compiles null and executes → returns null", () => {
 			const tpl = engine.compile(null);
 			expect(tpl.execute({})).toBe(null);
 		});
 
-		test("compile un number et analyse → outputSchema integer", () => {
+		test("compiles a number and analyzes → outputSchema integer", () => {
 			const tpl = engine.compile(10);
 			const result = tpl.analyze(userSchema);
 			expect(result.valid).toBe(true);
 			expect(result.outputSchema).toEqual({ type: "integer" });
 		});
 
-		test("compile un décimal et analyse → outputSchema number", () => {
+		test("compiles a decimal and analyzes → outputSchema number", () => {
 			const tpl = engine.compile(3.14);
 			const result = tpl.analyze(userSchema);
 			expect(result.valid).toBe(true);
 			expect(result.outputSchema).toEqual({ type: "number" });
 		});
 
-		test("compile un boolean et analyse → outputSchema boolean", () => {
+		test("compiles a boolean and analyzes → outputSchema boolean", () => {
 			const tpl = engine.compile(false);
 			const result = tpl.analyze(userSchema);
 			expect(result.valid).toBe(true);
 			expect(result.outputSchema).toEqual({ type: "boolean" });
 		});
 
-		test("compile null et analyse → outputSchema null", () => {
+		test("compiles null and analyzes → outputSchema null", () => {
 			const tpl = engine.compile(null);
 			const result = tpl.analyze(userSchema);
 			expect(result.valid).toBe(true);
 			expect(result.outputSchema).toEqual({ type: "null" });
 		});
 
-		test("compile un number et validate → toujours valide", () => {
+		test("compiles a number and validates → always valid", () => {
 			const tpl = engine.compile(42);
 			const result = tpl.validate(userSchema);
 			expect(result.valid).toBe(true);
@@ -303,7 +303,7 @@ describe("literal input (non-string TemplateInput)", () => {
 	});
 
 	describe("analyzeAndExecute", () => {
-		test("number → analysis valide + value retournée", () => {
+		test("number → valid analysis + value returned", () => {
 			const { analysis, value } = engine.analyzeAndExecute(
 				10,
 				userSchema,
@@ -314,7 +314,7 @@ describe("literal input (non-string TemplateInput)", () => {
 			expect(value).toBe(10);
 		});
 
-		test("boolean → analysis valide + value retournée", () => {
+		test("boolean → valid analysis + value returned", () => {
 			const { analysis, value } = engine.analyzeAndExecute(
 				false,
 				userSchema,
@@ -325,7 +325,7 @@ describe("literal input (non-string TemplateInput)", () => {
 			expect(value).toBe(false);
 		});
 
-		test("null → analysis valide + value retournée", () => {
+		test("null → valid analysis + value returned", () => {
 			const { analysis, value } = engine.analyzeAndExecute(
 				null,
 				userSchema,
@@ -336,7 +336,7 @@ describe("literal input (non-string TemplateInput)", () => {
 			expect(value).toBe(null);
 		});
 
-		test("number 0 → analysis valide + value 0 (pas falsy)", () => {
+		test("number 0 → valid analysis + value 0 (not falsy)", () => {
 			const { analysis, value } = engine.analyzeAndExecute(
 				0,
 				userSchema,
@@ -349,37 +349,37 @@ describe("literal input (non-string TemplateInput)", () => {
 	});
 
 	describe("standalone functions", () => {
-		test("analyze() standalone avec number", () => {
+		test("analyze() standalone with number", () => {
 			const result = analyze(42, { type: "number" });
 			expect(result.valid).toBe(true);
 			expect(result.outputSchema).toEqual({ type: "integer" });
 		});
 
-		test("analyze() standalone avec boolean", () => {
+		test("analyze() standalone with boolean", () => {
 			const result = analyze(true, { type: "boolean" });
 			expect(result.valid).toBe(true);
 			expect(result.outputSchema).toEqual({ type: "boolean" });
 		});
 
-		test("analyze() standalone avec null", () => {
+		test("analyze() standalone with null", () => {
 			const result = analyze(null, { type: "null" });
 			expect(result.valid).toBe(true);
 			expect(result.outputSchema).toEqual({ type: "null" });
 		});
 
-		test("execute() standalone avec number", () => {
+		test("execute() standalone with number", () => {
 			expect(execute(42, {})).toBe(42);
 		});
 
-		test("execute() standalone avec boolean", () => {
+		test("execute() standalone with boolean", () => {
 			expect(execute(false, {})).toBe(false);
 		});
 
-		test("execute() standalone avec null", () => {
+		test("execute() standalone with null", () => {
 			expect(execute(null, {})).toBe(null);
 		});
 
-		test("execute() standalone avec 0", () => {
+		test("execute() standalone with 0", () => {
 			expect(execute(0, {})).toBe(0);
 		});
 	});
@@ -393,7 +393,7 @@ describe("object template input (TemplateInputObject)", () => {
 	const engine = new Typebars();
 
 	describe("analyze", () => {
-		test("objet simple avec templates string → outputSchema object avec types résolus", () => {
+		test("simple object with string templates → outputSchema object with resolved types", () => {
 			const result = engine.analyze(
 				{
 					userName: "{{name}}",
@@ -413,7 +413,7 @@ describe("object template input (TemplateInputObject)", () => {
 			});
 		});
 
-		test("objet avec valeur statique string → outputSchema string pour cette propriété", () => {
+		test("object with static string value → outputSchema string for that property", () => {
 			const result = engine.analyze(
 				{
 					userName: "{{name}}",
@@ -432,7 +432,7 @@ describe("object template input (TemplateInputObject)", () => {
 			});
 		});
 
-		test("objet avec littéraux primitifs → types inférés correctement", () => {
+		test("object with primitive literals → correctly inferred types", () => {
 			const result = engine.analyze(
 				{
 					num: 42,
@@ -453,7 +453,7 @@ describe("object template input (TemplateInputObject)", () => {
 			});
 		});
 
-		test("objet avec propriété inexistante → valid false + diagnostic", () => {
+		test("object with missing property → valid false + diagnostic", () => {
 			const result = engine.analyze(
 				{
 					userName: "{{name}}",
@@ -466,7 +466,7 @@ describe("object template input (TemplateInputObject)", () => {
 			expect(result.diagnostics[0]?.code).toBe("UNKNOWN_PROPERTY");
 		});
 
-		test("objet avec plusieurs erreurs → tous les diagnostics remontés", () => {
+		test("object with multiple errors → all diagnostics reported", () => {
 			const result = engine.analyze(
 				{
 					a: "{{foo}}",
@@ -480,7 +480,7 @@ describe("object template input (TemplateInputObject)", () => {
 			expect(errors.length).toBe(2);
 		});
 
-		test("objet avec sous-objet imbriqué → outputSchema imbriqué", () => {
+		test("object with nested sub-object → nested outputSchema", () => {
 			const result = engine.analyze(
 				{
 					user: {
@@ -517,7 +517,7 @@ describe("object template input (TemplateInputObject)", () => {
 			});
 		});
 
-		test("objet vide → outputSchema object vide", () => {
+		test("empty object → empty object outputSchema", () => {
 			const result = engine.analyze({}, userSchema);
 			expect(result.valid).toBe(true);
 			expect(result.outputSchema).toEqual({
@@ -527,7 +527,7 @@ describe("object template input (TemplateInputObject)", () => {
 			});
 		});
 
-		test("objet mixte templates + littéraux + nested → types corrects", () => {
+		test("mixed object with templates + literals + nested → correct types", () => {
 			const result = engine.analyze(
 				{
 					greeting: "Hello {{name}}",
@@ -564,7 +564,7 @@ describe("object template input (TemplateInputObject)", () => {
 	});
 
 	describe("execute", () => {
-		test("objet simple avec templates string → valeurs résolues", () => {
+		test("simple object with string templates → resolved values", () => {
 			const result = engine.execute(
 				{
 					userName: "{{name}}",
@@ -578,7 +578,7 @@ describe("object template input (TemplateInputObject)", () => {
 			});
 		});
 
-		test("objet avec valeur statique string → passthrough", () => {
+		test("object with static string value → passthrough", () => {
 			const result = engine.execute(
 				{
 					userName: "{{name}}",
@@ -592,7 +592,7 @@ describe("object template input (TemplateInputObject)", () => {
 			});
 		});
 
-		test("objet avec littéraux primitifs → passthrough", () => {
+		test("object with primitive literals → passthrough", () => {
 			const result = engine.execute(
 				{
 					num: 42,
@@ -610,7 +610,7 @@ describe("object template input (TemplateInputObject)", () => {
 			});
 		});
 
-		test("objet imbriqué → résolution récursive", () => {
+		test("nested object → recursive resolution", () => {
 			const result = engine.execute(
 				{
 					user: {
@@ -630,11 +630,11 @@ describe("object template input (TemplateInputObject)", () => {
 			});
 		});
 
-		test("objet vide → objet vide", () => {
+		test("empty object → empty object", () => {
 			expect(engine.execute({}, userData)).toEqual({});
 		});
 
-		test("objet avec template mixte → string pour les mixtes", () => {
+		test("object with mixed template → string for mixed values", () => {
 			const result = engine.execute(
 				{
 					greeting: "Hello {{name}}!",
@@ -650,7 +650,7 @@ describe("object template input (TemplateInputObject)", () => {
 	});
 
 	describe("validate", () => {
-		test("objet valide → valid true, pas de diagnostics", () => {
+		test("valid object → valid true, no diagnostics", () => {
 			const result = engine.validate(
 				{ userName: "{{name}}", userAge: "{{age}}" },
 				userSchema,
@@ -659,7 +659,7 @@ describe("object template input (TemplateInputObject)", () => {
 			expect(result.diagnostics).toEqual([]);
 		});
 
-		test("objet avec propriété inexistante → valid false", () => {
+		test("object with missing property → valid false", () => {
 			const result = engine.validate(
 				{ userName: "{{name}}", bad: "{{nope}}" },
 				userSchema,
@@ -668,7 +668,7 @@ describe("object template input (TemplateInputObject)", () => {
 			expect(result.diagnostics.length).toBeGreaterThan(0);
 		});
 
-		test("objet avec que des littéraux → toujours valide", () => {
+		test("object with only literals → always valid", () => {
 			const result = engine.validate({ a: 42, b: true, c: null }, userSchema);
 			expect(result.valid).toBe(true);
 			expect(result.diagnostics).toEqual([]);
@@ -676,7 +676,7 @@ describe("object template input (TemplateInputObject)", () => {
 	});
 
 	describe("isValidSyntax", () => {
-		test("objet avec templates valides → true", () => {
+		test("object with valid templates → true", () => {
 			expect(
 				engine.isValidSyntax({
 					a: "{{name}}",
@@ -685,7 +685,7 @@ describe("object template input (TemplateInputObject)", () => {
 			).toBe(true);
 		});
 
-		test("objet avec un template syntaxiquement invalide → false", () => {
+		test("object with a syntactically invalid template → false", () => {
 			expect(
 				engine.isValidSyntax({
 					a: "{{name}}",
@@ -694,11 +694,11 @@ describe("object template input (TemplateInputObject)", () => {
 			).toBe(false);
 		});
 
-		test("objet avec littéraux → true", () => {
+		test("object with literals → true", () => {
 			expect(engine.isValidSyntax({ a: 42, b: true, c: null })).toBe(true);
 		});
 
-		test("objet imbriqué valide → true", () => {
+		test("valid nested object → true", () => {
 			expect(
 				engine.isValidSyntax({
 					nested: { a: "{{name}}", b: 42 },
@@ -706,7 +706,7 @@ describe("object template input (TemplateInputObject)", () => {
 			).toBe(true);
 		});
 
-		test("objet imbriqué avec syntaxe invalide dans un enfant → false", () => {
+		test("nested object with invalid syntax in a child → false", () => {
 			expect(
 				engine.isValidSyntax({
 					nested: { a: "{{#if x}}" },
@@ -716,7 +716,7 @@ describe("object template input (TemplateInputObject)", () => {
 	});
 
 	describe("compile", () => {
-		test("compile un objet et exécute → objet avec valeurs résolues", () => {
+		test("compiles an object and executes → object with resolved values", () => {
 			const tpl = engine.compile({
 				userName: "{{name}}",
 				userAge: "{{age}}",
@@ -730,7 +730,7 @@ describe("object template input (TemplateInputObject)", () => {
 			});
 		});
 
-		test("compile un objet et analyse → outputSchema object", () => {
+		test("compiles an object and analyzes → outputSchema object", () => {
 			const tpl = engine.compile({
 				userName: "{{name}}",
 				count: 42,
@@ -747,7 +747,7 @@ describe("object template input (TemplateInputObject)", () => {
 			});
 		});
 
-		test("compile un objet et validate → valid true", () => {
+		test("compiles an object and validates → valid true", () => {
 			const tpl = engine.compile({
 				userName: "{{name}}",
 				age: "{{age}}",
@@ -757,7 +757,7 @@ describe("object template input (TemplateInputObject)", () => {
 			expect(result.diagnostics).toEqual([]);
 		});
 
-		test("compile un objet avec erreur et validate → valid false", () => {
+		test("compiles an object with error and validates → valid false", () => {
 			const tpl = engine.compile({
 				userName: "{{name}}",
 				bad: "{{nope}}",
@@ -766,7 +766,7 @@ describe("object template input (TemplateInputObject)", () => {
 			expect(result.valid).toBe(false);
 		});
 
-		test("compile un objet imbriqué et exécute → résolution récursive", () => {
+		test("compiles a nested object and executes → recursive resolution", () => {
 			const tpl = engine.compile({
 				user: { name: "{{name}}", age: "{{age}}" },
 				fixed: 99,
@@ -778,7 +778,7 @@ describe("object template input (TemplateInputObject)", () => {
 			});
 		});
 
-		test("compile un objet et analyzeAndExecute → analysis + value", () => {
+		test("compiles an object and analyzeAndExecute → analysis + value", () => {
 			const tpl = engine.compile({
 				userName: "{{name}}",
 				userAge: "{{age}}",
@@ -799,7 +799,7 @@ describe("object template input (TemplateInputObject)", () => {
 			});
 		});
 
-		test("compile un objet avec erreur et analyzeAndExecute → value undefined", () => {
+		test("compiles an object with error and analyzeAndExecute → value undefined", () => {
 			const tpl = engine.compile({
 				userName: "{{name}}",
 				bad: "{{nope}}",
@@ -811,7 +811,7 @@ describe("object template input (TemplateInputObject)", () => {
 	});
 
 	describe("analyzeAndExecute", () => {
-		test("objet valide → analysis valide + value objet résolu", () => {
+		test("valid object → valid analysis + resolved object value", () => {
 			const { analysis, value } = engine.analyzeAndExecute(
 				{
 					userName: "{{name}}",
@@ -838,7 +838,7 @@ describe("object template input (TemplateInputObject)", () => {
 			});
 		});
 
-		test("objet avec erreur → analysis invalide + value undefined", () => {
+		test("object with error → invalid analysis + undefined value", () => {
 			const { analysis, value } = engine.analyzeAndExecute(
 				{
 					userName: "{{name}}",
@@ -851,7 +851,7 @@ describe("object template input (TemplateInputObject)", () => {
 			expect(value).toBeUndefined();
 		});
 
-		test("objet avec littéraux + templates → types corrects + valeurs résolues", () => {
+		test("object with literals + templates → correct types + resolved values", () => {
 			const { analysis, value } = engine.analyzeAndExecute(
 				{
 					num: 42,
@@ -878,7 +878,7 @@ describe("object template input (TemplateInputObject)", () => {
 			});
 		});
 
-		test("objet imbriqué → analysis et value imbriqués", () => {
+		test("nested object → nested analysis and value", () => {
 			const { analysis, value } = engine.analyzeAndExecute(
 				{
 					user: {
@@ -912,7 +912,7 @@ describe("object template input (TemplateInputObject)", () => {
 			});
 		});
 
-		test("erreur dans un sous-objet → tout l'objet invalide", () => {
+		test("error in a sub-object → entire object is invalid", () => {
 			const { analysis, value } = engine.analyzeAndExecute(
 				{
 					ok: "{{name}}",
@@ -929,7 +929,7 @@ describe("object template input (TemplateInputObject)", () => {
 	});
 
 	describe("standalone functions", () => {
-		test("analyze() standalone avec objet", () => {
+		test("analyze() standalone with object", () => {
 			const result = analyze(
 				{ userName: "{{name}}", userAge: "{{age}}" },
 				userSchema,
@@ -945,12 +945,12 @@ describe("object template input (TemplateInputObject)", () => {
 			});
 		});
 
-		test("analyze() standalone avec objet invalide", () => {
+		test("analyze() standalone with invalid object", () => {
 			const result = analyze({ bad: "{{nope}}" }, userSchema);
 			expect(result.valid).toBe(false);
 		});
 
-		test("execute() standalone avec objet", () => {
+		test("execute() standalone with object", () => {
 			const result = execute(
 				{ userName: "{{name}}", userAge: "{{age}}" },
 				userData,
@@ -961,7 +961,7 @@ describe("object template input (TemplateInputObject)", () => {
 			});
 		});
 
-		test("execute() standalone avec objet imbriqué", () => {
+		test("execute() standalone with nested object", () => {
 			const result = execute(
 				{
 					user: { name: "{{name}}" },

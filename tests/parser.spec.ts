@@ -3,45 +3,45 @@ import { TemplateParseError } from "../src/errors.ts";
 import { parse } from "../src/parser.ts";
 
 describe("parser", () => {
-	test("parse retourne un AST valide pour un template simple", () => {
+	test("parse returns a valid AST for a simple template", () => {
 		const ast = parse("Hello {{name}}");
 		expect(ast).toBeDefined();
 		expect(ast.type).toBe("Program");
 		expect(ast.body.length).toBe(2); // ContentStatement + MustacheStatement
 	});
 
-	test("parse retourne un AST pour une expression unique", () => {
+	test("parse returns an AST for a single expression", () => {
 		const ast = parse("{{name}}");
 		expect(ast.body.length).toBe(1);
 		expect(ast.body[0]?.type).toBe("MustacheStatement");
 	});
 
-	test("parse gère les blocs if", () => {
+	test("parse handles #if blocks", () => {
 		const ast = parse("{{#if active}}yes{{/if}}");
 		expect(ast.body.length).toBe(1);
 		expect(ast.body[0]?.type).toBe("BlockStatement");
 	});
 
-	test("parse gère les blocs each", () => {
+	test("parse handles #each blocks", () => {
 		const ast = parse("{{#each items}}{{this}}{{/each}}");
 		expect(ast.body[0]?.type).toBe("BlockStatement");
 	});
 
-	test("parse lève TemplateParseError pour un template invalide", () => {
+	test("parse throws TemplateParseError for an invalid template", () => {
 		expect(() => parse("{{#if x}}oops{{/each}}")).toThrow(TemplateParseError);
 	});
 
-	test("parse lève TemplateParseError pour un bloc non fermé", () => {
+	test("parse throws TemplateParseError for an unclosed block", () => {
 		expect(() => parse("{{#if x}}")).toThrow(TemplateParseError);
 	});
 
-	test("parse accepte les commentaires", () => {
-		const ast = parse("{{!-- commentaire --}}Hello");
-		// Le commentaire + le texte
+	test("parse accepts comments", () => {
+		const ast = parse("{{!-- a comment --}}Hello");
+		// The comment + the text
 		expect(ast.body.length).toBeGreaterThanOrEqual(1);
 	});
 
-	test("parse gère le texte pur sans expressions", () => {
+	test("parse handles plain text without expressions", () => {
 		const ast = parse("Just plain text");
 		expect(ast.body.length).toBe(1);
 		expect(ast.body[0]?.type).toBe("ContentStatement");

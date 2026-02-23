@@ -8,11 +8,11 @@ import {
 } from "../src/parser.ts";
 
 // ─── Colon Syntax Tests ──────────────────────────────────────────────────────
-// Vérifie que Handlebars accepte nativement la syntaxe {{key:identifier}}
-// utilisée par l'ancien système de template identifiers.
+// Verifies that Handlebars natively accepts the {{key:identifier}} syntax
+// used by the legacy template identifiers system.
 //
-// Dans Handlebars, `meetingId:1` est traité comme un identifiant valide
-// (un seul segment de chemin). Pas de pré-processing nécessaire.
+// In Handlebars, `meetingId:1` is treated as a valid identifier
+// (a single path segment). No pre-processing is needed.
 
 describe("Handlebars colon syntax — parsing", () => {
 	beforeEach(() => {
@@ -128,9 +128,8 @@ describe("Handlebars colon syntax — parsing", () => {
 });
 
 describe("Handlebars colon syntax — execution (raw Handlebars.compile)", () => {
-	// Ces tests vérifient que Handlebars.compile exécute correctement les
-	// templates avec la syntaxe colon, en utilisant des clés "key:N" dans
-	// l'objet de données.
+	// These tests verify that Handlebars.compile correctly executes
+	// templates with colon syntax, using "key:N" keys in the data object.
 
 	test("renders a single colon-keyed value", () => {
 		const compiled = Handlebars.compile("{{meetingId:1}}", { noEscape: true });
@@ -205,11 +204,11 @@ describe("Handlebars colon syntax — execution (raw Handlebars.compile)", () =>
 });
 
 describe("Handlebars colon syntax — execute() type preservation", () => {
-	// Ces tests vérifient que notre fonction execute() (qui préserve les types
-	// pour les expressions uniques) fonctionne avec la syntaxe colon.
+	// These tests verify that our execute() function (which preserves types
+	// for single expressions) works correctly with colon syntax.
 	//
-	// execute() utilise maintenant le paramètre `identifierData` pour résoudre
-	// les expressions `{{key:N}}` depuis la source de données identifiée par N.
+	// execute() now uses the `identifierData` parameter to resolve
+	// `{{key:N}}` expressions from the data source identified by N.
 
 	test("single expression with colon — preserves string type", () => {
 		const result = execute(
@@ -311,9 +310,9 @@ describe("Handlebars colon syntax — execute() type preservation", () => {
 });
 
 describe("Colon syntax — identifier extraction from path segments", () => {
-	// Helper pour extraire key et identifier d'un segment de chemin.
-	// Ceci simule la logique que le moteur devra implémenter pour
-	// résoudre les template identifiers.
+	// Helper to extract key and identifier from a path segment.
+	// This simulates the logic the engine needs to implement
+	// in order to resolve template identifiers.
 
 	function parseIdentifier(segment: string): {
 		key: string;

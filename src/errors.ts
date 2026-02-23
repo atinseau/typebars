@@ -1,8 +1,8 @@
 import type { TemplateDiagnostic } from "./types.ts";
 
-// ─── Classe de base ──────────────────────────────────────────────────────────
-// Toutes les erreurs du moteur de template héritent de cette classe pour
-// permettre un `catch` ciblé : `catch (e) { if (e instanceof TemplateError) … }`
+// ─── Base Class ──────────────────────────────────────────────────────────────
+// All template engine errors extend this class, enabling targeted catch blocks:
+// `catch (e) { if (e instanceof TemplateError) … }`
 
 export class TemplateError extends Error {
 	constructor(message: string) {
@@ -11,8 +11,8 @@ export class TemplateError extends Error {
 	}
 
 	/**
-	 * Sérialise l'erreur en un objet JSON-compatible, adapté à l'envoi
-	 * vers un frontend ou un système de logging structuré.
+	 * Serializes the error into a JSON-compatible object, suitable for sending
+	 * to a frontend or a structured logging system.
 	 */
 	toJSON(): Record<string, unknown> {
 		return {
@@ -22,15 +22,15 @@ export class TemplateError extends Error {
 	}
 }
 
-// ─── Erreur de parsing ───────────────────────────────────────────────────────
-// Levée quand Handlebars ne parvient pas à parser le template (syntaxe invalide).
+// ─── Parse Error ─────────────────────────────────────────────────────────────
+// Thrown when Handlebars fails to parse the template (invalid syntax).
 
 export class TemplateParseError extends TemplateError {
 	constructor(
 		message: string,
-		/** Position approximative de l'erreur dans le source */
+		/** Approximate position of the error in the source */
 		public readonly loc?: { line: number; column: number },
-		/** Fragment du template source autour de l'erreur */
+		/** Fragment of the template source around the error */
 		public readonly source?: string,
 	) {
 		super(`Parse error: ${message}`);
@@ -47,24 +47,24 @@ export class TemplateParseError extends TemplateError {
 	}
 }
 
-// ─── Erreur d'analyse statique ───────────────────────────────────────────────
-// Levée en mode strict quand l'analyse produit au moins une erreur.
-// Contient la liste complète des diagnostics pour inspection détaillée.
+// ─── Static Analysis Error ───────────────────────────────────────────────────
+// Thrown in strict mode when the analysis produces at least one error.
+// Contains the full list of diagnostics for detailed inspection.
 
 export class TemplateAnalysisError extends TemplateError {
-	/** Liste complète des diagnostics (erreurs + warnings) */
+	/** Full list of diagnostics (errors + warnings) */
 	public readonly diagnostics: TemplateDiagnostic[];
 
-	/** Uniquement les diagnostics de sévérité "error" */
+	/** Only diagnostics with "error" severity */
 	public readonly errors: TemplateDiagnostic[];
 
-	/** Uniquement les diagnostics de sévérité "warning" */
+	/** Only diagnostics with "warning" severity */
 	public readonly warnings: TemplateDiagnostic[];
 
-	/** Nombre total d'erreurs */
+	/** Total number of errors */
 	public readonly errorCount: number;
 
-	/** Nombre total de warnings */
+	/** Total number of warnings */
 	public readonly warningCount: number;
 
 	constructor(diagnostics: TemplateDiagnostic[]) {
@@ -83,14 +83,14 @@ export class TemplateAnalysisError extends TemplateError {
 	}
 
 	/**
-	 * Sérialise l'erreur d'analyse en un objet JSON-compatible.
+	 * Serializes the analysis error into a JSON-compatible object.
 	 *
-	 * Conçu pour être envoyé directement à un frontend :
+	 * Designed for direct use in API responses:
 	 * ```
 	 * res.status(400).json(error.toJSON());
 	 * ```
 	 *
-	 * Structure retournée :
+	 * Returned structure:
 	 * ```
 	 * {
 	 *   name: "TemplateAnalysisError",
@@ -121,9 +121,9 @@ export class TemplateAnalysisError extends TemplateError {
 	}
 }
 
-// ─── Erreur d'exécution ──────────────────────────────────────────────────────
-// Levée quand l'exécution du template échoue (accès à une propriété
-// inexistante en mode strict, type inattendu, etc.).
+// ─── Runtime Error ───────────────────────────────────────────────────────────
+// Thrown when template execution fails (accessing a non-existent property
+// in strict mode, unexpected type, etc.).
 
 export class TemplateRuntimeError extends TemplateError {
 	constructor(message: string) {
@@ -132,13 +132,13 @@ export class TemplateRuntimeError extends TemplateError {
 	}
 }
 
-// ─── Utilitaires internes ────────────────────────────────────────────────────
+// ─── Internal Utilities ──────────────────────────────────────────────────────
 
 /**
- * Formate une ligne de diagnostic pour le message résumé d'une
- * `TemplateAnalysisError`.
+ * Formats a single diagnostic line for the summary message
+ * of a `TemplateAnalysisError`.
  *
- * Produit un format lisible :
+ * Produces a human-readable format:
  *   `  • [UNKNOWN_PROPERTY] Property "foo" does not exist (at 1:0)`
  */
 function formatDiagnosticLine(diag: TemplateDiagnostic): string {
@@ -151,12 +151,12 @@ function formatDiagnosticLine(diag: TemplateDiagnostic): string {
 	return parts.join(" ");
 }
 
-// ─── Factory pour les erreurs courantes ──────────────────────────────────────
-// Ces fonctions simplifient la création d'erreurs typées à travers le code.
+// ─── Common Error Factories ──────────────────────────────────────────────────
+// These functions simplify the creation of typed errors across the codebase.
 
 /**
- * Crée un diagnostic structuré pour une propriété inexistante.
- * Utilisé par l'analyseur pour produire des messages d'erreur enrichis.
+ * Creates a structured diagnostic message for a missing property.
+ * Used by the analyzer to produce enriched error messages with suggestions.
  */
 export function createPropertyNotFoundMessage(
 	path: string,
@@ -168,7 +168,7 @@ export function createPropertyNotFoundMessage(
 }
 
 /**
- * Crée un message pour une incompatibilité de type.
+ * Creates a message for a type mismatch on a block helper.
  */
 export function createTypeMismatchMessage(
 	helperName: string,
@@ -179,21 +179,21 @@ export function createTypeMismatchMessage(
 }
 
 /**
- * Crée un message pour un argument manquant sur un helper de bloc.
+ * Creates a message for a missing argument on a block helper.
  */
 export function createMissingArgumentMessage(helperName: string): string {
 	return `"{{#${helperName}}}" requires an argument`;
 }
 
 /**
- * Crée un message pour un helper de bloc inconnu.
+ * Creates a message for an unknown block helper.
  */
 export function createUnknownHelperMessage(helperName: string): string {
 	return `Unknown block helper "{{#${helperName}}}" — cannot analyze statically`;
 }
 
 /**
- * Crée un message pour une expression non analysable.
+ * Creates a message for an expression that cannot be statically analyzed.
  */
 export function createUnanalyzableMessage(nodeType: string): string {
 	return `Expression of type "${nodeType}" cannot be statically analyzed`;

@@ -2,15 +2,14 @@ import type { JSONSchema7 } from "json-schema";
 import type { FromSchema, JSONSchema } from "json-schema-to-ts";
 
 // ─── Template Input ──────────────────────────────────────────────────────────
-// Le moteur accepte des valeurs primitives en plus des strings de template.
-// Quand une valeur non-string est passée, elle est traitée comme un littéral
-// passthrough : l'analyse retourne le type inféré, l'exécution retourne la
-// valeur telle quelle.
+// The engine accepts primitive values in addition to template strings.
+// When a non-string value is passed, it is treated as a literal passthrough:
+// analysis returns the inferred type, and execution returns the value as-is.
 
 /**
- * Objet dont chaque propriété est un `TemplateInput` (récursif).
+ * Object where each property is a `TemplateInput` (recursive).
  *
- * Permet de passer une structure entière comme template :
+ * Allows passing an entire structure as a template:
  * ```
  * engine.analyze({
  *   userName: "{{name}}",
@@ -24,13 +23,13 @@ export interface TemplateInputObject {
 }
 
 /**
- * Type d'entrée accepté par le moteur de template.
+ * Input type accepted by the template engine.
  *
- * - `string`              → template Handlebars classique (parsé et exécuté)
- * - `number`              → littéral numérique (passthrough)
- * - `boolean`             → littéral booléen (passthrough)
- * - `null`                → littéral null (passthrough)
- * - `TemplateInputObject` → objet dont chaque propriété est un `TemplateInput`
+ * - `string`              → standard Handlebars template (parsed and executed)
+ * - `number`              → numeric literal (passthrough)
+ * - `boolean`             → boolean literal (passthrough)
+ * - `null`                → null literal (passthrough)
+ * - `TemplateInputObject` → object where each property is a `TemplateInput`
  */
 export type TemplateInput =
 	| string
@@ -40,10 +39,10 @@ export type TemplateInput =
 	| TemplateInputObject;
 
 /**
- * Vérifie si une valeur est un littéral non-string primitif (number, boolean, null).
- * Ces valeurs sont traitées en passthrough par le moteur.
+ * Checks whether a value is a non-string primitive literal (number, boolean, null).
+ * These values are treated as passthrough by the engine.
  *
- * Note : les objets (`TemplateInputObject`) ne sont PAS des littéraux.
+ * Note: objects (`TemplateInputObject`) are NOT literals.
  */
 export function isLiteralInput(
 	input: TemplateInput,
@@ -54,9 +53,9 @@ export function isLiteralInput(
 }
 
 /**
- * Vérifie si une valeur est un objet template (`TemplateInputObject`).
- * Les objets templates sont traités récursivement par le moteur :
- * chaque propriété est analysée/exécutée individuellement.
+ * Checks whether a value is a template object (`TemplateInputObject`).
+ * Template objects are processed recursively by the engine:
+ * each property is analyzed/executed individually.
  */
 export function isObjectInput(
 	input: TemplateInput,
@@ -65,10 +64,10 @@ export function isObjectInput(
 }
 
 /**
- * Infère le JSON Schema d'une valeur primitive non-string.
+ * Infers the JSON Schema of a non-string primitive value.
  *
- * @param value - La valeur primitive (number, boolean, null)
- * @returns Le JSON Schema correspondant
+ * @param value - The primitive value (number, boolean, null)
+ * @returns The corresponding JSON Schema
  *
  * @example
  * ```
@@ -85,120 +84,120 @@ export function inferPrimitiveSchema(
 	if (typeof value === "number") {
 		return Number.isInteger(value) ? { type: "integer" } : { type: "number" };
 	}
-	// Exhaustiveness check — toutes les branches sont couvertes ci-dessus.
-	// Si le type de `value` change, TypeScript lèvera une erreur ici.
+	// Exhaustiveness check — all branches are covered above.
+	// If the type of `value` changes, TypeScript will raise an error here.
 	value satisfies never;
 	return { type: "null" };
 }
 
-// ─── Codes de diagnostic ─────────────────────────────────────────────────────
-// Codes machine-readable pour chaque type d'erreur/warning, permettant au
-// frontend de réagir programmatiquement sans parser le message humain.
+// ─── Diagnostic Codes ────────────────────────────────────────────────────────
+// Machine-readable codes for each error/warning type, enabling the frontend
+// to react programmatically without parsing the human-readable message.
 
 export type DiagnosticCode =
-	/** La propriété référencée n'existe pas dans le schema contextuel */
+	/** The referenced property does not exist in the context schema */
 	| "UNKNOWN_PROPERTY"
-	/** Incompatibilité de type (ex: #each sur un non-tableau) */
+	/** Type mismatch (e.g. #each on a non-array) */
 	| "TYPE_MISMATCH"
-	/** Un helper de bloc est utilisé sans argument requis */
+	/** A block helper is used without a required argument */
 	| "MISSING_ARGUMENT"
-	/** Helper de bloc inconnu (ni built-in, ni enregistré) */
+	/** Unknown block helper (neither built-in nor registered) */
 	| "UNKNOWN_HELPER"
-	/** L'expression ne peut pas être analysée statiquement */
+	/** The expression cannot be statically analyzed */
 	| "UNANALYZABLE"
-	/** La syntaxe {{key:N}} est utilisée mais aucun identifierSchemas fourni */
+	/** The {{key:N}} syntax is used but no identifierSchemas were provided */
 	| "MISSING_IDENTIFIER_SCHEMAS"
-	/** L'identifiant N n'existe pas dans les identifierSchemas fournis */
+	/** The identifier N does not exist in the provided identifierSchemas */
 	| "UNKNOWN_IDENTIFIER"
-	/** La propriété n'existe pas dans le schema de l'identifiant */
+	/** The property does not exist in the identifier's schema */
 	| "IDENTIFIER_PROPERTY_NOT_FOUND"
-	/** Erreur de syntaxe dans le template */
+	/** Syntax error in the template */
 	| "PARSE_ERROR";
 
-// ─── Détails structurés d'un diagnostic ──────────────────────────────────────
-// Informations complémentaires pour comprendre la cause exacte de l'erreur.
-// Conçu pour être facilement sérialisable en JSON et exploitable par un front.
+// ─── Diagnostic Details ──────────────────────────────────────────────────────
+// Supplementary information to understand the exact cause of the error.
+// Designed to be easily JSON-serializable and consumable by a frontend.
 
 export interface DiagnosticDetails {
-	/** Chemin de l'expression ayant causé l'erreur (ex: `"user.name.foo"`) */
+	/** Path of the expression that caused the error (e.g. `"user.name.foo"`) */
 	path?: string;
-	/** Nom du helper concerné (pour les erreurs liées aux helpers) */
+	/** Name of the helper involved (for helper-related errors) */
 	helperName?: string;
-	/** Ce qui était attendu (ex: `"array"`, `"property to exist"`) */
+	/** What was expected (e.g. `"array"`, `"property to exist"`) */
 	expected?: string;
-	/** Ce qui a été trouvé (ex: `"string"`, `"undefined"`) */
+	/** What was found (e.g. `"string"`, `"undefined"`) */
 	actual?: string;
-	/** Propriétés disponibles dans le schema courant (pour les suggestions) */
+	/** Available properties in the current schema (for suggestions) */
 	availableProperties?: string[];
-	/** Numéro de l'identifiant de template (pour les erreurs `{{key:N}}`) */
+	/** Template identifier number (for `{{key:N}}` errors) */
 	identifier?: number;
 }
 
-// ─── Résultat d'analyse statique ─────────────────────────────────────────────
+// ─── Static Analysis Result ──────────────────────────────────────────────────
 
-/** Diagnostic produit par l'analyseur statique */
+/** Diagnostic produced by the static analyzer */
 export interface TemplateDiagnostic {
-	/** "error" bloque l'exécution, "warning" est informatif */
+	/** "error" blocks execution, "warning" is informational */
 	severity: "error" | "warning";
 
-	/** Code machine-readable identifiant le type d'erreur */
+	/** Machine-readable code identifying the error type */
 	code: DiagnosticCode;
 
-	/** Message humain décrivant le problème */
+	/** Human-readable message describing the problem */
 	message: string;
 
-	/** Position dans le template source (si disponible via l'AST) */
+	/** Position in the template source (if available from the AST) */
 	loc?: {
 		start: { line: number; column: number };
 		end: { line: number; column: number };
 	};
 
-	/** Fragment du template source autour de l'erreur */
+	/** Fragment of the template source around the error */
 	source?: string;
 
-	/** Informations structurées pour le debugging et l'affichage frontend */
+	/** Structured information for debugging and frontend display */
 	details?: DiagnosticDetails;
 }
 
-/** Résultat complet de l'analyse statique */
+/** Complete result of the static analysis */
 export interface AnalysisResult {
-	/** true si aucune erreur (les warnings sont tolérés) */
+	/** true if no errors (warnings are tolerated) */
 	valid: boolean;
-	/** Liste de diagnostics (erreurs + warnings) */
+	/** List of diagnostics (errors + warnings) */
 	diagnostics: TemplateDiagnostic[];
-	/** JSON Schema décrivant le type de retour du template */
+	/** JSON Schema describing the template's return type */
 	outputSchema: JSONSchema7;
 }
 
-/** Résultat de validation légère (sans inférence de type de sortie) */
+/** Lightweight validation result (without output type inference) */
 export interface ValidationResult {
-	/** true si aucune erreur (les warnings sont tolérés) */
+	/** true if no errors (warnings are tolerated) */
 	valid: boolean;
-	/** Liste de diagnostics (erreurs + warnings) */
+	/** List of diagnostics (errors + warnings) */
 	diagnostics: TemplateDiagnostic[];
 }
 
-// ─── Options publiques du moteur ─────────────────────────────────────────────
+// ─── Public Engine Options ───────────────────────────────────────────────────
 
 export interface TemplateEngineOptions {
 	/**
-	 * Capacité du cache d'AST parsés. Chaque template parsé est mis en cache
-	 * pour éviter un re-parsing coûteux lors d'appels répétés.
+	 * Capacity of the parsed AST cache. Each parsed template is cached
+	 * to avoid costly re-parsing on repeated calls.
 	 * @default 256
 	 */
 	astCacheSize?: number;
 
 	/**
-	 * Capacité du cache de templates Handlebars compilés.
+	 * Capacity of the compiled Handlebars template cache.
 	 * @default 256
 	 */
 	compilationCacheSize?: number;
 
 	/**
-	 * Helpers custom à enregistrer lors de la construction de l'engine.
+	 * Custom helpers to register during engine construction.
 	 *
-	 * Chaque entrée décrit un helper avec son nom, son implémentation,
-	 * ses paramètres attendus et son type de retour.
+	 * Each entry describes a helper with its name, implementation,
+	 * expected parameters, and return type.
 	 *
 	 * @example
 	 * ```
@@ -220,76 +219,76 @@ export interface TemplateEngineOptions {
 	helpers?: HelperConfig[];
 }
 
-// ─── Options d'exécution ─────────────────────────────────────────────────────
-// Objet d'options optionnel pour `execute()`, remplaçant les multiples
-// paramètres positionnels pour une meilleure ergonomie.
+// ─── Execution Options ───────────────────────────────────────────────────────
+// Optional options object for `execute()`, replacing multiple positional
+// parameters for better ergonomics.
 
 export interface ExecuteOptions {
-	/** JSON Schema pour validation statique préalable */
+	/** JSON Schema for pre-execution static validation */
 	schema?: JSONSchema7;
-	/** Données par identifiant `{ [id]: { key: value } }` */
+	/** Data by identifier `{ [id]: { key: value } }` */
 	identifierData?: Record<number, Record<string, unknown>>;
-	/** Schemas par identifiant (pour validation statique avec identifiers) */
+	/** Schemas by identifier (for static validation with identifiers) */
 	identifierSchemas?: Record<number, JSONSchema7>;
 }
 
-// ─── Options d'analyse et exécution combinées ────────────────────────────────
-// Objet d'options optionnel pour `analyzeAndExecute()`, regroupant les
-// paramètres liés aux template identifiers.
+// ─── Combined Analyze-and-Execute Options ────────────────────────────────────
+// Optional options object for `analyzeAndExecute()`, grouping parameters
+// related to template identifiers.
 
 export interface AnalyzeAndExecuteOptions {
-	/** Schemas par identifiant `{ [id]: JSONSchema7 }` pour l'analyse statique */
+	/** Schemas by identifier `{ [id]: JSONSchema7 }` for static analysis */
 	identifierSchemas?: Record<number, JSONSchema7>;
-	/** Données par identifiant `{ [id]: { key: value } }` pour l'exécution */
+	/** Data by identifier `{ [id]: { key: value } }` for execution */
 	identifierData?: Record<number, Record<string, unknown>>;
 }
 
-// ─── Helpers custom ──────────────────────────────────────────────────────────
-// Permet d'enregistrer des helpers personnalisés avec leur signature de type
-// pour l'analyse statique.
+// ─── Custom Helpers ──────────────────────────────────────────────────────────
+// Allows registering custom helpers with their type signature for static
+// analysis support.
 
-/** Décrit un paramètre attendu par un helper */
+/** Describes a parameter expected by a helper */
 export interface HelperParam {
-	/** Nom du paramètre (pour la documentation / introspection) */
+	/** Parameter name (for documentation / introspection) */
 	name: string;
 
 	/**
-	 * JSON Schema décrivant le type attendu pour ce paramètre.
-	 * Utilisé pour la documentation et la validation statique.
+	 * JSON Schema describing the expected type for this parameter.
+	 * Used for documentation and static validation.
 	 */
 	type?: JSONSchema7;
 
-	/** Description humaine du paramètre */
+	/** Human-readable description of the parameter */
 	description?: string;
 
 	/**
-	 * Indique si le paramètre est optionnel.
+	 * Whether the parameter is optional.
 	 * @default false
 	 */
 	optional?: boolean;
 }
 
 /**
- * Définition d'un helper enregistrable via `registerHelper()`.
+ * Definition of a helper registerable via `registerHelper()`.
  *
- * Contient l'implémentation runtime et les métadonnées de typage
- * pour l'analyse statique.
+ * Contains the runtime implementation and typing metadata
+ * for static analysis.
  */
 export interface HelperDefinition {
 	/**
-	 * Implémentation runtime du helper — sera enregistrée auprès de Handlebars.
+	 * Runtime implementation of the helper — will be registered with Handlebars.
 	 *
-	 * Pour un helper inline `{{uppercase name}}` :
+	 * For an inline helper `{{uppercase name}}`:
 	 *   `(value: string) => string`
 	 *
-	 * Pour un helper de bloc `{{#repeat count}}...{{/repeat}}` :
+	 * For a block helper `{{#repeat count}}...{{/repeat}}`:
 	 *   `function(this: any, count: number, options: Handlebars.HelperOptions) { ... }`
 	 */
-	// biome-ignore lint/suspicious/noExplicitAny: la signature des helpers Handlebars est dynamique par nature
+	// biome-ignore lint/suspicious/noExplicitAny: Handlebars helper signatures are inherently dynamic
 	fn: (...args: any[]) => unknown;
 
 	/**
-	 * Paramètres attendus par le helper (pour la documentation et l'analyse).
+	 * Parameters expected by the helper (for documentation and analysis).
 	 *
 	 * @example
 	 * ```
@@ -302,20 +301,20 @@ export interface HelperDefinition {
 	params?: HelperParam[];
 
 	/**
-	 * JSON Schema décrivant le type de retour du helper pour l'analyse statique.
+	 * JSON Schema describing the helper's return type for static analysis.
 	 * @default { type: "string" }
 	 */
 	returnType?: JSONSchema7;
 
-	/** Description humaine du helper */
+	/** Human-readable description of the helper */
 	description?: string;
 }
 
 /**
- * Configuration complète d'un helper pour l'enregistrement via les options
- * du constructeur `Typebars({ helpers: [...] })`.
+ * Full helper configuration for registration via the `Typebars({ helpers: [...] })`
+ * constructor options.
  *
- * Étend `HelperDefinition` avec un `name` obligatoire.
+ * Extends `HelperDefinition` with a required `name`.
  *
  * @example
  * ```
@@ -332,18 +331,18 @@ export interface HelperDefinition {
  * ```
  */
 export interface HelperConfig extends HelperDefinition {
-	/** Nom du helper tel qu'il sera utilisé dans les templates (ex: `"uppercase"`) */
+	/** Name of the helper as used in templates (e.g. `"uppercase"`) */
 	name: string;
 }
 
-// ─── Inférence automatique des types de paramètres via json-schema-to-ts ─────
-// Permet à `defineHelper()` d'inférer les types TypeScript des arguments de `fn`
-// à partir des JSON Schemas déclarés dans `params`.
+// ─── Automatic Type Inference via json-schema-to-ts ──────────────────────────
+// Allows `defineHelper()` to infer TypeScript types for `fn` arguments
+// from the JSON Schemas declared in `params`.
 
 /**
- * Param definition utilisé pour l'inférence de type.
- * Accepte `JSONSchema` de `json-schema-to-ts` pour permettre à `FromSchema`
- * de résoudre les types littéraux.
+ * Param definition used for type inference.
+ * Accepts `JSONSchema` from `json-schema-to-ts` to allow `FromSchema`
+ * to resolve literal types.
  */
 type TypedHelperParam = {
 	readonly name: string;
@@ -353,9 +352,9 @@ type TypedHelperParam = {
 };
 
 /**
- * Infère le type TypeScript d'un seul paramètre à partir de son JSON Schema.
- * - Si `optional: true`, le type résolu est unionné avec `undefined`.
- * - Si `type` n'est pas fourni, le type est `unknown`.
+ * Infers the TypeScript type of a single parameter from its JSON Schema.
+ * - If `optional: true`, the resolved type is unioned with `undefined`.
+ * - If `type` is not provided, the type is `unknown`.
  */
 type InferParamType<P> = P extends {
 	readonly type: infer S extends JSONSchema;
@@ -367,8 +366,8 @@ type InferParamType<P> = P extends {
 		: unknown;
 
 /**
- * Mappe un tuple de `TypedHelperParam` vers un tuple de types TypeScript
- * inférés, utilisable comme signature de `fn`.
+ * Maps a tuple of `TypedHelperParam` to a tuple of inferred TypeScript types,
+ * usable as the `fn` signature.
  *
  * @example
  * ```
@@ -384,8 +383,8 @@ type InferArgs<P extends readonly TypedHelperParam[]> = {
 };
 
 /**
- * Configuration d'un helper avec inférence générique sur les paramètres.
- * Utilisé exclusivement par `defineHelper()`.
+ * Helper configuration with generic parameter inference.
+ * Used exclusively by `defineHelper()`.
  */
 interface TypedHelperConfig<P extends readonly TypedHelperParam[]> {
 	name: string;
@@ -396,12 +395,12 @@ interface TypedHelperConfig<P extends readonly TypedHelperParam[]> {
 }
 
 /**
- * Crée un `HelperConfig` avec inférence automatique des types de `fn`
- * à partir des JSON Schemas déclarés dans `params`.
+ * Creates a `HelperConfig` with automatic type inference for `fn` arguments
+ * based on the JSON Schemas declared in `params`.
  *
- * Le paramètre générique `const P` préserve les types littéraux des schemas
- * (équivalent de `as const`), ce qui permet à `FromSchema` de résoudre
- * les types TypeScript correspondants.
+ * The generic parameter `const P` preserves schema literal types
+ * (equivalent of `as const`), enabling `FromSchema` to resolve the
+ * corresponding TypeScript types.
  *
  * @example
  * ```

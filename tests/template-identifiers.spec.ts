@@ -9,19 +9,19 @@ import { Typebars } from "../src/typebars.ts";
 // Template Identifiers ({{key:N}}) — Full Feature Tests
 // ═════════════════════════════════════════════════════════════════════════════
 //
-// Ces tests vérifient le support complet de la syntaxe {{key:N}} dans les
-// trois couches du moteur : parsing, analyse statique, et exécution.
+// These tests verify full support for the {{key:N}} syntax across
+// all three engine layers: parsing, static analysis, and execution.
 //
-// La syntaxe {{key:N}} permet de résoudre une variable depuis une source
-// de données spécifique identifiée par un entier positif N (ou 0).
+// The {{key:N}} syntax resolves a variable from a specific data source
+// identified by a non-negative integer N.
 //
-// Correspondance avec l'ancien système (SchemaIOService) :
-//   - `identifierData`    ↔ ancien `outputNodeById` (3ème arg de interpolateTemplateValues)
-//   - `identifierSchemas` ↔ ancien `prevSchemas`     (3ème arg de validateTemplateUsage)
+// Mapping to the legacy system (SchemaIOService):
+//   - `identifierData`    ↔ legacy `outputNodeById` (3rd arg of interpolateTemplateValues)
+//   - `identifierSchemas` ↔ legacy `prevSchemas`     (3rd arg of validateTemplateUsage)
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-/** Reproduit interpolateTemplateValues avec support des identifiers */
+/** Reproduces interpolateTemplateValues with identifier support */
 function interpolateObject(
 	templateObj: Record<string, unknown>,
 	data: Record<string, unknown>,
@@ -123,7 +123,7 @@ describe("extractExpressionIdentifier", () => {
 });
 
 // ═════════════════════════════════════════════════════════════════════════════
-// SECTION 2 : execute() avec identifierData
+// SECTION 2 : execute() with identifierData
 // ═════════════════════════════════════════════════════════════════════════════
 
 describe("execute() with identifierData", () => {
@@ -346,7 +346,7 @@ describe("execute() with identifierData", () => {
 });
 
 // ═════════════════════════════════════════════════════════════════════════════
-// SECTION 3 : interpolateObject avec identifierData (migration des vieux tests)
+// SECTION 3 : interpolateObject with identifierData (legacy test migration)
 // ═════════════════════════════════════════════════════════════════════════════
 
 describe("interpolateObject with identifierData (old interpolateTemplateValues migration)", () => {
@@ -355,9 +355,9 @@ describe("interpolateObject with identifierData (old interpolateTemplateValues m
 			{ accountId: "{{meetingId:1}} {{leadName:2}}" },
 			{ meetingId: "coucou", leadName: "bye bye" },
 		);
-		// Sans identifierData fourni, les templates avec identifiers
-		// retournent "" car Handlebars ne trouve pas "meetingId:1" dans data.
-		// Mais si on fournit identifierData :
+		// Without identifierData provided, templates with identifiers
+		// return "" because Handlebars cannot find "meetingId:1" in data.
+		// But if we provide identifierData:
 		const output2 = interpolateObject(
 			{ accountId: "{{meetingId:1}} {{leadName:2}}" },
 			{ meetingId: "coucou", leadName: "bye bye" },
@@ -370,7 +370,7 @@ describe("interpolateObject with identifierData (old interpolateTemplateValues m
 	});
 
 	test("old test: pick in outputNodeById with identifiers", () => {
-		// {{meetingId:1}} {{meetingId:2}} avec sources différentes
+		// {{meetingId:1}} {{meetingId:2}} with different sources
 		const output = interpolateObject(
 			{ accountId: "{{meetingId:1}} {{meetingId:2}}" },
 			{ meetingId: "coucou" },
@@ -450,7 +450,7 @@ describe("interpolateObject with identifierData (old interpolateTemplateValues m
 });
 
 // ═════════════════════════════════════════════════════════════════════════════
-// SECTION 4 : analyze() avec identifierSchemas
+// SECTION 4 : analyze() with identifierSchemas
 // ═════════════════════════════════════════════════════════════════════════════
 
 describe("analyze() with identifierSchemas", () => {
@@ -959,8 +959,8 @@ describe("Typebars with identifiers", () => {
 });
 
 // ═════════════════════════════════════════════════════════════════════════════
-// SECTION 6 : Migration exacte des anciens tests interpolateTemplateValues
-//             qui utilisaient outputNodeById (3ème argument)
+// SECTION 6 : Exact migration of legacy interpolateTemplateValues tests
+//             that used outputNodeById (3rd argument)
 // ═════════════════════════════════════════════════════════════════════════════
 
 describe("Exact migration of old interpolateTemplateValues tests with identifiers", () => {
@@ -969,9 +969,9 @@ describe("Exact migration of old interpolateTemplateValues tests with identifier
 	});
 
 	test("old: detect template with identifiers (no identifierData → falls back to data)", () => {
-		// L'ancien système résolvait {{meetingId:1}} depuis data si pas de
-		// outputNodeById. Le nouveau système retourne "" (Handlebars ne trouve pas).
-		// Mais le cas intéressant est AVEC identifierData.
+		// The legacy system resolved {{meetingId:1}} from data when no
+		// outputNodeById was provided. The new system returns "" (Handlebars can't find it).
+		// The interesting case is WITH identifierData.
 		const output = interpolateObject(
 			{ accountId: "{{meetingId:1}} {{leadName:2}}" },
 			{ meetingId: "coucou", leadName: "bye bye" },
@@ -1075,7 +1075,7 @@ describe("Exact migration of old interpolateTemplateValues tests with identifier
 });
 
 // ═════════════════════════════════════════════════════════════════════════════
-// SECTION 7 : Migration des anciens tests validateTemplateUsage avec prevSchemas
+// SECTION 7 : Migration of legacy validateTemplateUsage tests with prevSchemas
 // ═════════════════════════════════════════════════════════════════════════════
 
 describe("Exact migration of old validateTemplateUsage tests with prevSchemas", () => {
@@ -1146,14 +1146,14 @@ describe("Exact migration of old validateTemplateUsage tests with prevSchemas", 
 });
 
 // ═════════════════════════════════════════════════════════════════════════════
-// SECTION 8 : Migration des anciens tests findTemplateSchemaFromPrevSchemas
+// SECTION 8 : Migration of legacy findTemplateSchemaFromPrevSchemas tests
 // ═════════════════════════════════════════════════════════════════════════════
 
 describe("Exact migration of old findTemplateSchemaFromPrevSchemas behavior", () => {
-	// L'ancien findTemplateSchemaFromPrevSchemas(key, identifier, prevSchemas)
-	// cherchait un schema dans une liste ordonnée [id, schema][].
-	// Le nouveau système utilise identifierSchemas comme Record<number, JSONSchema7>
-	// et la résolution se fait via resolveSchemaPath.
+	// The legacy findTemplateSchemaFromPrevSchemas(key, identifier, prevSchemas)
+	// looked up a schema in an ordered list [id, schema][].
+	// The new system uses identifierSchemas as Record<number, JSONSchema7>
+	// and resolution is done via resolveSchemaPath.
 
 	test("returns correct type when identifier is provided and found", () => {
 		const idSchemas: Record<number, JSONSchema7> = {

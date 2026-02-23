@@ -2,24 +2,24 @@ import type { JSONSchema7 } from "json-schema";
 import { deepEqual } from "./utils.ts";
 
 // ─── JSON Schema Resolver ────────────────────────────────────────────────────
-// Utilitaire pour naviguer dans un JSON Schema Draft v7 en suivant un chemin
-// de propriétés (ex: ["user", "address", "city"]).
+// Utility for navigating a JSON Schema Draft v7 by following a property path
+// (e.g. ["user", "address", "city"]).
 //
-// Gère :
-// - La résolution de `$ref` (références internes #/definitions/...)
-// - La navigation dans `properties`
-// - La navigation dans `items` (éléments d'un tableau)
-// - Les combinateurs `allOf`, `anyOf`, `oneOf` (recherche dans chaque branche)
-// - `additionalProperties` quand la propriété n'est pas déclarée
+// Handles:
+// - `$ref` resolution (internal references #/definitions/...)
+// - Navigation through `properties`
+// - Navigation through `items` (array elements)
+// - Combinators `allOf`, `anyOf`, `oneOf` (searches each branch)
+// - `additionalProperties` when the property is not explicitly declared
 
-// ─── Résolution de $ref ──────────────────────────────────────────────────────
-// Supporte uniquement les références internes au format `#/definitions/Foo`
-// ou `#/$defs/Foo` (JSON Schema Draft 2019+). Les $ref distantes (URL) ne
-// sont pas prises en charge — ce n'est pas le rôle d'un moteur de template.
+// ─── $ref Resolution ─────────────────────────────────────────────────────────
+// Only supports internal references in the format `#/definitions/Foo`
+// or `#/$defs/Foo` (JSON Schema Draft 2019+). Remote $refs (URLs) are
+// not supported — that is outside the scope of a template engine.
 
 /**
- * Résout récursivement les `$ref` d'un schema en utilisant le schema racine
- * comme source de définitions.
+ * Recursively resolves `$ref` in a schema using the root schema as the
+ * source of definitions.
  */
 export function resolveRef(
 	schema: JSONSchema7,
@@ -29,7 +29,7 @@ export function resolveRef(
 
 	const ref = schema.$ref;
 
-	// Format attendu : #/definitions/Name ou #/$defs/Name
+	// Expected format: #/definitions/Name or #/$defs/Name
 	const match = ref.match(/^#\/(definitions|\$defs)\/(.+)$/);
 	if (!match) {
 		throw new Error(
@@ -48,7 +48,7 @@ export function resolveRef(
 		);
 	}
 
-	// Résolution récursive au cas où la définition elle-même contient un $ref
+	// Recursive resolution in case the definition itself contains a $ref
 	const def = defs[name];
 	if (!def || typeof def === "boolean") {
 		throw new Error(
@@ -58,15 +58,15 @@ export function resolveRef(
 	return resolveRef(def, root);
 }
 
-// ─── Navigation par segment de chemin ────────────────────────────────────────
+// ─── Single-Segment Path Navigation ─────────────────────────────────────────
 
 /**
- * Résout un seul segment de chemin (un nom de propriété) dans un schema.
- * Retourne le sous-schema correspondant ou `undefined` si le chemin est invalide.
+ * Resolves a single path segment (a property name) within a schema.
+ * Returns the corresponding sub-schema, or `undefined` if the path is invalid.
  *
- * @param schema  - Le schema courant (déjà résolu, sans $ref)
- * @param segment - Le nom de la propriété à résoudre
- * @param root    - Le schema racine (pour résoudre d'éventuels $ref internes)
+ * @param schema  - The current schema (already resolved, no $ref)
+ * @param segment - The property name to resolve
+ * @param root    - The root schema (for resolving any internal $refs)
  */
 function resolveSegment(
 	schema: JSONSchema7,
@@ -75,26 +75,26 @@ function resolveSegment(
 ): JSONSchema7 | undefined {
 	const resolved = resolveRef(schema, root);
 
-	// 1. Propriétés explicites
+	// 1. Explicit properties
 	if (resolved.properties && segment in resolved.properties) {
 		const prop = resolved.properties[segment];
 		if (prop && typeof prop !== "boolean") return resolveRef(prop, root);
 		if (prop === true) return {};
 	}
 
-	// 2. additionalProperties (quand la propriété n'est pas déclarée)
+	// 2. additionalProperties (when the property is not declared)
 	if (
 		resolved.additionalProperties !== undefined &&
 		resolved.additionalProperties !== false
 	) {
 		if (resolved.additionalProperties === true) {
-			// additionalProperties: true → on ne sait rien du type
+			// additionalProperties: true → type is unknown
 			return {};
 		}
 		return resolveRef(resolved.additionalProperties, root);
 	}
 
-	// 3. Propriétés intrinsèques des tableaux (ex: `.length`)
+	// 3. Intrinsic array properties (e.g. `.length`)
 	const schemaType = resolved.type;
 	const isArray =
 		schemaType === "array" ||
@@ -104,7 +104,7 @@ function resolveSegment(
 		return { type: "integer" };
 	}
 
-	// 4. Combinateurs — on cherche dans chaque branche
+	// 4. Combinators — search within each branch
 	const combinatorResult = resolveInCombinators(resolved, segment, root);
 	if (combinatorResult) return combinatorResult;
 
@@ -112,17 +112,17 @@ function resolveSegment(
 }
 
 /**
- * Cherche un segment dans les branches `allOf`, `anyOf`, `oneOf`.
- * Retourne le premier sous-schema trouvé ou `undefined`.
- * Pour `allOf`, on fusionne les résultats trouvés en un `allOf`.
+ * Searches for a segment within `allOf`, `anyOf`, `oneOf` branches.
+ * Returns the first matching sub-schema, or `undefined`.
+ * For `allOf`, found results are merged into a single `allOf`.
  */
 function resolveInCombinators(
 	schema: JSONSchema7,
 	segment: string,
 	root: JSONSchema7,
 ): JSONSchema7 | undefined {
-	// allOf : la propriété peut être définie dans n'importe quelle branche,
-	// et toutes les contraintes s'appliquent simultanément.
+	// allOf: the property can be defined in any branch, and all constraints
+	// apply simultaneously.
 	if (schema.allOf) {
 		const matches = schema.allOf
 			.filter((b): b is JSONSchema7 => typeof b !== "boolean")
@@ -133,7 +133,7 @@ function resolveInCombinators(
 		if (matches.length > 1) return { allOf: matches };
 	}
 
-	// anyOf / oneOf : la propriété peut venir de n'importe quelle branche.
+	// anyOf / oneOf: the property can come from any branch.
 	for (const key of ["anyOf", "oneOf"] as const) {
 		if (!schema[key]) continue;
 		const matches = schema[key]
@@ -148,16 +148,16 @@ function resolveInCombinators(
 	return undefined;
 }
 
-// ─── API publique ────────────────────────────────────────────────────────────
+// ─── Public API ──────────────────────────────────────────────────────────────
 
 /**
- * Résout un chemin complet (ex: ["user", "address", "city"]) dans un JSON
- * Schema et retourne le sous-schema correspondant.
+ * Resolves a full path (e.g. ["user", "address", "city"]) within a JSON
+ * Schema and returns the corresponding sub-schema.
  *
- * @param schema - Le schema racine décrivant le contexte du template
- * @param path   - Tableau de segments (noms de propriétés)
- * @returns Le sous-schema au bout du chemin, ou `undefined` si le chemin
- *          ne peut pas être résolu.
+ * @param schema - The root schema describing the template context
+ * @param path   - Array of segments (property names)
+ * @returns The sub-schema at the end of the path, or `undefined` if the path
+ *          cannot be resolved.
  *
  * @example
  * ```
@@ -195,11 +195,11 @@ export function resolveSchemaPath(
 }
 
 /**
- * Résout le schema des éléments d'un tableau.
- * Si le schema n'est pas de type `array` ou n'a pas de `items`, retourne `undefined`.
+ * Resolves the item schema of an array.
+ * If the schema is not of type `array` or has no `items`, returns `undefined`.
  *
- * @param schema - Le schema d'un tableau
- * @param root   - Le schema racine (pour résoudre les $ref)
+ * @param schema - The array schema
+ * @param root   - The root schema (for resolving $refs)
  */
 export function resolveArrayItems(
 	schema: JSONSchema7,
@@ -207,7 +207,7 @@ export function resolveArrayItems(
 ): JSONSchema7 | undefined {
 	const resolved = resolveRef(schema, root);
 
-	// Vérification que c'est bien un tableau
+	// Verify that it's actually an array
 	const schemaType = resolved.type;
 	const isArray =
 		schemaType === "array" ||
@@ -218,19 +218,19 @@ export function resolveArrayItems(
 	}
 
 	if (resolved.items === undefined) {
-		// array sans items → éléments de type inconnu
+		// array without items → element type is unknown
 		return {};
 	}
 
-	// items peut être un boolean (true = anything, false = nothing)
+	// items can be a boolean (true = anything, false = nothing)
 	if (typeof resolved.items === "boolean") {
 		return {};
 	}
 
-	// items peut être un schema unique ou un tuple (tableau de schemas).
-	// Pour les boucles de template, on traite le cas d'un schema unique.
+	// items can be a single schema or a tuple (array of schemas).
+	// For template loops, we handle the single-schema case.
 	if (Array.isArray(resolved.items)) {
-		// Tuple : on crée un oneOf de tous les types possibles
+		// Tuple: create a oneOf of all possible types
 		const schemas = resolved.items
 			.filter((item): item is JSONSchema7 => typeof item !== "boolean")
 			.map((item) => resolveRef(item, root));
@@ -242,15 +242,15 @@ export function resolveArrayItems(
 }
 
 /**
- * Simplifie un schema de sortie pour éviter les constructions inutilement
- * complexes (ex: `oneOf` avec un seul élément, doublons, etc.).
+ * Simplifies an output schema to avoid unnecessarily complex constructs
+ * (e.g. `oneOf` with a single element, duplicates, etc.).
  *
- * Utilise `deepEqual` pour la déduplication — plus robuste et performant
- * que `JSON.stringify` (indépendant de l'ordre des clés, sans allocation
- * de strings intermédiaires).
+ * Uses `deepEqual` for deduplication — more robust and performant than
+ * `JSON.stringify` (independent of key order, no intermediate string
+ * allocations).
  */
 export function simplifySchema(schema: JSONSchema7): JSONSchema7 {
-	// oneOf / anyOf avec un seul élément → on déplie
+	// oneOf / anyOf with a single element → unwrap
 	for (const key of ["oneOf", "anyOf"] as const) {
 		const arr = schema[key];
 		if (arr && arr.length === 1) {
@@ -260,23 +260,23 @@ export function simplifySchema(schema: JSONSchema7): JSONSchema7 {
 		}
 	}
 
-	// allOf avec un seul élément → on déplie
+	// allOf with a single element → unwrap
 	if (schema.allOf && schema.allOf.length === 1) {
 		const first = schema.allOf[0];
 		if (first !== undefined && typeof first !== "boolean")
 			return simplifySchema(first);
 	}
 
-	// Déduplique les entrées identiques dans oneOf/anyOf
+	// Deduplicate identical entries in oneOf/anyOf
 	for (const key of ["oneOf", "anyOf"] as const) {
 		const arr = schema[key];
 		if (arr && arr.length > 1) {
 			const unique: JSONSchema7[] = [];
 			for (const entry of arr) {
 				if (typeof entry === "boolean") continue;
-				// Utilisation de deepEqual au lieu de JSON.stringify pour la
-				// comparaison structurelle — plus robuste (ordre des clés) et
-				// plus performant (pas d'allocation de strings).
+				// Use deepEqual instead of JSON.stringify for structural
+				// comparison — more robust (key order independent) and
+				// more performant (no string allocations).
 				const isDuplicate = unique.some((existing) =>
 					deepEqual(existing, entry),
 				);

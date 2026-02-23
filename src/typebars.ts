@@ -30,47 +30,47 @@ import {
 } from "./utils.ts";
 
 // ─── Typebars ────────────────────────────────────────────────────────────────
-// Point d'entrée public du moteur de template. Orchestre les trois phases :
+// Public entry point of the template engine. Orchestrates three phases:
 //
-// 1. **Parsing**   — transformation du template string en AST (via Handlebars)
-// 2. **Analyse**   — validation statique + inférence du type de retour
-// 3. **Exécution** — rendu du template avec des données réelles
+// 1. **Parsing**   — transforms the template string into an AST (via Handlebars)
+// 2. **Analysis**  — static validation + return type inference
+// 3. **Execution** — renders the template with real data
 //
 // ─── Architecture v2 ─────────────────────────────────────────────────────────
-// - **Cache LRU** pour les AST parsés et les templates Handlebars compilés
-// - **Environnement Handlebars isolé** par instance (custom helpers)
-// - **Pattern `compile()`** : parse-once / execute-many
-// - **Méthode `validate()`** : raccourci d'API sans `outputSchema`
-// - **`registerHelper()`** : helpers custom avec typage statique
-// - **`ExecuteOptions`** : options object pour `execute()`
+// - **LRU cache** for parsed ASTs and compiled Handlebars templates
+// - **Isolated Handlebars environment** per instance (custom helpers)
+// - **`compile()` pattern**: parse-once / execute-many
+// - **`validate()` method**: API shortcut without `outputSchema`
+// - **`registerHelper()`**: custom helpers with static typing
+// - **`ExecuteOptions`**: options object for `execute()`
 //
 // ─── Template Identifiers ────────────────────────────────────────────────────
-// La syntaxe `{{key:N}}` permet de référencer des variables provenant de
-// sources de données spécifiques, identifiées par un entier N.
+// The `{{key:N}}` syntax allows referencing variables from specific data
+// sources, identified by an integer N.
 //
-// - `identifierSchemas` : mapping `{ [id]: JSONSchema7 }` pour l'analyse statique
-// - `identifierData`    : mapping `{ [id]: Record<string, unknown> }` pour l'exécution
+// - `identifierSchemas`: mapping `{ [id]: JSONSchema7 }` for static analysis
+// - `identifierData`:    mapping `{ [id]: Record<string, unknown> }` for execution
 //
-// Usage :
+// Usage:
 //   engine.execute("{{meetingId:1}}", data, { identifierData: { 1: node1Data } });
 //   engine.analyze("{{meetingId:1}}", schema, { 1: node1Schema });
 
-// ─── Classe principale ──────────────────────────────────────────────────────
+// ─── Main Class ──────────────────────────────────────────────────────────────
 
 export class Typebars {
-	/** Environnement Handlebars isolé — chaque engine a ses propres helpers */
+	/** Isolated Handlebars environment — each engine has its own helpers */
 	private readonly hbs: typeof Handlebars;
 
-	/** Cache LRU des AST parsés (évite le re-parsing) */
+	/** LRU cache of parsed ASTs (avoids re-parsing) */
 	private readonly astCache: LRUCache<string, hbs.AST.Program>;
 
-	/** Cache LRU des templates Handlebars compilés (évite la recompilation) */
+	/** LRU cache of compiled Handlebars templates (avoids recompilation) */
 	private readonly compilationCache: LRUCache<
 		string,
 		HandlebarsTemplateDelegate
 	>;
 
-	/** Helpers custom enregistrés sur cette instance */
+	/** Custom helpers registered on this instance */
 	private readonly helpers = new Map<string, HelperDefinition>();
 
 	constructor(options: TemplateEngineOptions = {}) {
@@ -78,10 +78,10 @@ export class Typebars {
 		this.astCache = new LRUCache(options.astCacheSize ?? 256);
 		this.compilationCache = new LRUCache(options.compilationCacheSize ?? 256);
 
-		// ── Built-in helpers (math) ──────────────────────────────────────────
+		// ── Built-in helpers (math) ──────────────────────────────────────
 		MathHelpers.register(this);
 
-		// ── Helpers custom via options ───────────────────────────────────────
+		// ── Custom helpers via options ───────────────────────────────────
 		if (options.helpers) {
 			for (const helper of options.helpers) {
 				const { name, ...definition } = helper;
@@ -93,14 +93,14 @@ export class Typebars {
 	// ─── Compilation ───────────────────────────────────────────────────────
 
 	/**
-	 * Compile un template et retourne un `CompiledTemplate` prêt à être
-	 * exécuté ou analysé sans re-parsing.
+	 * Compiles a template and returns a `CompiledTemplate` ready to be
+	 * executed or analyzed without re-parsing.
 	 *
-	 * Accepte un `TemplateInput` : string, number, boolean, null ou objet.
-	 * Pour les objets, chaque propriété est compilée récursivement.
+	 * Accepts a `TemplateInput`: string, number, boolean, null, or object.
+	 * For objects, each property is compiled recursively.
 	 *
-	 * @param template - Le template à compiler
-	 * @returns Un `CompiledTemplate` réutilisable
+	 * @param template - The template to compile
+	 * @returns A reusable `CompiledTemplate`
 	 */
 	compile(template: TemplateInput): CompiledTemplate {
 		if (isObjectInput(template)) {
@@ -130,19 +130,19 @@ export class Typebars {
 		return CompiledTemplate.fromTemplate(ast, template, options);
 	}
 
-	// ─── Analyse statique ────────────────────────────────────────────────────
+	// ─── Static Analysis ─────────────────────────────────────────────────────
 
 	/**
-	 * Analyse statiquement un template par rapport à un JSON Schema v7
-	 * décrivant le contexte disponible.
+	 * Statically analyzes a template against a JSON Schema v7 describing
+	 * the available context.
 	 *
-	 * Accepte un `TemplateInput` : string, number, boolean, null ou objet.
-	 * Pour les objets, chaque propriété est analysée récursivement et le
-	 * `outputSchema` reflète la structure de l'objet avec les types résolus.
+	 * Accepts a `TemplateInput`: string, number, boolean, null, or object.
+	 * For objects, each property is analyzed recursively and the
+	 * `outputSchema` reflects the object structure with resolved types.
 	 *
-	 * @param template           - Le template à analyser
-	 * @param inputSchema        - JSON Schema v7 décrivant les variables disponibles
-	 * @param identifierSchemas  - (optionnel) Schemas par identifiant `{ [id]: JSONSchema7 }`
+	 * @param template           - The template to analyze
+	 * @param inputSchema        - JSON Schema v7 describing the available variables
+	 * @param identifierSchemas  - (optional) Schemas by identifier `{ [id]: JSONSchema7 }`
 	 */
 	analyze(
 		template: TemplateInput,
@@ -175,16 +175,16 @@ export class Typebars {
 	// ─── Validation ──────────────────────────────────────────────────────────
 
 	/**
-	 * Valide un template contre un schema sans retourner le type de sortie.
+	 * Validates a template against a schema without returning the output type.
 	 *
-	 * C'est un raccourci d'API pour `analyze()` qui ne retourne que `valid`
-	 * et `diagnostics`, sans `outputSchema`. L'analyse complète (y compris
-	 * l'inférence de type) est exécutée en interne — cette méthode ne
-	 * fournit pas de gain de performance, uniquement une API simplifiée.
+	 * This is an API shortcut for `analyze()` that only returns `valid` and
+	 * `diagnostics`, without `outputSchema`. The full analysis (including type
+	 * inference) is executed internally — this method provides no performance
+	 * gain, only a simplified API.
 	 *
-	 * @param template           - Le template à valider
-	 * @param inputSchema        - JSON Schema v7 décrivant les variables disponibles
-	 * @param identifierSchemas  - (optionnel) Schemas par identifiant
+	 * @param template           - The template to validate
+	 * @param inputSchema        - JSON Schema v7 describing the available variables
+	 * @param identifierSchemas  - (optional) Schemas by identifier
 	 */
 	validate(
 		template: TemplateInput,
@@ -198,16 +198,16 @@ export class Typebars {
 		};
 	}
 
-	// ─── Validation syntaxique ───────────────────────────────────────────────
+	// ─── Syntax Validation ───────────────────────────────────────────────────
 
 	/**
-	 * Vérifie uniquement que la syntaxe du template est valide (parsing).
-	 * Ne nécessite pas de schema — utile pour un feedback rapide dans un éditeur.
+	 * Checks only that the template syntax is valid (parsing).
+	 * Does not require a schema — useful for quick feedback in an editor.
 	 *
-	 * Pour les objets, vérifie récursivement chaque propriété.
+	 * For objects, recursively checks each property.
 	 *
-	 * @param template - Le template à valider
-	 * @returns `true` si le template est syntaxiquement correct
+	 * @param template - The template to validate
+	 * @returns `true` if the template is syntactically correct
 	 */
 	isValidSyntax(template: TemplateInput): boolean {
 		if (isObjectInput(template)) {
@@ -222,30 +222,29 @@ export class Typebars {
 		}
 	}
 
-	// ─── Exécution ───────────────────────────────────────────────────────────
+	// ─── Execution ───────────────────────────────────────────────────────────
 
 	/**
-	 * Exécute un template avec les données fournies.
+	 * Executes a template with the provided data.
 	 *
-	 * Accepte un `TemplateInput` : string, number, boolean, null ou objet.
-	 * Pour les objets, chaque propriété est exécutée récursivement et un
-	 * objet avec les valeurs résolues est retourné.
+	 * Accepts a `TemplateInput`: string, number, boolean, null, or object.
+	 * For objects, each property is executed recursively and an object with
+	 * resolved values is returned.
 	 *
-	 * Si un `schema` est fourni dans les options, l'analyse statique est
-	 * lancée avant l'exécution. Une `TemplateAnalysisError` est levée en
-	 * cas d'erreur.
+	 * If a `schema` is provided in options, static analysis is performed
+	 * before execution. A `TemplateAnalysisError` is thrown on errors.
 	 *
-	 * @param template - Le template à exécuter
-	 * @param data     - Les données de contexte pour le rendu
-	 * @param options  - Options d'exécution (schema, identifierData, identifierSchemas)
-	 * @returns Le résultat de l'exécution
+	 * @param template - The template to execute
+	 * @param data     - The context data for rendering
+	 * @param options  - Execution options (schema, identifierData, identifierSchemas)
+	 * @returns The execution result
 	 */
 	execute(
 		template: TemplateInput,
 		data: Record<string, unknown>,
 		options?: ExecuteOptions,
 	): unknown {
-		// ── Objet template → exécution récursive ─────────────────────────────
+		// ── Object template → recursive execution ────────────────────────────
 		if (isObjectInput(template)) {
 			const result: Record<string, unknown> = {};
 			for (const [key, value] of Object.entries(template)) {
@@ -254,13 +253,13 @@ export class Typebars {
 			return result;
 		}
 
-		// ── Passthrough pour les valeurs littérales ───────────────────────────
+		// ── Passthrough for literal values ────────────────────────────────────
 		if (isLiteralInput(template)) return template;
 
-		// ── Parse une seule fois ─────────────────────────────────────────────
+		// ── Parse once ───────────────────────────────────────────────────────
 		const ast = this.getCachedAst(template);
 
-		// ── Validation statique préalable ────────────────────────────────────
+		// ── Pre-execution static validation ──────────────────────────────────
 		if (options?.schema) {
 			const analysis = analyzeFromAst(ast, template, options.schema, {
 				identifierSchemas: options.identifierSchemas,
@@ -271,7 +270,7 @@ export class Typebars {
 			}
 		}
 
-		// ── Exécution ────────────────────────────────────────────────────────
+		// ── Execution ────────────────────────────────────────────────────────
 		return executeFromAst(ast, template, data, {
 			identifierData: options?.identifierData,
 			hbs: this.hbs,
@@ -279,21 +278,21 @@ export class Typebars {
 		});
 	}
 
-	// ─── Raccourcis combinés ─────────────────────────────────────────────────
+	// ─── Combined Shortcuts ──────────────────────────────────────────────────
 
 	/**
-	 * Analyse un template et, si valide, l'exécute avec les données fournies.
-	 * Retourne à la fois le résultat d'analyse et la valeur exécutée.
+	 * Analyzes a template and, if valid, executes it with the provided data.
+	 * Returns both the analysis result and the executed value.
 	 *
-	 * Pour les objets, chaque propriété est analysée et exécutée récursivement.
-	 * L'objet entier est considéré invalide si au moins une propriété l'est.
+	 * For objects, each property is analyzed and executed recursively.
+	 * The entire object is considered invalid if at least one property is.
 	 *
-	 * @param template    - Le template
-	 * @param inputSchema - JSON Schema v7 décrivant les variables disponibles
-	 * @param data        - Les données de contexte pour le rendu
-	 * @param options     - (optionnel) Options pour les template identifiers
-	 * @returns Un objet `{ analysis, value }` où `value` est `undefined` si
-	 *          l'analyse a échoué.
+	 * @param template    - The template
+	 * @param inputSchema - JSON Schema v7 describing the available variables
+	 * @param data        - The context data for rendering
+	 * @param options     - (optional) Options for template identifiers
+	 * @returns An object `{ analysis, value }` where `value` is `undefined`
+	 *          if analysis failed.
 	 */
 	analyzeAndExecute(
 		template: TemplateInput,
@@ -341,60 +340,60 @@ export class Typebars {
 		return { analysis, value };
 	}
 
-	// ─── Gestion des helpers custom ────────────────────────────────────────
+	// ─── Custom Helper Management ──────────────────────────────────────────
 
 	/**
-	 * Enregistre un helper custom sur cette instance du moteur.
+	 * Registers a custom helper on this engine instance.
 	 *
-	 * Le helper est disponible à la fois pour l'exécution (via Handlebars)
-	 * et pour l'analyse statique (via son `returnType` déclaré).
+	 * The helper is available for both execution (via Handlebars) and
+	 * static analysis (via its declared `returnType`).
 	 *
-	 * @param name       - Nom du helper (ex: `"uppercase"`)
-	 * @param definition - Définition du helper (implémentation + type de retour)
-	 * @returns `this` pour permettre le chaînage
+	 * @param name       - Helper name (e.g. `"uppercase"`)
+	 * @param definition - Helper definition (implementation + return type)
+	 * @returns `this` to allow chaining
 	 */
 	registerHelper(name: string, definition: HelperDefinition): this {
 		this.helpers.set(name, definition);
 		this.hbs.registerHelper(name, definition.fn);
 
-		// Invalider le cache de compilation car les helpers ont changé
+		// Invalidate the compilation cache because helpers have changed
 		this.compilationCache.clear();
 
 		return this;
 	}
 
 	/**
-	 * Supprime un helper custom de cette instance du moteur.
+	 * Removes a custom helper from this engine instance.
 	 *
-	 * @param name - Nom du helper à supprimer
-	 * @returns `this` pour permettre le chaînage
+	 * @param name - Name of the helper to remove
+	 * @returns `this` to allow chaining
 	 */
 	unregisterHelper(name: string): this {
 		this.helpers.delete(name);
 		this.hbs.unregisterHelper(name);
 
-		// Invalider le cache de compilation
+		// Invalidate the compilation cache
 		this.compilationCache.clear();
 
 		return this;
 	}
 
 	/**
-	 * Vérifie si un helper est enregistré sur cette instance.
+	 * Checks whether a helper is registered on this instance.
 	 *
-	 * @param name - Nom du helper
-	 * @returns `true` si le helper est enregistré
+	 * @param name - Helper name
+	 * @returns `true` if the helper is registered
 	 */
 	hasHelper(name: string): boolean {
 		return this.helpers.has(name);
 	}
 
-	// ─── Gestion du cache ──────────────────────────────────────────────────
+	// ─── Cache Management ──────────────────────────────────────────────────
 
 	/**
-	 * Vide tous les caches internes (AST + compilation).
+	 * Clears all internal caches (AST + compilation).
 	 *
-	 * Utile après un changement de configuration ou pour libérer la mémoire.
+	 * Useful after a configuration change or to free memory.
 	 */
 	clearCaches(): void {
 		this.astCache.clear();
@@ -404,7 +403,7 @@ export class Typebars {
 	// ─── Internals ─────────────────────────────────────────────────────────
 
 	/**
-	 * Récupère l'AST d'un template depuis le cache, ou le parse et le cache.
+	 * Retrieves the AST of a template from the cache, or parses and caches it.
 	 */
 	private getCachedAst(template: string): hbs.AST.Program {
 		let ast = this.astCache.get(template);

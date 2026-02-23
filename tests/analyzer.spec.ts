@@ -4,32 +4,32 @@ import { analyze } from "../src/analyzer.ts";
 import { userSchema } from "./fixtures.ts";
 
 describe("analyzer", () => {
-	describe("inférence du type de sortie (outputSchema)", () => {
-		test("expression unique string → { type: 'string' }", () => {
+	describe("output type inference (outputSchema)", () => {
+		test("single string expression → { type: 'string' }", () => {
 			const result = analyze("{{name}}", userSchema);
 			expect(result.valid).toBe(true);
 			expect(result.outputSchema).toEqual({ type: "string" });
 		});
 
-		test("expression unique number → { type: 'number' }", () => {
+		test("single number expression → { type: 'number' }", () => {
 			const result = analyze("{{age}}", userSchema);
 			expect(result.valid).toBe(true);
 			expect(result.outputSchema).toEqual({ type: "number" });
 		});
 
-		test("expression unique boolean → { type: 'boolean' }", () => {
+		test("single boolean expression → { type: 'boolean' }", () => {
 			const result = analyze("{{active}}", userSchema);
 			expect(result.valid).toBe(true);
 			expect(result.outputSchema).toEqual({ type: "boolean" });
 		});
 
-		test("expression unique integer → { type: 'integer' }", () => {
+		test("single integer expression → { type: 'integer' }", () => {
 			const result = analyze("{{score}}", userSchema);
 			expect(result.valid).toBe(true);
 			expect(result.outputSchema).toEqual({ type: "integer" });
 		});
 
-		test("expression unique object → schema complet de l'objet", () => {
+		test("single object expression → full object schema", () => {
 			const result = analyze("{{address}}", userSchema);
 			expect(result.valid).toBe(true);
 			expect(result.outputSchema).toEqual({
@@ -41,7 +41,7 @@ describe("analyzer", () => {
 			});
 		});
 
-		test("expression unique array → schema du tableau", () => {
+		test("single array expression → array schema", () => {
 			const result = analyze("{{tags}}", userSchema);
 			expect(result.valid).toBe(true);
 			expect(result.outputSchema).toEqual({
@@ -50,13 +50,13 @@ describe("analyzer", () => {
 			});
 		});
 
-		test("expression unique avec dot notation → type de la feuille", () => {
+		test("single expression with dot notation → leaf type", () => {
 			const result = analyze("{{address.city}}", userSchema);
 			expect(result.valid).toBe(true);
 			expect(result.outputSchema).toEqual({ type: "string" });
 		});
 
-		test("expression unique avec enum → préserve l'enum", () => {
+		test("single expression with enum → preserves enum", () => {
 			const result = analyze("{{metadata.role}}", userSchema);
 			expect(result.valid).toBe(true);
 			expect(result.outputSchema).toEqual({
@@ -65,45 +65,45 @@ describe("analyzer", () => {
 			});
 		});
 
-		test("template mixte (texte + expression) → { type: 'string' }", () => {
+		test("mixed template (text + expression) → { type: 'string' }", () => {
 			const result = analyze("Hello {{name}}", userSchema);
 			expect(result.valid).toBe(true);
 			expect(result.outputSchema).toEqual({ type: "string" });
 		});
 
-		test("template avec plusieurs expressions → { type: 'string' }", () => {
+		test("template with multiple expressions → { type: 'string' }", () => {
 			const result = analyze("{{name}} ({{age}})", userSchema);
 			expect(result.valid).toBe(true);
 			expect(result.outputSchema).toEqual({ type: "string" });
 		});
 
-		test("template avec bloc #if → { type: 'string' }", () => {
+		test("template with #if block → { type: 'string' }", () => {
 			const result = analyze("{{#if active}}yes{{else}}no{{/if}}", userSchema);
 			expect(result.valid).toBe(true);
 			expect(result.outputSchema).toEqual({ type: "string" });
 		});
 
-		test("template avec bloc #each → { type: 'string' }", () => {
+		test("template with #each block → { type: 'string' }", () => {
 			const result = analyze("{{#each tags}}{{this}} {{/each}}", userSchema);
 			expect(result.valid).toBe(true);
 			expect(result.outputSchema).toEqual({ type: "string" });
 		});
 
-		test("template avec bloc #with → { type: 'string' }", () => {
+		test("template with #with block → { type: 'string' }", () => {
 			const result = analyze("{{#with address}}{{city}}{{/with}}", userSchema);
 			expect(result.valid).toBe(true);
 			expect(result.outputSchema).toEqual({ type: "string" });
 		});
 
-		test("texte pur sans expression → { type: 'string' }", () => {
+		test("plain text without expression → { type: 'string' }", () => {
 			const result = analyze("Just plain text", userSchema);
 			expect(result.valid).toBe(true);
 			expect(result.outputSchema).toEqual({ type: "string" });
 		});
 	});
 
-	describe("inférence du type de sortie — bloc unique (single block)", () => {
-		test("#if avec littéraux numériques dans les deux branches → number", () => {
+	describe("output type inference — single block", () => {
+		test("#if with numeric literals in both branches → number", () => {
 			const result = analyze(
 				"{{#if active}}\n  10\n{{else}}\n  20\n{{/if}}",
 				userSchema,
@@ -112,13 +112,13 @@ describe("analyzer", () => {
 			expect(result.outputSchema).toEqual({ type: "number" });
 		});
 
-		test("#if avec littéraux numériques inline → number", () => {
+		test("#if with inline numeric literals → number", () => {
 			const result = analyze("{{#if active}}10{{else}}20{{/if}}", userSchema);
 			expect(result.valid).toBe(true);
 			expect(result.outputSchema).toEqual({ type: "number" });
 		});
 
-		test("#if avec littéraux décimaux → number", () => {
+		test("#if with decimal literals → number", () => {
 			const result = analyze(
 				"{{#if active}}3.14{{else}}-2.5{{/if}}",
 				userSchema,
@@ -127,7 +127,7 @@ describe("analyzer", () => {
 			expect(result.outputSchema).toEqual({ type: "number" });
 		});
 
-		test("#if avec littéraux booléens → boolean", () => {
+		test("#if with boolean literals → boolean", () => {
 			const result = analyze(
 				"{{#if active}}true{{else}}false{{/if}}",
 				userSchema,
@@ -136,7 +136,7 @@ describe("analyzer", () => {
 			expect(result.outputSchema).toEqual({ type: "boolean" });
 		});
 
-		test("#if avec littéral null dans une branche → null | string", () => {
+		test("#if with null literal in one branch → null | string", () => {
 			const result = analyze(
 				"{{#if active}}null{{else}}fallback{{/if}}",
 				userSchema,
@@ -147,7 +147,7 @@ describe("analyzer", () => {
 			});
 		});
 
-		test("#if avec types mixtes (number et string) → oneOf", () => {
+		test("#if with mixed types (number and string) → oneOf", () => {
 			const result = analyze(
 				"{{#if active}}42{{else}}hello{{/if}}",
 				userSchema,
@@ -158,19 +158,19 @@ describe("analyzer", () => {
 			});
 		});
 
-		test("#if avec expression unique dans chaque branche → type de l'expression", () => {
+		test("#if with single expression in each branch → expression type", () => {
 			const result = analyze(
 				"{{#if active}}{{age}}{{else}}{{score}}{{/if}}",
 				userSchema,
 			);
 			expect(result.valid).toBe(true);
-			// age est number, score est integer → oneOf
+			// age is number, score is integer → oneOf
 			expect(result.outputSchema).toEqual({
 				oneOf: [{ type: "number" }, { type: "integer" }],
 			});
 		});
 
-		test("#if avec même type d'expression dans les deux branches → type unique", () => {
+		test("#if with same expression type in both branches → single type", () => {
 			const result = analyze(
 				"{{#if active}}{{name}}{{else}}{{address.city}}{{/if}}",
 				userSchema,
@@ -179,7 +179,7 @@ describe("analyzer", () => {
 			expect(result.outputSchema).toEqual({ type: "string" });
 		});
 
-		test("#if avec expression unique et whitespace autour → type de l'expression", () => {
+		test("#if with single expression and surrounding whitespace → expression type", () => {
 			const result = analyze(
 				"{{#if active}}\n  {{age}}\n{{else}}\n  {{score}}\n{{/if}}",
 				userSchema,
@@ -190,19 +190,19 @@ describe("analyzer", () => {
 			});
 		});
 
-		test("#with comme bloc unique → type du corps", () => {
+		test("#with as single block → body type", () => {
 			const result = analyze("{{#with address}}{{city}}{{/with}}", userSchema);
 			expect(result.valid).toBe(true);
 			expect(result.outputSchema).toEqual({ type: "string" });
 		});
 
-		test("#each comme bloc unique → toujours string", () => {
+		test("#each as single block → always string", () => {
 			const result = analyze("{{#each tags}}{{this}}{{/each}}", userSchema);
 			expect(result.valid).toBe(true);
 			expect(result.outputSchema).toEqual({ type: "string" });
 		});
 
-		test("#unless comme bloc unique avec littéraux numériques → number", () => {
+		test("#unless as single block with numeric literals → number", () => {
 			const result = analyze(
 				"{{#unless active}}0{{else}}1{{/unless}}",
 				userSchema,
@@ -211,41 +211,41 @@ describe("analyzer", () => {
 			expect(result.outputSchema).toEqual({ type: "number" });
 		});
 
-		test("expression unique avec whitespace autour → type brut préservé", () => {
+		test("single expression with surrounding whitespace → raw type preserved", () => {
 			const result = analyze("  {{age}}  ", userSchema);
 			expect(result.valid).toBe(true);
 			expect(result.outputSchema).toEqual({ type: "number" });
 		});
 	});
 
-	describe("validation — propriétés existantes", () => {
-		test("valide un accès simple", () => {
+	describe("validation — existing properties", () => {
+		test("validates a simple property access", () => {
 			const result = analyze("{{name}}", userSchema);
 			expect(result.valid).toBe(true);
 			expect(result.diagnostics).toHaveLength(0);
 		});
 
-		test("valide un accès imbriqué", () => {
+		test("validates a nested property access", () => {
 			const result = analyze("{{address.city}}", userSchema);
 			expect(result.valid).toBe(true);
 			expect(result.diagnostics).toHaveLength(0);
 		});
 
-		test("valide un accès profond", () => {
+		test("validates a deeply nested property access", () => {
 			const result = analyze("{{metadata.role}}", userSchema);
 			expect(result.valid).toBe(true);
 			expect(result.diagnostics).toHaveLength(0);
 		});
 
-		test("valide un template avec plusieurs accès valides", () => {
+		test("validates a template with multiple valid accesses", () => {
 			const result = analyze("{{name}} {{age}} {{active}}", userSchema);
 			expect(result.valid).toBe(true);
 			expect(result.diagnostics).toHaveLength(0);
 		});
 	});
 
-	describe("validation — propriétés inexistantes", () => {
-		test("détecte une propriété inexistante de premier niveau", () => {
+	describe("validation — missing properties", () => {
+		test("detects a missing top-level property", () => {
 			const result = analyze("{{firstName}}", userSchema);
 			expect(result.valid).toBe(false);
 			expect(result.diagnostics).toHaveLength(1);
@@ -253,18 +253,18 @@ describe("analyzer", () => {
 			expect(result.diagnostics[0]?.message).toContain("firstName");
 		});
 
-		test("détecte une propriété inexistante en profondeur", () => {
+		test("detects a missing deeply nested property", () => {
 			const result = analyze("{{address.country}}", userSchema);
 			expect(result.valid).toBe(false);
 			expect(result.diagnostics[0]?.message).toContain("address.country");
 		});
 
-		test("détecte une propriété inexistante dans un template mixte", () => {
+		test("detects a missing property in a mixed template", () => {
 			const result = analyze("Hello {{unknown}}!", userSchema);
 			expect(result.valid).toBe(false);
 		});
 
-		test("détecte plusieurs propriétés inexistantes", () => {
+		test("detects multiple missing properties", () => {
 			const result = analyze("{{foo}} and {{bar}}", userSchema);
 			expect(result.valid).toBe(false);
 			expect(
@@ -273,13 +273,13 @@ describe("analyzer", () => {
 		});
 	});
 
-	describe("validation — blocs #if / #unless", () => {
-		test("#if avec une condition valide est valid", () => {
+	describe("validation — #if / #unless blocks", () => {
+		test("#if with a valid condition is valid", () => {
 			const result = analyze("{{#if active}}yes{{/if}}", userSchema);
 			expect(result.valid).toBe(true);
 		});
 
-		test("#if avec else, toutes expressions valides", () => {
+		test("#if with else, all expressions valid", () => {
 			const result = analyze(
 				"{{#if active}}{{name}}{{else}}unknown{{/if}}",
 				userSchema,
@@ -287,25 +287,25 @@ describe("analyzer", () => {
 			expect(result.valid).toBe(true);
 		});
 
-		test("#if avec une condition inexistante → erreur", () => {
+		test("#if with a missing condition → error", () => {
 			const result = analyze("{{#if nonexistent}}yes{{/if}}", userSchema);
 			expect(result.valid).toBe(false);
 			expect(result.diagnostics[0]?.message).toContain("nonexistent");
 		});
 
-		test("#if valide les expressions dans les deux branches", () => {
+		test("#if validates expressions in both branches", () => {
 			const result = analyze(
 				"{{#if active}}{{badProp1}}{{else}}{{badProp2}}{{/if}}",
 				userSchema,
 			);
 			expect(result.valid).toBe(false);
-			// Erreurs pour la condition qui n'existe pas ? Non, active existe.
-			// Mais badProp1 et badProp2 n'existent pas.
+			// Errors for the condition not existing? No, `active` exists.
+			// But badProp1 and badProp2 do not exist.
 			const errors = result.diagnostics.filter((d) => d.severity === "error");
 			expect(errors.length).toBe(2);
 		});
 
-		test("#unless avec une condition valide", () => {
+		test("#unless with a valid condition", () => {
 			const result = analyze(
 				"{{#unless active}}no{{else}}yes{{/unless}}",
 				userSchema,
@@ -314,13 +314,13 @@ describe("analyzer", () => {
 		});
 	});
 
-	describe("validation — bloc #each", () => {
-		test("#each sur un tableau valide", () => {
+	describe("validation — #each block", () => {
+		test("#each on a valid array", () => {
 			const result = analyze("{{#each tags}}{{this}}{{/each}}", userSchema);
 			expect(result.valid).toBe(true);
 		});
 
-		test("#each sur un tableau d'objets — accès aux propriétés des items", () => {
+		test("#each on an array of objects — accessing item properties", () => {
 			const result = analyze(
 				"{{#each orders}}{{product}}{{/each}}",
 				userSchema,
@@ -328,7 +328,7 @@ describe("analyzer", () => {
 			expect(result.valid).toBe(true);
 		});
 
-		test("#each sur un tableau d'objets — propriété inexistante dans les items", () => {
+		test("#each on an array of objects — missing property in items", () => {
 			const result = analyze(
 				"{{#each orders}}{{badField}}{{/each}}",
 				userSchema,
@@ -337,13 +337,13 @@ describe("analyzer", () => {
 			expect(result.diagnostics[0]?.message).toContain("badField");
 		});
 
-		test("#each sur un non-tableau → erreur", () => {
+		test("#each on a non-array → error", () => {
 			const result = analyze("{{#each name}}{{this}}{{/each}}", userSchema);
 			expect(result.valid).toBe(false);
 			expect(result.diagnostics[0]?.message).toContain("array");
 		});
 
-		test("#each sur une propriété inexistante → erreur", () => {
+		test("#each on a missing property → error", () => {
 			const result = analyze(
 				"{{#each nonexistent}}{{this}}{{/each}}",
 				userSchema,
@@ -351,7 +351,7 @@ describe("analyzer", () => {
 			expect(result.valid).toBe(false);
 		});
 
-		test("#each avec branche else est valide", () => {
+		test("#each with else branch is valid", () => {
 			const result = analyze(
 				"{{#each tags}}{{this}}{{else}}empty{{/each}}",
 				userSchema,
@@ -360,13 +360,13 @@ describe("analyzer", () => {
 		});
 	});
 
-	describe("validation — bloc #with", () => {
-		test("#with sur un objet valide — accès interne correct", () => {
+	describe("validation — #with block", () => {
+		test("#with on a valid object — correct inner access", () => {
 			const result = analyze("{{#with address}}{{city}}{{/with}}", userSchema);
 			expect(result.valid).toBe(true);
 		});
 
-		test("#with — accès à une propriété inexistante dans le sous-contexte", () => {
+		test("#with — accessing a missing property in the sub-context", () => {
 			const result = analyze(
 				"{{#with address}}{{country}}{{/with}}",
 				userSchema,
@@ -375,7 +375,7 @@ describe("analyzer", () => {
 			expect(result.diagnostics[0]?.message).toContain("country");
 		});
 
-		test("#with sur une propriété inexistante → erreur", () => {
+		test("#with on a missing property → error", () => {
 			const result = analyze(
 				"{{#with nonexistent}}{{foo}}{{/with}}",
 				userSchema,
@@ -383,7 +383,7 @@ describe("analyzer", () => {
 			expect(result.valid).toBe(false);
 		});
 
-		test("#with imbriqué dans #with", () => {
+		test("#with nested inside #with", () => {
 			const schema: JSONSchema7 = {
 				type: "object",
 				properties: {
@@ -408,8 +408,8 @@ describe("analyzer", () => {
 		});
 	});
 
-	describe("validation — combinaisons complexes", () => {
-		test("#with contenant un #each", () => {
+	describe("validation — complex combinations", () => {
+		test("#with containing a #each", () => {
 			const result = analyze(
 				"{{#with metadata}}{{#each permissions}}{{this}}{{/each}}{{/with}}",
 				userSchema,
@@ -417,7 +417,7 @@ describe("analyzer", () => {
 			expect(result.valid).toBe(true);
 		});
 
-		test("#if contenant un #each", () => {
+		test("#if containing a #each", () => {
 			const result = analyze(
 				"{{#if active}}{{#each tags}}{{this}}{{/each}}{{/if}}",
 				userSchema,
@@ -425,7 +425,7 @@ describe("analyzer", () => {
 			expect(result.valid).toBe(true);
 		});
 
-		test("template complexe mélange de texte, expressions et blocs", () => {
+		test("complex template mixing text, expressions and blocks", () => {
 			const result = analyze(
 				"{{name}} ({{metadata.role}}): {{#each tags}}{{this}} {{/each}}",
 				userSchema,
@@ -433,7 +433,7 @@ describe("analyzer", () => {
 			expect(result.valid).toBe(true);
 		});
 
-		test("#each d'objets avec accès à plusieurs propriétés", () => {
+		test("#each over objects accessing multiple properties", () => {
 			const result = analyze(
 				"{{#each orders}}#{{id}} {{product}} x{{quantity}}{{/each}}",
 				userSchema,
@@ -460,46 +460,46 @@ describe("analyzer", () => {
 			},
 		};
 
-		test("résout un accès via $ref", () => {
+		test("resolves a property access via $ref", () => {
 			const result = analyze("{{home.city}}", schemaWithRef);
 			expect(result.valid).toBe(true);
 			expect(result.outputSchema).toEqual({ type: "string" });
 		});
 
-		test("template mixte avec plusieurs $ref", () => {
+		test("mixed template with multiple $ref accesses", () => {
 			const result = analyze("{{home.city}} — {{work.street}}", schemaWithRef);
 			expect(result.valid).toBe(true);
 		});
 
-		test("propriété inexistante derrière un $ref → erreur", () => {
+		test("missing property behind a $ref → error", () => {
 			const result = analyze("{{home.zip}}", schemaWithRef);
 			expect(result.valid).toBe(false);
 		});
 	});
 
-	describe("validation — propriétés intrinsèques des tableaux", () => {
-		test("accès à .length sur un tableau est valide", () => {
+	describe("validation — intrinsic array properties", () => {
+		test(".length access on an array is valid", () => {
 			const result = analyze("{{tags.length}}", userSchema);
 			expect(result.valid).toBe(true);
 			expect(result.diagnostics).toHaveLength(0);
 			expect(result.outputSchema).toEqual({ type: "integer" });
 		});
 
-		test("accès à .length sur un tableau d'objets est valide", () => {
+		test(".length access on an array of objects is valid", () => {
 			const result = analyze("{{orders.length}}", userSchema);
 			expect(result.valid).toBe(true);
 			expect(result.diagnostics).toHaveLength(0);
 			expect(result.outputSchema).toEqual({ type: "integer" });
 		});
 
-		test("accès à .length dans un template mixte → string", () => {
+		test(".length access in a mixed template → string", () => {
 			const result = analyze("Total: {{orders.length}} commandes", userSchema);
 			expect(result.valid).toBe(true);
 			expect(result.diagnostics).toHaveLength(0);
 			expect(result.outputSchema).toEqual({ type: "string" });
 		});
 
-		test("accès à .length dans un bloc #if est valide", () => {
+		test(".length access inside a #if block is valid", () => {
 			const result = analyze(
 				"{{#if tags}}{{tags.length}}{{else}}0{{/if}}",
 				userSchema,
@@ -508,14 +508,14 @@ describe("analyzer", () => {
 			expect(result.diagnostics).toHaveLength(0);
 		});
 
-		test("accès à .length sur un non-tableau → erreur", () => {
+		test(".length access on a non-array → error", () => {
 			const result = analyze("{{name.length}}", userSchema);
 			expect(result.valid).toBe(false);
 			expect(result.diagnostics).toHaveLength(1);
 			expect(result.diagnostics[0]?.code).toBe("UNKNOWN_PROPERTY");
 		});
 
-		test("accès à .length sur un tableau imbriqué via #with", () => {
+		test(".length access on a nested array via #with", () => {
 			const result = analyze(
 				"{{#with metadata}}{{permissions.length}}{{/with}}",
 				userSchema,
@@ -525,8 +525,8 @@ describe("analyzer", () => {
 		});
 	});
 
-	describe("diagnostics contiennent une position (loc)", () => {
-		test("l'erreur inclut la position dans le source", () => {
+	describe("diagnostics include a position (loc)", () => {
+		test("error includes position in the source", () => {
 			const result = analyze("Hello {{badProp}}", userSchema);
 			expect(result.diagnostics).toHaveLength(1);
 			const diag = result.diagnostics[0];

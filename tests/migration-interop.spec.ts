@@ -11,25 +11,25 @@ import {
 import { Typebars } from "../src/typebars.ts";
 
 // ─── Migration / Interop Tests ───────────────────────────────────────────────
-// Ces tests vérifient que les comportements de l'ancien système (SchemaIOService)
-// sont réalisables avec le nouveau moteur de template (Typebars).
+// These tests verify that the behaviors of the legacy system (SchemaIOService)
+// are achievable with the new template engine (Typebars).
 //
-// L'ancien système travaillait au niveau objet : on passait un objet
-// `{ key: "{{template}}" }` et on récupérait `{ key: valeurInterpolée }`.
-// Le nouveau système travaille au niveau template individuel via `execute()`.
+// The legacy system worked at the object level: you passed an object
+// `{ key: "{{template}}" }` and got back `{ key: interpolatedValue }`.
+// The new system works at the individual template level via `execute()`.
 //
-// Pour reproduire le comportement objet, on utilise un helper `interpolateObject`.
+// To reproduce the object-level behavior, we use an `interpolateObject` helper.
 
-// ─── Helper : reproduit interpolateTemplateValues au-dessus de execute() ─────
+// ─── Helper: reproduces interpolateTemplateValues on top of execute() ────────
 
 /**
- * Reproduit le comportement de l'ancien `interpolateTemplateValues` en
- * itérant sur les clés d'un objet template et en exécutant chaque valeur
- * via le nouveau moteur.
+ * Reproduces the behavior of the legacy `interpolateTemplateValues` by
+ * iterating over the keys of a template object and executing each value
+ * through the new engine.
  *
- * @param templateObj - Objet dont les valeurs contiennent des templates `{{...}}`
- * @param data        - Données de contexte
- * @returns Objet avec les valeurs interpolées
+ * @param templateObj - Object whose values contain `{{...}}` templates
+ * @param data        - Context data
+ * @returns Object with interpolated values
  */
 function interpolateObject(
 	templateObj: Record<string, unknown>,
@@ -139,19 +139,19 @@ describe("Migration: interpolateTemplateValues → execute()", () => {
 	});
 
 	test("Multi-template with array value — Handlebars renders array items as concatenated string", () => {
-		// L'ancien système gardait la string template brute quand on avait
-		// plusieurs templates avec des valeurs array. Le nouveau système
-		// (Handlebars) rend les éléments du tableau concaténés.
-		// Comportement DIFFÉRENT mais cohérent : Handlebars transforme les
-		// arrays en string quand ils sont dans un contexte multi-expression.
+		// The legacy system kept the raw template string when there were
+		// multiple templates with array values. The new system (Handlebars)
+		// renders the array items concatenated.
+		// DIFFERENT but consistent behavior: Handlebars converts arrays
+		// to strings when they are in a multi-expression context.
 		const output = interpolateObject(
 			{ coucou: "{{accountIds}} {{accountIds}}" },
 			{ accountIds: [123, 456, 789] },
 		);
 
-		// Handlebars rend un array comme ses éléments séparés par des virgules
-		// Le comportement exact dépend de Handlebars, mais ce ne sera PAS
-		// l'ancienne valeur "{{accountIds}} {{accountIds}}" non plus.
+		// Handlebars renders an array as its elements separated by commas.
+		// The exact behavior depends on Handlebars, but it will NOT be
+		// the old value "{{accountIds}} {{accountIds}}" either.
 		expect(typeof output.coucou).toBe("string");
 	});
 
@@ -220,7 +220,7 @@ describe("Migration: interpolateTemplateValues → execute()", () => {
 describe("Migration: extractTemplateTokens → parse() + AST", () => {
 	test("Should be able to return a list of templates from a string", () => {
 		const ast = parse("coucou {{meetingId}}");
-		// On filtre les MustacheStatement pour trouver les expressions
+		// Filter MustacheStatement nodes to find the expressions
 		const mustaches = ast.body.filter((s) => s.type === "MustacheStatement");
 		expect(mustaches).toHaveLength(1);
 
@@ -230,8 +230,8 @@ describe("Migration: extractTemplateTokens → parse() + AST", () => {
 	});
 
 	test("Should handle templates with extra whitespace — Handlebars normalizes", () => {
-		// Handlebars gère nativement le whitespace dans les moustaches :
-		// {{   meetingId   }} est parsé comme {{meetingId}}
+		// Handlebars natively handles whitespace inside moustaches:
+		// {{   meetingId   }} is parsed as {{meetingId}}
 		const ast = parse("coucou {{   meetingId           }}");
 		const mustaches = ast.body.filter((s) => s.type === "MustacheStatement");
 		expect(mustaches).toHaveLength(1);
@@ -312,9 +312,9 @@ describe("Migration: isUniqueTemplate → isSingleExpression()", () => {
 
 	test("Template with whitespace around — effectively single via getEffectivelySingleExpression", () => {
 		const ast = parse("  {{meetingId}}  ");
-		// isSingleExpression est strict (pas de whitespace)
+		// isSingleExpression is strict (no whitespace allowed)
 		expect(isSingleExpression(ast)).toBe(false);
-		// mais getEffectivelySingleExpression détecte le cas avec whitespace
+		// but getEffectivelySingleExpression detects the whitespace-padded case
 		expect(getEffectivelySingleExpression(ast)).not.toBeNull();
 	});
 
@@ -650,7 +650,7 @@ describe("Migration: validate → execute() runtime behavior", () => {
 });
 
 // ═════════════════════════════════════════════════════════════════════════════
-// SECTION 9 : Template identifiers ({{key:id}}) — NON SUPPORTÉ
+// SECTION 9 : Template identifiers ({{key:id}}) — NOT SUPPORTED
 // ═════════════════════════════════════════════════════════════════════════════
 
 describe("Migration: Template identifiers ({{key:id}}) — LIMITATIONS", () => {
@@ -658,17 +658,17 @@ describe("Migration: Template identifiers ({{key:id}}) — LIMITATIONS", () => {
 		clearCompilationCache();
 	});
 
-	// L'ancien système supportait une syntaxe {{key:identifier}} pour
-	// référencer des données provenant de nœuds spécifiques dans un workflow.
-	// Ce mécanisme n'existe PAS dans Handlebars.
+	// The legacy system supported a {{key:identifier}} syntax to reference
+	// data from specific nodes in a workflow.
+	// This mechanism does NOT exist in Handlebars.
 	//
-	// WORKAROUND : On peut reproduire ce comportement en pré-structurant les
-	// données avec des namespaces (ex: node_1.meetingId, node_2.meetingId)
-	// et en utilisant la dot notation Handlebars.
+	// WORKAROUND: This behavior can be reproduced by pre-structuring the
+	// data with namespaces (e.g. node_1.meetingId, node_2.meetingId)
+	// and using Handlebars dot notation.
 
 	test("Workaround: use dot notation with namespaced data instead of identifiers", () => {
-		// Ancien: {{meetingId:1}} {{meetingId:2}} avec outputNodeById
-		// Nouveau: {{node_1.meetingId}} {{node_2.meetingId}} avec données structurées
+		// Legacy: {{meetingId:1}} {{meetingId:2}} with outputNodeById
+		// New: {{node_1.meetingId}} {{node_2.meetingId}} with structured data
 		const data = {
 			node_1: { meetingId: "coucou1" },
 			node_2: { meetingId: "coucou2" },
@@ -713,7 +713,7 @@ describe("Migration: Template identifiers ({{key:id}}) — LIMITATIONS", () => {
 	});
 
 	test("Workaround: fallback without namespace uses root data", () => {
-		// Quand il n'y a pas d'identifiant, les données sont au niveau racine
+		// When there is no identifier, data is at the root level
 		const data = { meetingId: "coucou" };
 		const result = execute("{{meetingId}} {{meetingId}}", data);
 		expect(result).toBe("coucou coucou");
@@ -735,10 +735,10 @@ describe("Migration: Template identifiers ({{key:id}}) — LIMITATIONS", () => {
 // ═════════════════════════════════════════════════════════════════════════════
 
 describe("Migration: findTemplateSchemaFromPrevSchemas → JSON Schema resolution", () => {
-	// L'ancien findTemplateSchemaFromPrevSchemas cherchait un type dans une
-	// liste de schemas précédents identifiés par un numéro.
-	// Avec JSON Schema, on structure les données en un seul schema avec des
-	// propriétés nommées pour chaque source.
+	// The legacy findTemplateSchemaFromPrevSchemas looked up a type in
+	// a list of previous schemas identified by a number.
+	// With JSON Schema, we structure data into a single schema with
+	// named properties for each source.
 
 	test("Schema resolution with namespaced properties replaces identifier lookup", () => {
 		const schema: JSONSchema7 = {
