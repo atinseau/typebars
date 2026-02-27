@@ -1,11 +1,7 @@
 import { beforeEach, describe, expect, test } from "bun:test";
 import Handlebars from "handlebars";
-import { clearCompilationCache, execute } from "../src/executor.ts";
-import {
-	extractPathSegments,
-	isSingleExpression,
-	parse,
-} from "../src/parser.ts";
+import { clearCompilationCache, execute } from "../src/executor";
+import { extractPathSegments, isSingleExpression, parse } from "../src/parser";
 
 // ─── Colon Syntax Tests ──────────────────────────────────────────────────────
 // Verifies that Handlebars natively accepts the {{key:identifier}} syntax

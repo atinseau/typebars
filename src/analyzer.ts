@@ -5,7 +5,7 @@ import {
 	createTypeMismatchMessage,
 	createUnanalyzableMessage,
 	createUnknownHelperMessage,
-} from "./errors.ts";
+} from "./errors";
 import {
 	detectLiteralType,
 	extractExpressionIdentifier,
@@ -15,13 +15,13 @@ import {
 	getEffectivelySingleExpression,
 	isThisExpression,
 	parse,
-} from "./parser.ts";
+} from "./parser";
 import {
 	assertNoConditionalSchema,
 	resolveArrayItems,
 	resolveSchemaPath,
 	simplifySchema,
-} from "./schema-resolver.ts";
+} from "./schema-resolver";
 import type {
 	AnalysisResult,
 	DiagnosticCode,
@@ -30,18 +30,14 @@ import type {
 	TemplateDiagnostic,
 	TemplateInput,
 	TemplateInputObject,
-} from "./types.ts";
-import {
-	inferPrimitiveSchema,
-	isLiteralInput,
-	isObjectInput,
-} from "./types.ts";
+} from "./types";
+import { inferPrimitiveSchema, isLiteralInput, isObjectInput } from "./types";
 import {
 	aggregateObjectAnalysis,
 	deepEqual,
 	extractSourceSnippet,
 	getSchemaPropertyNames,
-} from "./utils.ts";
+} from "./utils";
 
 // ─── Static Analyzer ─────────────────────────────────────────────────────────
 // Static analysis of a Handlebars template against a JSON Schema v7

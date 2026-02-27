@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from "bun:test";
 import type { JSONSchema7 } from "json-schema";
-import { Typebars } from "../src/typebars.ts";
+import { Typebars } from "../src/typebars";
 
 // ─── Shared schema ──────────────────────────────────────────────────────────
 

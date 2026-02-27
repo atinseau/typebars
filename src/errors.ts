@@ -1,4 +1,4 @@
-import type { TemplateDiagnostic } from "./types.ts";
+import type { TemplateDiagnostic } from "./types";
 
 // ─── Base Class ──────────────────────────────────────────────────────────────
 // All template engine errors extend this class, enabling targeted catch blocks:

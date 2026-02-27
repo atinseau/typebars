@@ -1,6 +1,6 @@
-import type { HelperDefinition } from "../types.ts";
-import { HelperFactory } from "./helper-factory.ts";
-import { toNumber } from "./utils.ts";
+import type { HelperDefinition } from "../types";
+import { HelperFactory } from "./helper-factory";
+import { toNumber } from "./utils";
 
 // ─── LogicalHelpers ──────────────────────────────────────────────────────────
 // Aggregates all logical / comparison helpers for the template engine.
