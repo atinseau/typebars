@@ -16,7 +16,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.release.target_commitish }}
+          ref: master
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
@@ -41,6 +41,14 @@ jobs:
         run: |
           npm version "${{ steps.version.outputs.version }}" --no-git-tag-version
 
+      - name: Commit version bump
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_options: --no-verify
+          commit_message: "chore: bump version to ${{ steps.version.outputs.version }}"
+          file_pattern: package.json
+          branch: master
+
       - name: Check types
         run: bun check-types
 
@@ -54,11 +62,3 @@ jobs:
         run: npm publish --access public
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-
-      - name: Commit version bump
-        uses: stefanzweifel/git-auto-commit-action@v5
-        with:
-          commit_options: --no-verify
-          commit_message: "chore: bump version to ${{ steps.version.outputs.version }}"
-          file_pattern: package.json
-          branch: ${{ github.event.release.target_commitish }}
