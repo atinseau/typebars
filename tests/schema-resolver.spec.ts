@@ -4,8 +4,8 @@ import {
 	resolveArrayItems,
 	resolveSchemaPath,
 	simplifySchema,
-} from "../src/schema-resolver.ts";
-import { userSchema } from "./fixtures.ts";
+} from "../src/schema-resolver";
+import { userSchema } from "./fixtures";
 
 describe("schema-resolver", () => {
 	describe("resolveSchemaPath", () => {

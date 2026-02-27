@@ -1,5 +1,5 @@
 import type { JSONSchema7 } from "json-schema";
-import type { AnalysisResult, TemplateDiagnostic } from "./types.ts";
+import type { AnalysisResult, TemplateDiagnostic } from "./types";
 
 // ─── Utilities ───────────────────────────────────────────────────────────────
 // Shared utility functions and classes used across the different modules

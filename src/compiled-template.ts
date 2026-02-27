@@ -1,20 +1,20 @@
 import type Handlebars from "handlebars";
 import type { JSONSchema7 } from "json-schema";
-import { analyzeFromAst } from "./analyzer.ts";
-import { TemplateAnalysisError } from "./errors.ts";
-import { type ExecutorContext, executeFromAst } from "./executor.ts";
+import { analyzeFromAst } from "./analyzer";
+import { TemplateAnalysisError } from "./errors";
+import { type ExecutorContext, executeFromAst } from "./executor";
 import type {
 	AnalysisResult,
 	ExecuteOptions,
 	HelperDefinition,
 	ValidationResult,
-} from "./types.ts";
-import { inferPrimitiveSchema } from "./types.ts";
+} from "./types";
+import { inferPrimitiveSchema } from "./types";
 import {
 	aggregateObjectAnalysis,
 	aggregateObjectAnalysisAndExecution,
 	type LRUCache,
-} from "./utils.ts";
+} from "./utils";
 
 // ─── CompiledTemplate ────────────────────────────────────────────────────────
 // Pre-parsed template ready to be executed or analyzed without re-parsing.

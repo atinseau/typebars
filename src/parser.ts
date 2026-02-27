@@ -1,5 +1,5 @@
 import Handlebars from "handlebars";
-import { TemplateParseError } from "./errors.ts";
+import { TemplateParseError } from "./errors";
 
 // ─── Regex for detecting a template identifier (e.g. "meetingId:1") ──────────
 // The identifier is always a positive integer or zero, separated from the

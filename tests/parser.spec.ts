@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { TemplateParseError } from "../src/errors.ts";
-import { parse } from "../src/parser.ts";
+import { TemplateParseError } from "../src/errors";
+import { parse } from "../src/parser";
 
 describe("parser", () => {
 	test("parse returns a valid AST for a simple template", () => {

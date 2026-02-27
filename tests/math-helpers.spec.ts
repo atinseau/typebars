@@ -1,8 +1,8 @@
 import { beforeEach, describe, expect, it } from "bun:test";
 import type { JSONSchema7 } from "json-schema";
-import { MathHelpers } from "../src/helpers/math-helpers.ts";
-import { Typebars } from "../src/typebars.ts";
-import type { HelperConfig } from "../src/types.ts";
+import { MathHelpers } from "../src/helpers/math-helpers";
+import { Typebars } from "../src/typebars";
+import type { HelperConfig } from "../src/types";
 
 const mathHelpers = new MathHelpers();
 

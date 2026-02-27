@@ -1,14 +1,14 @@
 import { beforeEach, describe, expect, test } from "bun:test";
 import type { JSONSchema7 } from "json-schema";
-import { analyze } from "../src/analyzer.ts";
-import { clearCompilationCache, execute } from "../src/executor.ts";
+import { analyze } from "../src/analyzer";
+import { clearCompilationCache, execute } from "../src/executor";
 import {
 	extractPathSegments,
 	getEffectivelySingleExpression,
 	isSingleExpression,
 	parse,
-} from "../src/parser.ts";
-import { Typebars } from "../src/typebars.ts";
+} from "../src/parser";
+import { Typebars } from "../src/typebars";
 
 // ─── Migration / Interop Tests ───────────────────────────────────────────────
 // These tests verify that the behaviors of the legacy system (SchemaIOService)

@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, test } from "bun:test";
-import { clearCompilationCache, execute } from "../src/executor.ts";
-import { userData } from "./fixtures.ts";
+import { clearCompilationCache, execute } from "../src/executor";
+import { userData } from "./fixtures";
 
 describe("executor", () => {
 	beforeEach(() => {

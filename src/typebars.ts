@@ -1,14 +1,14 @@
 import Handlebars from "handlebars";
 import type { JSONSchema7 } from "json-schema";
-import { analyzeFromAst } from "./analyzer.ts";
+import { analyzeFromAst } from "./analyzer";
 import {
 	CompiledTemplate,
 	type CompiledTemplateOptions,
-} from "./compiled-template.ts";
-import { TemplateAnalysisError } from "./errors.ts";
-import { executeFromAst } from "./executor.ts";
-import { LogicalHelpers, MathHelpers } from "./helpers/index.ts";
-import { parse } from "./parser.ts";
+} from "./compiled-template";
+import { TemplateAnalysisError } from "./errors";
+import { executeFromAst } from "./executor";
+import { LogicalHelpers, MathHelpers } from "./helpers/index";
+import { parse } from "./parser";
 import type {
 	AnalysisResult,
 	AnalyzeAndExecuteOptions,
@@ -17,17 +17,13 @@ import type {
 	TemplateEngineOptions,
 	TemplateInput,
 	ValidationResult,
-} from "./types.ts";
-import {
-	inferPrimitiveSchema,
-	isLiteralInput,
-	isObjectInput,
-} from "./types.ts";
+} from "./types";
+import { inferPrimitiveSchema, isLiteralInput, isObjectInput } from "./types";
 import {
 	aggregateObjectAnalysis,
 	aggregateObjectAnalysisAndExecution,
 	LRUCache,
-} from "./utils.ts";
+} from "./utils";
 
 // ─── Typebars ────────────────────────────────────────────────────────────────
 // Public entry point of the template engine. Orchestrates three phases:
