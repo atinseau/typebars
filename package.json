@@ -17,7 +17,7 @@
 		"README.md"
 	],
 	"scripts": {
-		"postinstall": "lefthook install",
+		"prepare": "lefthook install",
 		"build:bun": "bun build src/*.ts --outdir ./dist --production --minify --root src --sourcemap --splitting --target node --format esm --packages external --chunk-naming='chunk-[hash].js'",
 		"build:tsc": "tsc --project tsconfig.build.json",
 		"build": "bun --parallel build:bun build:tsc",
