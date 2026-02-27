@@ -1,14 +1,14 @@
 import Handlebars from "handlebars";
 import type { JSONSchema7 } from "json-schema";
-import { analyzeFromAst } from "./analyzer";
+import { analyzeFromAst } from "./analyzer.ts";
 import {
 	CompiledTemplate,
 	type CompiledTemplateOptions,
-} from "./compiled-template";
-import { TemplateAnalysisError } from "./errors";
-import { executeFromAst } from "./executor";
-import { LogicalHelpers, MathHelpers } from "./helpers/index";
-import { parse } from "./parser";
+} from "./compiled-template.ts";
+import { TemplateAnalysisError } from "./errors.ts";
+import { executeFromAst } from "./executor.ts";
+import { LogicalHelpers, MathHelpers } from "./helpers/index.ts";
+import { parse } from "./parser.ts";
 import type {
 	AnalysisResult,
 	AnalyzeAndExecuteOptions,
@@ -17,8 +17,12 @@ import type {
 	TemplateEngineOptions,
 	TemplateInput,
 	ValidationResult,
-} from "./types";
-import { inferPrimitiveSchema, isLiteralInput, isObjectInput } from "./types";
+} from "./types.ts";
+import {
+	inferPrimitiveSchema,
+	isLiteralInput,
+	isObjectInput,
+} from "./types.ts";
 import {
 	aggregateObjectAnalysis,
 	aggregateObjectAnalysisAndExecution,

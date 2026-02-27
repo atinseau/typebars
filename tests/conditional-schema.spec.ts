@@ -1,10 +1,10 @@
 import { beforeEach, describe, expect, test } from "bun:test";
 import type { JSONSchema7 } from "json-schema";
-import { analyze } from "../src/analyzer";
-import { UnsupportedSchemaError } from "../src/errors";
-import { assertNoConditionalSchema } from "../src/schema-resolver";
-import { Typebars } from "../src/typebars";
-import { userSchema } from "./fixtures";
+import { analyze } from "../src/analyzer.ts";
+import { UnsupportedSchemaError } from "../src/errors.ts";
+import { assertNoConditionalSchema } from "../src/schema-resolver.ts";
+import { Typebars } from "../src/typebars.ts";
+import { userSchema } from "./fixtures.ts";
 
 describe("conditional schema detection (if/then/else)", () => {
 	// ─── assertNoConditionalSchema ─────────────────────────────────────────

@@ -8,9 +8,22 @@
 		"url": "https://github.com/atinseau/typebars",
 		"name": "atinseau"
 	},
-	"main": "dist/index.js",
-	"types": "dist/index.d.ts",
 	"type": "module",
+	"main": "./dist/cjs/index.js",
+	"module": "./dist/esm/index.js",
+	"types": "./dist/esm/index.d.ts",
+	"exports": {
+		".": {
+			"import": {
+				"types": "./dist/esm/index.d.ts",
+				"default": "./dist/esm/index.js"
+			},
+			"require": {
+				"types": "./dist/cjs/index.d.ts",
+				"default": "./dist/cjs/index.js"
+			}
+		}
+	},
 	"sideEffects": false,
 	"files": [
 		"dist",
@@ -18,9 +31,16 @@
 	],
 	"scripts": {
 		"prepare": "lefthook install",
-		"build:swc": "rm -rf dist && swc src -d dist --strip-leading-paths",
-		"build:tsc": "tsc --project tsconfig.build.json",
-		"build": "bun --parallel build:swc build:tsc",
+		"clean": "rm -rf dist",
+		"build:esm": "swc src -d dist/esm --strip-leading-paths --config-file .swcrc.esm.json",
+		"build:cjs": "swc src -d dist/cjs --strip-leading-paths --config-file .swcrc.cjs.json",
+		"build:types:esm": "tsc --project tsconfig.build.json",
+		"build:types:cjs": "tsc --project tsconfig.build.cjs.json",
+		"build:swc": "bun --parallel build:esm build:cjs",
+		"build:types": "bun --parallel build:types:esm build:types:cjs",
+		"build": "bun run clean && bun --parallel build:swc build:types && bun run postbuild",
+		"postbuild": "bun scripts/postbuild.ts",
+		"test:integration": "bun test tests/integration/",
 		"prepublishOnly": "bun run build",
 		"check-types": "tsc --noEmit",
 		"check": "biome check --write --unsafe",
@@ -28,11 +48,12 @@
 	},
 	"devDependencies": {
 		"@biomejs/biome": "2.4.3",
+		"@swc/cli": "0.8.0",
+		"@swc/core": "1.15.17",
 		"@types/bun": "latest",
 		"@types/json-schema": "7.0.15",
-		"lefthook": "2.1.1",
-		"@swc/cli": "0.8.0",
-		"@swc/core": "1.15.17"
+		"es-module-lexer": "^2.0.0",
+		"lefthook": "2.1.1"
 	},
 	"peerDependencies": {
 		"typescript": "^5"

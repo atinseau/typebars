@@ -1,6 +1,6 @@
 import type { JSONSchema7 } from "json-schema";
-import { UnsupportedSchemaError } from "./errors";
-import { deepEqual } from "./utils";
+import { UnsupportedSchemaError } from "./errors.ts";
+import { deepEqual } from "./utils.ts";
 
 // ─── JSON Schema Resolver ────────────────────────────────────────────────────
 // Utility for navigating a JSON Schema Draft v7 by following a property path

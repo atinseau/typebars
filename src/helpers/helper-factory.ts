@@ -1,4 +1,4 @@
-import type { HelperDefinition } from "../types";
+import type { HelperDefinition } from "../types.ts";
 
 // ─── HelperFactory ───────────────────────────────────────────────────────────
 // Abstract base class that enforces a consistent pattern for creating,

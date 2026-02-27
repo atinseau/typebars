@@ -1,5 +1,5 @@
 import Handlebars from "handlebars";
-import { TemplateRuntimeError } from "./errors";
+import { TemplateRuntimeError } from "./errors.ts";
 import {
 	canUseFastPath,
 	coerceLiteral,
@@ -10,10 +10,10 @@ import {
 	isSingleExpression,
 	isThisExpression,
 	parse,
-} from "./parser";
-import type { TemplateInput, TemplateInputObject } from "./types";
-import { isLiteralInput, isObjectInput } from "./types";
-import { LRUCache } from "./utils";
+} from "./parser.ts";
+import type { TemplateInput, TemplateInputObject } from "./types.ts";
+import { isLiteralInput, isObjectInput } from "./types.ts";
+import { LRUCache } from "./utils.ts";
 
 // ─── Template Executor ───────────────────────────────────────────────────────
 // Executes a Handlebars template with real data.

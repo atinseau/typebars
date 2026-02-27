@@ -3,7 +3,6 @@
 **Type-safe Handlebars template engine with static analysis powered by JSON Schema.**
 
 Typebars wraps Handlebars with a static analysis layer that validates your templates against a JSON Schema **before execution**. Given an input schema describing your data, Typebars detects unknown properties, type mismatches, and missing arguments at analysis time — and infers the exact JSON Schema of the template's output.
-
 ```ts
 import { Typebars } from "typebars";
 

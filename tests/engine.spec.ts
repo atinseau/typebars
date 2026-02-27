@@ -1,9 +1,9 @@
 import { beforeEach, describe, expect, test } from "bun:test";
-import { analyze } from "../src/analyzer";
-import { TemplateAnalysisError } from "../src/errors";
-import { clearCompilationCache, execute } from "../src/executor";
-import { Typebars } from "../src/typebars";
-import { userData, userSchema } from "./fixtures";
+import { analyze } from "../src/analyzer.ts";
+import { TemplateAnalysisError } from "../src/errors.ts";
+import { clearCompilationCache, execute } from "../src/executor.ts";
+import { Typebars } from "../src/typebars.ts";
+import { userData, userSchema } from "./fixtures.ts";
 
 describe("Typebars", () => {
 	beforeEach(() => {

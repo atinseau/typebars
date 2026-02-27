@@ -1,4 +1,4 @@
-import { Typebars } from "./src";
+import { Typebars } from "./src.ts";
 
 const tp = new Typebars();
 

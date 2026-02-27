@@ -1,8 +1,8 @@
 import { beforeEach, describe, expect, test } from "bun:test";
 import type { JSONSchema7 } from "json-schema";
-import { analyze } from "../src/analyzer";
-import { clearCompilationCache, execute } from "../src/executor";
-import { userSchema } from "./fixtures";
+import { analyze } from "../src/analyzer.ts";
+import { clearCompilationCache, execute } from "../src/executor.ts";
+import { userSchema } from "./fixtures.ts";
 
 describe("edge cases", () => {
 	beforeEach(() => {

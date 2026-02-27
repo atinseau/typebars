@@ -1,9 +1,9 @@
 import { beforeEach, describe, expect, test } from "bun:test";
 import type { JSONSchema7 } from "json-schema";
-import { analyze } from "../src/analyzer";
-import { clearCompilationCache, execute } from "../src/executor";
-import { extractExpressionIdentifier, parseIdentifier } from "../src/parser";
-import { Typebars } from "../src/typebars";
+import { analyze } from "../src/analyzer.ts";
+import { clearCompilationCache, execute } from "../src/executor.ts";
+import { extractExpressionIdentifier, parseIdentifier } from "../src/parser.ts";
+import { Typebars } from "../src/typebars.ts";
 
 // ═════════════════════════════════════════════════════════════════════════════
 // Template Identifiers ({{key:N}}) — Full Feature Tests
