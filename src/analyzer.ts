@@ -30,8 +30,12 @@ import type {
 	TemplateDiagnostic,
 	TemplateInput,
 	TemplateInputObject,
-} from "./types";
-import { inferPrimitiveSchema, isLiteralInput, isObjectInput } from "./types";
+} from "./types.ts";
+import {
+	inferPrimitiveSchema,
+	isLiteralInput,
+	isObjectInput,
+} from "./types.ts";
 import {
 	aggregateObjectAnalysis,
 	deepEqual,

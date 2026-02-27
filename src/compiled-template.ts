@@ -1,15 +1,15 @@
 import type Handlebars from "handlebars";
 import type { JSONSchema7 } from "json-schema";
-import { analyzeFromAst } from "./analyzer";
-import { TemplateAnalysisError } from "./errors";
-import { type ExecutorContext, executeFromAst } from "./executor";
+import { analyzeFromAst } from "./analyzer.ts";
+import { TemplateAnalysisError } from "./errors.ts";
+import { type ExecutorContext, executeFromAst } from "./executor.ts";
 import type {
 	AnalysisResult,
 	ExecuteOptions,
 	HelperDefinition,
 	ValidationResult,
-} from "./types";
-import { inferPrimitiveSchema } from "./types";
+} from "./types.ts";
+import { inferPrimitiveSchema } from "./types.ts";
 import {
 	aggregateObjectAnalysis,
 	aggregateObjectAnalysisAndExecution,

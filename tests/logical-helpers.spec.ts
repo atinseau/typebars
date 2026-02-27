@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from "bun:test";
 import type { JSONSchema7 } from "json-schema";
-import { LogicalHelpers } from "../src/helpers/logical-helpers";
-import { Typebars } from "../src/typebars";
+import { LogicalHelpers } from "../src/helpers/logical-helpers.ts";
+import { Typebars } from "../src/typebars.ts";
 
 const logicalHelpers = new LogicalHelpers();
 

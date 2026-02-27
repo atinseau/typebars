@@ -1,6 +1,6 @@
-import type { HelperDefinition } from "../types";
-import { HelperFactory } from "./helper-factory";
-import { toNumber } from "./utils";
+import type { HelperDefinition } from "../types.ts";
+import { HelperFactory } from "./helper-factory.ts";
+import { toNumber } from "./utils.ts";
 
 // ─── MathHelpers ─────────────────────────────────────────────────────────────
 // Aggregates all math-related helpers for the template engine.
