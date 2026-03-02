@@ -20,10 +20,13 @@ import type {
 } from "./types.ts";
 import {
 	inferPrimitiveSchema,
+	isArrayInput,
 	isLiteralInput,
 	isObjectInput,
 } from "./types.ts";
 import {
+	aggregateArrayAnalysis,
+	aggregateArrayAnalysisAndExecution,
 	aggregateObjectAnalysis,
 	aggregateObjectAnalysisAndExecution,
 	LRUCache,
@@ -104,6 +107,17 @@ export class Typebars {
 	 * @returns A reusable `CompiledTemplate`
 	 */
 	compile(template: TemplateInput): CompiledTemplate {
+		if (isArrayInput(template)) {
+			const children: CompiledTemplate[] = [];
+			for (const element of template) {
+				children.push(this.compile(element));
+			}
+			return CompiledTemplate.fromArray(children, {
+				helpers: this.helpers,
+				hbs: this.hbs,
+				compilationCache: this.compilationCache,
+			});
+		}
 		if (isObjectInput(template)) {
 			const children: Record<string, CompiledTemplate> = {};
 			for (const [key, value] of Object.entries(template)) {
@@ -150,6 +164,15 @@ export class Typebars {
 		inputSchema: JSONSchema7,
 		identifierSchemas?: Record<number, JSONSchema7>,
 	): AnalysisResult {
+		if (isArrayInput(template)) {
+			return aggregateArrayAnalysis(template.length, (index) =>
+				this.analyze(
+					template[index] as TemplateInput,
+					inputSchema,
+					identifierSchemas,
+				),
+			);
+		}
 		if (isObjectInput(template)) {
 			return aggregateObjectAnalysis(Object.keys(template), (key) =>
 				this.analyze(
@@ -211,6 +234,9 @@ export class Typebars {
 	 * @returns `true` if the template is syntactically correct
 	 */
 	isValidSyntax(template: TemplateInput): boolean {
+		if (isArrayInput(template)) {
+			return template.every((v) => this.isValidSyntax(v));
+		}
 		if (isObjectInput(template)) {
 			return Object.values(template).every((v) => this.isValidSyntax(v));
 		}
@@ -245,6 +271,15 @@ export class Typebars {
 		data: Record<string, unknown>,
 		options?: ExecuteOptions,
 	): unknown {
+		// ── Array template → recursive execution ─────────────────────────────
+		if (isArrayInput(template)) {
+			const result: unknown[] = [];
+			for (const element of template) {
+				result.push(this.execute(element, data, options));
+			}
+			return result;
+		}
+
 		// ── Object template → recursive execution ────────────────────────────
 		if (isObjectInput(template)) {
 			const result: Record<string, unknown> = {};
@@ -301,6 +336,16 @@ export class Typebars {
 		data: Record<string, unknown>,
 		options?: AnalyzeAndExecuteOptions,
 	): { analysis: AnalysisResult; value: unknown } {
+		if (isArrayInput(template)) {
+			return aggregateArrayAnalysisAndExecution(template.length, (index) =>
+				this.analyzeAndExecute(
+					template[index] as TemplateInput,
+					inputSchema,
+					data,
+					options,
+				),
+			);
+		}
 		if (isObjectInput(template)) {
 			return aggregateObjectAnalysisAndExecution(Object.keys(template), (key) =>
 				this.analyzeAndExecute(

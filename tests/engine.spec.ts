@@ -976,3 +976,455 @@ describe("object template input (TemplateInputObject)", () => {
 		});
 	});
 });
+
+// ─── Array Template Input ────────────────────────────────────────────────────
+
+describe("array template input (TemplateInputArray)", () => {
+	beforeEach(() => {
+		clearCompilationCache();
+	});
+
+	const engine = new Typebars();
+
+	describe("analyze", () => {
+		test("simple array with string templates → outputSchema array with string items", () => {
+			const result = engine.analyze(["{{name}}"], userSchema);
+			expect(result.valid).toBe(true);
+			expect(result.diagnostics).toEqual([]);
+			expect(result.outputSchema).toEqual({
+				type: "array",
+				items: { type: "string" },
+			});
+		});
+
+		test("array with multiple same-type templates → single items schema", () => {
+			const result = engine.analyze(
+				["{{name}}", "{{address.city}}"],
+				userSchema,
+			);
+			expect(result.valid).toBe(true);
+			expect(result.outputSchema).toEqual({
+				type: "array",
+				items: { type: "string" },
+			});
+		});
+
+		test("array with different-type templates → oneOf items schema", () => {
+			const result = engine.analyze(
+				["{{name}}", "{{age}}", "{{active}}"],
+				userSchema,
+			);
+			expect(result.valid).toBe(true);
+			expect(result.outputSchema).toEqual({
+				type: "array",
+				items: {
+					oneOf: [{ type: "string" }, { type: "number" }, { type: "boolean" }],
+				},
+			});
+		});
+
+		test("array with primitive literals → correctly inferred types", () => {
+			const result = engine.analyze([42, true, null], userSchema);
+			expect(result.valid).toBe(true);
+			expect(result.outputSchema).toEqual({
+				type: "array",
+				items: {
+					oneOf: [{ type: "integer" }, { type: "boolean" }, { type: "null" }],
+				},
+			});
+		});
+
+		test("array with mixed templates and literals → correct oneOf", () => {
+			const result = engine.analyze(["{{name}}", 42, true, null], userSchema);
+			expect(result.valid).toBe(true);
+			expect(result.outputSchema).toEqual({
+				type: "array",
+				items: {
+					oneOf: [
+						{ type: "string" },
+						{ type: "integer" },
+						{ type: "boolean" },
+						{ type: "null" },
+					],
+				},
+			});
+		});
+
+		test("empty array → empty items schema", () => {
+			const result = engine.analyze([], userSchema);
+			expect(result.valid).toBe(true);
+			expect(result.diagnostics).toEqual([]);
+			expect(result.outputSchema).toEqual({
+				type: "array",
+				items: {},
+			});
+		});
+
+		test("array with missing property → valid false + diagnostic", () => {
+			const result = engine.analyze(["{{name}}", "{{nope}}"], userSchema);
+			expect(result.valid).toBe(false);
+			expect(result.diagnostics.length).toBeGreaterThan(0);
+			expect(result.diagnostics[0]?.code).toBe("UNKNOWN_PROPERTY");
+		});
+
+		test("array with multiple errors → all diagnostics reported", () => {
+			const result = engine.analyze(
+				["{{bad1}}", "{{bad2}}", "{{name}}"],
+				userSchema,
+			);
+			expect(result.valid).toBe(false);
+			const errors = result.diagnostics.filter((d) => d.severity === "error");
+			expect(errors.length).toBe(2);
+		});
+
+		test("array with nested object element → object items schema", () => {
+			const result = engine.analyze(
+				[{ user: "{{name}}", age: "{{age}}" }],
+				userSchema,
+			);
+			expect(result.valid).toBe(true);
+			expect(result.outputSchema).toEqual({
+				type: "array",
+				items: {
+					type: "object",
+					properties: {
+						user: { type: "string" },
+						age: { type: "number" },
+					},
+					required: ["user", "age"],
+				},
+			});
+		});
+
+		test("array with nested array element → nested array items schema", () => {
+			const result = engine.analyze([["{{name}}"], ["{{age}}"]], userSchema);
+			expect(result.valid).toBe(true);
+			expect(result.outputSchema).toEqual({
+				type: "array",
+				items: {
+					oneOf: [
+						{ type: "array", items: { type: "string" } },
+						{ type: "array", items: { type: "number" } },
+					],
+				},
+			});
+		});
+
+		test("array with identical nested arrays → deduplicated items schema", () => {
+			const result = engine.analyze(
+				[["{{name}}"], ["{{address.city}}"]],
+				userSchema,
+			);
+			expect(result.valid).toBe(true);
+			expect(result.outputSchema).toEqual({
+				type: "array",
+				items: { type: "array", items: { type: "string" } },
+			});
+		});
+
+		test("array with static string value → outputSchema string for that element", () => {
+			const result = engine.analyze(["hello", "{{name}}"], userSchema);
+			expect(result.valid).toBe(true);
+			expect(result.outputSchema).toEqual({
+				type: "array",
+				items: { type: "string" },
+			});
+		});
+
+		test("array with duplicate literal types → deduplicated", () => {
+			const result = engine.analyze([42, 99, 7], userSchema);
+			expect(result.valid).toBe(true);
+			expect(result.outputSchema).toEqual({
+				type: "array",
+				items: { type: "integer" },
+			});
+		});
+	});
+
+	describe("execute", () => {
+		test("simple array with string templates → resolved values", () => {
+			const result = engine.execute(["{{name}}", "{{age}}"], userData);
+			expect(result).toEqual(["Alice", 30]);
+		});
+
+		test("array with static string value → passthrough", () => {
+			const result = engine.execute(["{{name}}", "hello"], userData);
+			expect(result).toEqual(["Alice", "hello"]);
+		});
+
+		test("array with primitive literals → passthrough", () => {
+			const result = engine.execute([42, false, null, "{{name}}"], userData);
+			expect(result).toEqual([42, false, null, "Alice"]);
+		});
+
+		test("array with nested object → recursive resolution", () => {
+			const result = engine.execute(
+				[{ name: "{{name}}", age: "{{age}}" }, "static"],
+				userData,
+			);
+			expect(result).toEqual([{ name: "Alice", age: 30 }, "static"]);
+		});
+
+		test("array with nested array → recursive resolution", () => {
+			const result = engine.execute([["{{name}}"], ["{{age}}"]], userData);
+			expect(result).toEqual([["Alice"], [30]]);
+		});
+
+		test("empty array → empty array", () => {
+			expect(engine.execute([], userData)).toEqual([]);
+		});
+
+		test("array with mixed template → string for mixed values", () => {
+			const result = engine.execute(["Hello {{name}}", "{{age}}"], userData);
+			expect(result).toEqual(["Hello Alice", 30]);
+		});
+	});
+
+	describe("validate", () => {
+		test("valid array → valid true, no diagnostics", () => {
+			const result = engine.validate(["{{name}}", "{{age}}"], userSchema);
+			expect(result.valid).toBe(true);
+			expect(result.diagnostics).toEqual([]);
+		});
+
+		test("array with missing property → valid false", () => {
+			const result = engine.validate(["{{name}}", "{{nope}}"], userSchema);
+			expect(result.valid).toBe(false);
+			expect(result.diagnostics.length).toBeGreaterThan(0);
+		});
+
+		test("array with only literals → always valid", () => {
+			const result = engine.validate([42, true, null], userSchema);
+			expect(result.valid).toBe(true);
+			expect(result.diagnostics).toEqual([]);
+		});
+
+		test("empty array → always valid", () => {
+			const result = engine.validate([], userSchema);
+			expect(result.valid).toBe(true);
+		});
+	});
+
+	describe("isValidSyntax", () => {
+		test("array with valid templates → true", () => {
+			expect(engine.isValidSyntax(["{{name}}", "{{age}}"])).toBe(true);
+		});
+
+		test("array with a syntactically invalid template → false", () => {
+			expect(engine.isValidSyntax(["{{name}}", "{{#if}}"])).toBe(false);
+		});
+
+		test("array with literals → true", () => {
+			expect(engine.isValidSyntax([42, true, null])).toBe(true);
+		});
+
+		test("empty array → true", () => {
+			expect(engine.isValidSyntax([])).toBe(true);
+		});
+
+		test("nested array with valid syntax → true", () => {
+			expect(engine.isValidSyntax([["{{name}}"], ["{{age}}"]])).toBe(true);
+		});
+
+		test("nested array with invalid syntax in a child → false", () => {
+			expect(engine.isValidSyntax([["{{name}}"], ["{{#if}}"]])).toBe(false);
+		});
+	});
+
+	describe("compile", () => {
+		test("compiles an array and executes → array with resolved values", () => {
+			const tpl = engine.compile(["{{name}}", "{{age}}", "ok"]);
+			const result = tpl.execute(userData);
+			expect(result).toEqual(["Alice", 30, "ok"]);
+		});
+
+		test("compiles an array and analyzes → outputSchema array", () => {
+			const tpl = engine.compile(["{{name}}", 42]);
+			const result = tpl.analyze(userSchema);
+			expect(result.valid).toBe(true);
+			expect(result.outputSchema).toEqual({
+				type: "array",
+				items: {
+					oneOf: [{ type: "string" }, { type: "integer" }],
+				},
+			});
+		});
+
+		test("compiles an array and validates → valid true", () => {
+			const tpl = engine.compile(["{{name}}", "{{age}}"]);
+			const result = tpl.validate(userSchema);
+			expect(result.valid).toBe(true);
+			expect(result.diagnostics).toEqual([]);
+		});
+
+		test("compiles an array with error and validates → valid false", () => {
+			const tpl = engine.compile(["{{name}}", "{{nope}}"]);
+			const result = tpl.validate(userSchema);
+			expect(result.valid).toBe(false);
+		});
+
+		test("compiles a nested array and executes → recursive resolution", () => {
+			const tpl = engine.compile([["{{name}}"], { age: "{{age}}" }, 42]);
+			const result = tpl.execute(userData);
+			expect(result).toEqual([["Alice"], { age: 30 }, 42]);
+		});
+
+		test("compiles an array and analyzeAndExecute → analysis + value", () => {
+			const tpl = engine.compile(["{{name}}", "{{age}}"]);
+			const { analysis, value } = tpl.analyzeAndExecute(userSchema, userData);
+			expect(analysis.valid).toBe(true);
+			expect(analysis.outputSchema).toEqual({
+				type: "array",
+				items: {
+					oneOf: [{ type: "string" }, { type: "number" }],
+				},
+			});
+			expect(value).toEqual(["Alice", 30]);
+		});
+
+		test("compiles an array with error and analyzeAndExecute → value undefined", () => {
+			const tpl = engine.compile(["{{name}}", "{{bad}}"]);
+			const { analysis, value } = tpl.analyzeAndExecute(userSchema, userData);
+			expect(analysis.valid).toBe(false);
+			expect(value).toBeUndefined();
+		});
+
+		test("compiles an empty array → empty array result", () => {
+			const tpl = engine.compile([]);
+			const result = tpl.execute(userData);
+			expect(result).toEqual([]);
+			const analysis = tpl.analyze(userSchema);
+			expect(analysis.outputSchema).toEqual({
+				type: "array",
+				items: {},
+			});
+		});
+	});
+
+	describe("analyzeAndExecute", () => {
+		test("valid array → valid analysis + resolved array value", () => {
+			const { analysis, value } = engine.analyzeAndExecute(
+				["{{name}}", "{{age}}", "static"],
+				userSchema,
+				userData,
+			);
+			expect(analysis.valid).toBe(true);
+			expect(analysis.outputSchema).toEqual({
+				type: "array",
+				items: {
+					oneOf: [{ type: "string" }, { type: "number" }],
+				},
+			});
+			expect(value).toEqual(["Alice", 30, "static"]);
+		});
+
+		test("array with error → invalid analysis + undefined value", () => {
+			const { analysis, value } = engine.analyzeAndExecute(
+				["{{name}}", "{{bad}}"],
+				userSchema,
+				userData,
+			);
+			expect(analysis.valid).toBe(false);
+			expect(value).toBeUndefined();
+		});
+
+		test("array with literals + templates → correct types + resolved values", () => {
+			const { analysis, value } = engine.analyzeAndExecute(
+				[42, true, "{{name}}"],
+				userSchema,
+				userData,
+			);
+			expect(analysis.valid).toBe(true);
+			expect(analysis.outputSchema).toEqual({
+				type: "array",
+				items: {
+					oneOf: [{ type: "integer" }, { type: "boolean" }, { type: "string" }],
+				},
+			});
+			expect(value).toEqual([42, true, "Alice"]);
+		});
+
+		test("nested array → nested analysis and value", () => {
+			const { analysis, value } = engine.analyzeAndExecute(
+				[{ name: "{{name}}" }, ["{{age}}"]],
+				userSchema,
+				userData,
+			);
+			expect(analysis.valid).toBe(true);
+			expect(analysis.outputSchema).toEqual({
+				type: "array",
+				items: {
+					oneOf: [
+						{
+							type: "object",
+							properties: { name: { type: "string" } },
+							required: ["name"],
+						},
+						{
+							type: "array",
+							items: { type: "number" },
+						},
+					],
+				},
+			});
+			expect(value).toEqual([{ name: "Alice" }, [30]]);
+		});
+
+		test("error in a nested element → entire array is invalid", () => {
+			const { analysis, value } = engine.analyzeAndExecute(
+				["{{name}}", { bad: "{{nope}}" }],
+				userSchema,
+				userData,
+			);
+			expect(analysis.valid).toBe(false);
+			expect(value).toBeUndefined();
+		});
+
+		test("empty array → valid with empty items", () => {
+			const { analysis, value } = engine.analyzeAndExecute(
+				[],
+				userSchema,
+				userData,
+			);
+			expect(analysis.valid).toBe(true);
+			expect(analysis.outputSchema).toEqual({
+				type: "array",
+				items: {},
+			});
+			expect(value).toEqual([]);
+		});
+	});
+
+	describe("standalone functions", () => {
+		test("analyze() standalone with array", () => {
+			const result = analyze(["{{name}}", "{{age}}"], userSchema);
+			expect(result.valid).toBe(true);
+			expect(result.outputSchema).toEqual({
+				type: "array",
+				items: {
+					oneOf: [{ type: "string" }, { type: "number" }],
+				},
+			});
+		});
+
+		test("analyze() standalone with invalid array", () => {
+			const result = analyze(["{{nope}}"], userSchema);
+			expect(result.valid).toBe(false);
+		});
+
+		test("execute() standalone with array", () => {
+			const result = execute(["{{name}}", "{{age}}"], userData);
+			expect(result).toEqual(["Alice", 30]);
+		});
+
+		test("execute() standalone with nested array", () => {
+			const result = execute([["{{name}}"], 42], userData);
+			expect(result).toEqual([["Alice"], 42]);
+		});
+
+		test("execute() standalone with empty array", () => {
+			const result = execute([], userData);
+			expect(result).toEqual([]);
+		});
+	});
+});

@@ -1,3 +1,8 @@
 export * from "./errors";
 export { Typebars } from "./typebars";
-export { defineHelper, type TemplateInput } from "./types";
+export {
+	defineHelper,
+	isArrayInput,
+	type TemplateInput,
+	type TemplateInputArray,
+} from "./types";

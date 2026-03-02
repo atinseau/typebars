@@ -312,3 +312,120 @@ export function aggregateObjectAnalysisAndExecution(
 		value: allValid ? resultValues : undefined,
 	};
 }
+
+// ─── Array Analysis Aggregation ──────────────────────────────────────────────
+// Factorizes the common recursion pattern over template arrays:
+// iterate the elements, analyze each entry via a callback, accumulate
+// diagnostics, and build the output array schema with a proper `items`.
+//
+// Used by:
+// - `analyzer.ts` (analyzeArrayTemplate)
+// - `Typebars.analyze()` (typebars.ts)
+// - `CompiledTemplate.analyze()` in array mode (compiled-template.ts)
+
+/**
+ * Computes the `items` schema for an array from the output schemas of its
+ * elements:
+ * - If all elements share the same schema → that schema
+ * - If there are multiple distinct schemas → `{ oneOf: [...] }`
+ * - If the array is empty → `{}` (any type)
+ */
+function computeArrayItemsSchema(elementSchemas: JSONSchema7[]): JSONSchema7 {
+	if (elementSchemas.length === 0) return {};
+
+	// Deduplicate schemas using deep equality
+	const unique: JSONSchema7[] = [];
+	for (const schema of elementSchemas) {
+		if (!unique.some((u) => deepEqual(u, schema))) {
+			unique.push(schema);
+		}
+	}
+
+	if (unique.length === 1) {
+		return unique[0] as JSONSchema7;
+	}
+
+	return { oneOf: unique };
+}
+
+/**
+ * Aggregates analysis results from a set of array elements into a single
+ * `AnalysisResult` with an array-typed `outputSchema`.
+ *
+ * @param length        - The number of elements in the array
+ * @param analyzeEntry  - Callback that analyzes an element by its index
+ * @returns An aggregated `AnalysisResult`
+ *
+ * @example
+ * ```
+ * aggregateArrayAnalysis(
+ *   template.length,
+ *   (index) => analyze(template[index], inputSchema),
+ * );
+ * ```
+ */
+export function aggregateArrayAnalysis(
+	length: number,
+	analyzeEntry: (index: number) => AnalysisResult,
+): AnalysisResult {
+	const allDiagnostics: TemplateDiagnostic[] = [];
+	const elementSchemas: JSONSchema7[] = [];
+	let allValid = true;
+
+	for (let i = 0; i < length; i++) {
+		const child = analyzeEntry(i);
+		if (!child.valid) allValid = false;
+		allDiagnostics.push(...child.diagnostics);
+		elementSchemas.push(child.outputSchema);
+	}
+
+	return {
+		valid: allValid,
+		diagnostics: allDiagnostics,
+		outputSchema: {
+			type: "array",
+			items: computeArrayItemsSchema(elementSchemas),
+		},
+	};
+}
+
+/**
+ * Aggregates both analysis **and** execution results from a set of array
+ * elements. Returns the aggregated `AnalysisResult` and the array of
+ * executed values (or `undefined` if at least one element is invalid).
+ *
+ * @param length        - The number of elements
+ * @param processEntry  - Callback that analyzes and executes an element by index
+ * @returns Aggregated `{ analysis, value }`
+ */
+export function aggregateArrayAnalysisAndExecution(
+	length: number,
+	processEntry: (index: number) => { analysis: AnalysisResult; value: unknown },
+): { analysis: AnalysisResult; value: unknown } {
+	const allDiagnostics: TemplateDiagnostic[] = [];
+	const elementSchemas: JSONSchema7[] = [];
+	const resultValues: unknown[] = [];
+	let allValid = true;
+
+	for (let i = 0; i < length; i++) {
+		const child = processEntry(i);
+		if (!child.analysis.valid) allValid = false;
+		allDiagnostics.push(...child.analysis.diagnostics);
+		elementSchemas.push(child.analysis.outputSchema);
+		resultValues.push(child.value);
+	}
+
+	const analysis: AnalysisResult = {
+		valid: allValid,
+		diagnostics: allDiagnostics,
+		outputSchema: {
+			type: "array",
+			items: computeArrayItemsSchema(elementSchemas),
+		},
+	};
+
+	return {
+		analysis,
+		value: allValid ? resultValues : undefined,
+	};
+}
