@@ -1,19 +1,19 @@
-import { Typebars } from "./src.ts";
+import type { JSONSchema7 } from "json-schema";
+import { Typebars } from "./src";
 
 const tp = new Typebars();
 
-const schema = {
+const schema: JSONSchema7 = {
 	type: "object",
 	properties: {
-		age: { type: "number" },
-		score: { type: "number" },
-		name: { type: "string" },
-		account: {
-			type: "object",
-			properties: { balance: { type: "number" } },
+		name: {
+			type: "string",
 		},
 	},
+	required: ["name"],
 };
 
 // ❌ String where number is expected → TYPE_MISMATCH
-console.log(tp.analyze("{{#if (lt name 500)}}yes{{/if}}", schema));
+
+const result = tp.analyze(["{{name}}"], schema);
+console.log(JSON.stringify(result, null, 2));

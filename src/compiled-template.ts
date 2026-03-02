@@ -11,6 +11,8 @@ import type {
 } from "./types.ts";
 import { inferPrimitiveSchema } from "./types.ts";
 import {
+	aggregateArrayAnalysis,
+	aggregateArrayAnalysisAndExecution,
 	aggregateObjectAnalysis,
 	aggregateObjectAnalysisAndExecution,
 	type LRUCache,
@@ -30,12 +32,13 @@ import {
 //   tpl.analyze(schema);              // no re-parsing
 //
 // ─── Internal State (TemplateState) ──────────────────────────────────────────
-// CompiledTemplate operates in 3 exclusive modes, modeled by a discriminated
+// CompiledTemplate operates in 4 exclusive modes, modeled by a discriminated
 // union `TemplateState`:
 //
 // - `"template"` — parsed Handlebars template (AST + source string)
 // - `"literal"`  — primitive passthrough value (number, boolean, null)
 // - `"object"`   — object where each property is a child CompiledTemplate
+// - `"array"`    — array where each element is a child CompiledTemplate
 //
 // This design eliminates optional fields and `!` assertions in favor of
 // natural TypeScript narrowing via `switch (this.state.kind)`.
@@ -68,6 +71,10 @@ type TemplateState =
 	| {
 			readonly kind: "object";
 			readonly children: Record<string, CompiledTemplate>;
+	  }
+	| {
+			readonly kind: "array";
+			readonly elements: CompiledTemplate[];
 	  };
 
 // ─── Public Class ────────────────────────────────────────────────────────────
@@ -84,12 +91,12 @@ export class CompiledTemplate {
 
 	// ─── Public Accessors (backward-compatible) ──────────────────────────
 
-	/** The pre-parsed Handlebars AST — `null` in literal or object mode */
+	/** The pre-parsed Handlebars AST — `null` in literal, object, or array mode */
 	get ast(): hbs.AST.Program | null {
 		return this.state.kind === "template" ? this.state.ast : null;
 	}
 
-	/** The original template source — empty string in literal or object mode */
+	/** The original template source — empty string in literal, object, or array mode */
 	get template(): string {
 		return this.state.kind === "template" ? this.state.source : "";
 	}
@@ -147,6 +154,22 @@ export class CompiledTemplate {
 		return new CompiledTemplate({ kind: "object", children }, options);
 	}
 
+	/**
+	 * Creates a CompiledTemplate in array mode, where each element is a
+	 * child CompiledTemplate. All operations are recursively delegated
+	 * to the elements.
+	 *
+	 * @param elements - The compiled child templates (ordered array)
+	 * @param options  - Options inherited from Typebars
+	 * @returns A CompiledTemplate that delegates to elements
+	 */
+	static fromArray(
+		elements: CompiledTemplate[],
+		options: CompiledTemplateOptions,
+	): CompiledTemplate {
+		return new CompiledTemplate({ kind: "array", elements }, options);
+	}
+
 	// ─── Static Analysis ─────────────────────────────────────────────────
 
 	/**
@@ -167,6 +190,16 @@ export class CompiledTemplate {
 		identifierSchemas?: Record<number, JSONSchema7>,
 	): AnalysisResult {
 		switch (this.state.kind) {
+			case "array": {
+				const { elements } = this.state;
+				return aggregateArrayAnalysis(elements.length, (index) => {
+					const element = elements[index];
+					if (!element)
+						throw new Error(`unreachable: missing element at index ${index}`);
+					return element.analyze(inputSchema, identifierSchemas);
+				});
+			}
+
 			case "object": {
 				const { children } = this.state;
 				return aggregateObjectAnalysis(Object.keys(children), (key) => {
@@ -225,6 +258,7 @@ export class CompiledTemplate {
 	 * - Mixed template or with blocks → `string`
 	 * - Primitive literal → the value as-is
 	 * - Object template → object with resolved values
+	 * - Array template → array with resolved values
 	 *
 	 * If a `schema` is provided in options, static analysis is performed
 	 * before execution. A `TemplateAnalysisError` is thrown on errors.
@@ -235,6 +269,15 @@ export class CompiledTemplate {
 	 */
 	execute(data: Record<string, unknown>, options?: ExecuteOptions): unknown {
 		switch (this.state.kind) {
+			case "array": {
+				const { elements } = this.state;
+				const result: unknown[] = [];
+				for (const element of elements) {
+					result.push(element.execute(data, options));
+				}
+				return result;
+			}
+
 			case "object": {
 				const { children } = this.state;
 				const result: Record<string, unknown> = {};
@@ -291,6 +334,16 @@ export class CompiledTemplate {
 		},
 	): { analysis: AnalysisResult; value: unknown } {
 		switch (this.state.kind) {
+			case "array": {
+				const { elements } = this.state;
+				return aggregateArrayAnalysisAndExecution(elements.length, (index) => {
+					const element = elements[index];
+					if (!element)
+						throw new Error(`unreachable: missing element at index ${index}`);
+					return element.analyzeAndExecute(inputSchema, data, options);
+				});
+			}
+
 			case "object": {
 				const { children } = this.state;
 				return aggregateObjectAnalysisAndExecution(

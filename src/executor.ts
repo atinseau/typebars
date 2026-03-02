@@ -11,8 +11,12 @@ import {
 	isThisExpression,
 	parse,
 } from "./parser.ts";
-import type { TemplateInput, TemplateInputObject } from "./types.ts";
-import { isLiteralInput, isObjectInput } from "./types.ts";
+import type {
+	TemplateInput,
+	TemplateInputArray,
+	TemplateInputObject,
+} from "./types.ts";
+import { isArrayInput, isLiteralInput, isObjectInput } from "./types.ts";
 import { LRUCache } from "./utils.ts";
 
 // ─── Template Executor ───────────────────────────────────────────────────────
@@ -88,12 +92,32 @@ export function execute(
 	data: Record<string, unknown>,
 	identifierData?: Record<number, Record<string, unknown>>,
 ): unknown {
+	if (isArrayInput(template)) {
+		return executeArrayTemplate(template, data, identifierData);
+	}
 	if (isObjectInput(template)) {
 		return executeObjectTemplate(template, data, identifierData);
 	}
 	if (isLiteralInput(template)) return template;
 	const ast = parse(template);
 	return executeFromAst(ast, template, data, { identifierData });
+}
+
+/**
+ * Executes an array template recursively (standalone version).
+ * Each element is executed individually and the result is an array
+ * with resolved values.
+ */
+function executeArrayTemplate(
+	template: TemplateInputArray,
+	data: Record<string, unknown>,
+	identifierData?: Record<number, Record<string, unknown>>,
+): unknown[] {
+	const result: unknown[] = [];
+	for (const element of template) {
+		result.push(execute(element, data, identifierData));
+	}
+	return result;
 }
 
 /**

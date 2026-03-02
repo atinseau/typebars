@@ -23,12 +23,24 @@ export interface TemplateInputObject {
 }
 
 /**
+ * Array where each element is a `TemplateInput` (recursive).
+ *
+ * Allows passing an array as a template:
+ * ```
+ * engine.analyze(["{{name}}", "{{age}}"], inputSchema);
+ * engine.execute(["{{name}}", 42], data);
+ * ```
+ */
+export type TemplateInputArray = TemplateInput[];
+
+/**
  * Input type accepted by the template engine.
  *
  * - `string`              → standard Handlebars template (parsed and executed)
  * - `number`              → numeric literal (passthrough)
  * - `boolean`             → boolean literal (passthrough)
  * - `null`                → null literal (passthrough)
+ * - `TemplateInputArray`  → array where each element is a `TemplateInput`
  * - `TemplateInputObject` → object where each property is a `TemplateInput`
  */
 export type TemplateInput =
@@ -36,13 +48,14 @@ export type TemplateInput =
 	| number
 	| boolean
 	| null
+	| TemplateInputArray
 	| TemplateInputObject;
 
 /**
  * Checks whether a value is a non-string primitive literal (number, boolean, null).
  * These values are treated as passthrough by the engine.
  *
- * Note: objects (`TemplateInputObject`) are NOT literals.
+ * Note: objects (`TemplateInputObject`) and arrays (`TemplateInputArray`) are NOT literals.
  */
 export function isLiteralInput(
 	input: TemplateInput,
@@ -53,14 +66,27 @@ export function isLiteralInput(
 }
 
 /**
+ * Checks whether a value is a template array (`TemplateInputArray`).
+ * Template arrays are processed recursively by the engine:
+ * each element is analyzed/executed individually and the result is an array.
+ */
+export function isArrayInput(
+	input: TemplateInput,
+): input is TemplateInputArray {
+	return Array.isArray(input);
+}
+
+/**
  * Checks whether a value is a template object (`TemplateInputObject`).
  * Template objects are processed recursively by the engine:
  * each property is analyzed/executed individually.
+ *
+ * Note: arrays are excluded — use `isArrayInput()` first.
  */
 export function isObjectInput(
 	input: TemplateInput,
 ): input is TemplateInputObject {
-	return input !== null && typeof input === "object";
+	return input !== null && typeof input === "object" && !Array.isArray(input);
 }
 
 /**

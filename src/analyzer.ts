@@ -29,14 +29,17 @@ import type {
 	HelperDefinition,
 	TemplateDiagnostic,
 	TemplateInput,
+	TemplateInputArray,
 	TemplateInputObject,
 } from "./types.ts";
 import {
 	inferPrimitiveSchema,
+	isArrayInput,
 	isLiteralInput,
 	isObjectInput,
 } from "./types.ts";
 import {
+	aggregateArrayAnalysis,
 	aggregateObjectAnalysis,
 	deepEqual,
 	extractSourceSnippet,
@@ -105,6 +108,9 @@ export function analyze(
 	inputSchema: JSONSchema7,
 	identifierSchemas?: Record<number, JSONSchema7>,
 ): AnalysisResult {
+	if (isArrayInput(template)) {
+		return analyzeArrayTemplate(template, inputSchema, identifierSchemas);
+	}
 	if (isObjectInput(template)) {
 		return analyzeObjectTemplate(template, inputSchema, identifierSchemas);
 	}
@@ -117,6 +123,21 @@ export function analyze(
 	}
 	const ast = parse(template);
 	return analyzeFromAst(ast, template, inputSchema, { identifierSchemas });
+}
+
+/**
+ * Analyzes an array template recursively (standalone version).
+ * Each element is analyzed individually, diagnostics are merged,
+ * and the `outputSchema` reflects the array structure with a proper `items`.
+ */
+function analyzeArrayTemplate(
+	template: TemplateInputArray,
+	inputSchema: JSONSchema7,
+	identifierSchemas?: Record<number, JSONSchema7>,
+): AnalysisResult {
+	return aggregateArrayAnalysis(template.length, (index) =>
+		analyze(template[index] as TemplateInput, inputSchema, identifierSchemas),
+	);
 }
 
 /**
