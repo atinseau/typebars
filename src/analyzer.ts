@@ -87,6 +87,14 @@ interface AnalysisContext {
 	identifierSchemas?: Record<number, JSONSchema7>;
 	/** Registered custom helpers (for static analysis) */
 	helpers?: Map<string, HelperDefinition>;
+	/**
+	 * Expected output type from the inputSchema.
+	 * When the inputSchema declares a specific type (e.g. `{ type: "string" }`),
+	 * static literal values like `"123"` should respect that type instead of
+	 * being auto-detected as `number`. This allows the schema contract to
+	 * override the default `detectLiteralType` inference.
+	 */
+	expectedOutputType?: JSONSchema7;
 }
 
 // ─── Public API ──────────────────────────────────────────────────────────────
@@ -107,12 +115,18 @@ export function analyze(
 	template: TemplateInput,
 	inputSchema: JSONSchema7,
 	identifierSchemas?: Record<number, JSONSchema7>,
+	expectedOutputType?: JSONSchema7,
 ): AnalysisResult {
 	if (isArrayInput(template)) {
 		return analyzeArrayTemplate(template, inputSchema, identifierSchemas);
 	}
 	if (isObjectInput(template)) {
-		return analyzeObjectTemplate(template, inputSchema, identifierSchemas);
+		return analyzeObjectTemplate(
+			template,
+			inputSchema,
+			identifierSchemas,
+			expectedOutputType,
+		);
 	}
 	if (isLiteralInput(template)) {
 		return {
@@ -122,7 +136,14 @@ export function analyze(
 		};
 	}
 	const ast = parse(template);
-	return analyzeFromAst(ast, template, inputSchema, { identifierSchemas });
+	// When an explicit expectedOutputType is provided (e.g. from an object
+	// template property), use it. Otherwise, fall back to the inputSchema
+	// itself — when the inputSchema has a primitive type (e.g. { type: "string" }),
+	// it constrains the output type of static literal values.
+	return analyzeFromAst(ast, template, inputSchema, {
+		identifierSchemas,
+		expectedOutputType: expectedOutputType ?? inputSchema,
+	});
 }
 
 /**
@@ -149,10 +170,23 @@ function analyzeObjectTemplate(
 	template: TemplateInputObject,
 	inputSchema: JSONSchema7,
 	identifierSchemas?: Record<number, JSONSchema7>,
+	expectedOutputType?: JSONSchema7,
 ): AnalysisResult {
-	return aggregateObjectAnalysis(Object.keys(template), (key) =>
-		analyze(template[key] as TemplateInput, inputSchema, identifierSchemas),
-	);
+	// Use the expectedOutputType (if it describes an object) to resolve
+	// child property schemas. This is critical for deeply nested objects:
+	// when the template is `{ a: { b: { c: "123" } } }`, each level must
+	// resolve its children from the *corresponding* sub-schema, not from
+	// the root inputSchema.
+	const schemaForProperties = expectedOutputType ?? inputSchema;
+	return aggregateObjectAnalysis(Object.keys(template), (key) => {
+		const propertySchema = resolveSchemaPath(schemaForProperties, [key]);
+		return analyze(
+			template[key] as TemplateInput,
+			inputSchema,
+			identifierSchemas,
+			propertySchema,
+		);
+	});
 }
 
 /**
@@ -174,6 +208,12 @@ export function analyzeFromAst(
 	options?: {
 		identifierSchemas?: Record<number, JSONSchema7>;
 		helpers?: Map<string, HelperDefinition>;
+		/**
+		 * When set, provides the expected output type from the parent context
+		 * (e.g. the inputSchema's property sub-schema for an object template key).
+		 * Static literal values will respect this type instead of auto-detecting.
+		 */
+		expectedOutputType?: JSONSchema7;
 	},
 ): AnalysisResult {
 	// ── Reject unsupported schema features before analysis ────────────
@@ -195,6 +235,7 @@ export function analyzeFromAst(
 		template,
 		identifierSchemas: options?.identifierSchemas,
 		helpers: options?.helpers,
+		expectedOutputType: options?.expectedOutputType,
 	};
 
 	// Single pass: type inference + validation in one traversal.
@@ -448,6 +489,21 @@ function inferProgramType(
 			.trim();
 
 		if (text === "") return { type: "string" };
+
+		// If the inputSchema declares a specific primitive type for this value,
+		// respect the schema contract instead of auto-detecting. For example,
+		// "123" with inputSchema `{ type: "string" }` should stay "string".
+		const expectedType = ctx.expectedOutputType?.type;
+		if (
+			typeof expectedType === "string" &&
+			(expectedType === "string" ||
+				expectedType === "number" ||
+				expectedType === "integer" ||
+				expectedType === "boolean" ||
+				expectedType === "null")
+		) {
+			return { type: expectedType };
+		}
 
 		const literalType = detectLiteralType(text);
 		if (literalType) return { type: literalType };
