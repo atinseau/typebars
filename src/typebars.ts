@@ -9,6 +9,7 @@ import { TemplateAnalysisError } from "./errors.ts";
 import { executeFromAst } from "./executor.ts";
 import { LogicalHelpers, MathHelpers } from "./helpers/index.ts";
 import { parse } from "./parser.ts";
+import { resolveSchemaPath } from "./schema-resolver.ts";
 import type {
 	AnalysisResult,
 	AnalyzeAndExecuteOptions,
@@ -163,6 +164,7 @@ export class Typebars {
 		template: TemplateInput,
 		inputSchema: JSONSchema7,
 		identifierSchemas?: Record<number, JSONSchema7>,
+		expectedOutputType?: JSONSchema7,
 	): AnalysisResult {
 		if (isArrayInput(template)) {
 			return aggregateArrayAnalysis(template.length, (index) =>
@@ -174,13 +176,21 @@ export class Typebars {
 			);
 		}
 		if (isObjectInput(template)) {
-			return aggregateObjectAnalysis(Object.keys(template), (key) =>
-				this.analyze(
+			// Use the expectedOutputType (if it describes an object) to resolve
+			// child property schemas. This is critical for deeply nested objects:
+			// when the template is `{ a: { b: { c: "123" } } }`, each level must
+			// resolve its children from the *corresponding* sub-schema, not from
+			// the root inputSchema.
+			const schemaForProperties = expectedOutputType ?? inputSchema;
+			return aggregateObjectAnalysis(Object.keys(template), (key) => {
+				const propertySchema = resolveSchemaPath(schemaForProperties, [key]);
+				return this.analyze(
 					template[key] as TemplateInput,
 					inputSchema,
 					identifierSchemas,
-				),
-			);
+					propertySchema,
+				);
+			});
 		}
 		if (isLiteralInput(template)) {
 			return {
@@ -193,6 +203,7 @@ export class Typebars {
 		return analyzeFromAst(ast, template, inputSchema, {
 			identifierSchemas,
 			helpers: this.helpers,
+			expectedOutputType: expectedOutputType ?? inputSchema,
 		});
 	}
 
@@ -335,6 +346,7 @@ export class Typebars {
 		inputSchema: JSONSchema7,
 		data: Record<string, unknown>,
 		options?: AnalyzeAndExecuteOptions,
+		expectedOutputType?: JSONSchema7,
 	): { analysis: AnalysisResult; value: unknown } {
 		if (isArrayInput(template)) {
 			return aggregateArrayAnalysisAndExecution(template.length, (index) =>
@@ -347,13 +359,21 @@ export class Typebars {
 			);
 		}
 		if (isObjectInput(template)) {
-			return aggregateObjectAnalysisAndExecution(Object.keys(template), (key) =>
-				this.analyzeAndExecute(
-					template[key] as TemplateInput,
-					inputSchema,
-					data,
-					options,
-				),
+			// Use the expectedOutputType (if it describes an object) to resolve
+			// child property schemas. This is critical for deeply nested objects.
+			const schemaForProperties = expectedOutputType ?? inputSchema;
+			return aggregateObjectAnalysisAndExecution(
+				Object.keys(template),
+				(key) => {
+					const propertySchema = resolveSchemaPath(schemaForProperties, [key]);
+					return this.analyzeAndExecute(
+						template[key] as TemplateInput,
+						inputSchema,
+						data,
+						options,
+						propertySchema,
+					);
+				},
 			);
 		}
 
@@ -372,6 +392,7 @@ export class Typebars {
 		const analysis = analyzeFromAst(ast, template, inputSchema, {
 			identifierSchemas: options?.identifierSchemas,
 			helpers: this.helpers,
+			expectedOutputType: expectedOutputType ?? inputSchema,
 		});
 
 		if (!analysis.valid) {
