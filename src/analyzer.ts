@@ -1,4 +1,5 @@
 import type { JSONSchema7 } from "json-schema";
+import { dispatchAnalyze } from "./dispatch.ts";
 import {
 	createMissingArgumentMessage,
 	createPropertyNotFoundMessage,
@@ -14,7 +15,6 @@ import {
 	getEffectiveBody,
 	getEffectivelySingleBlock,
 	getEffectivelySingleExpression,
-	hasHandlebarsExpression,
 	isRootPathTraversal,
 	isRootSegments,
 	isThisExpression,
@@ -33,18 +33,8 @@ import type {
 	HelperDefinition,
 	TemplateDiagnostic,
 	TemplateInput,
-	TemplateInputArray,
-	TemplateInputObject,
 } from "./types.ts";
 import {
-	inferPrimitiveSchema,
-	isArrayInput,
-	isLiteralInput,
-	isObjectInput,
-} from "./types.ts";
-import {
-	aggregateArrayAnalysis,
-	aggregateObjectAnalysis,
 	deepEqual,
 	extractSourceSnippet,
 	getSchemaPropertyNames,
@@ -141,6 +131,8 @@ export interface AnalyzeOptions {
  * available context.
  *
  * Backward-compatible version — parses the template internally.
+ * Uses `dispatchAnalyze` for the recursive array/object/literal dispatching,
+ * delegating only the string (template) case to `analyzeFromAst`.
  *
  * @param template           - The template string (e.g. `"Hello {{user.name}}"`)
  * @param inputSchema        - JSON Schema v7 describing the available variables
@@ -153,103 +145,20 @@ export function analyze(
 	inputSchema: JSONSchema7 = {},
 	options?: AnalyzeOptions,
 ): AnalysisResult {
-	if (isArrayInput(template)) {
-		return analyzeArrayTemplate(template, inputSchema, options);
-	}
-	if (isObjectInput(template)) {
-		return analyzeObjectTemplate(template, inputSchema, options);
-	}
-	if (isLiteralInput(template)) {
-		return {
-			valid: true,
-			diagnostics: [],
-			outputSchema: inferPrimitiveSchema(template),
-		};
-	}
-	const ast = parse(template);
-	return analyzeFromAst(ast, template, inputSchema, {
-		identifierSchemas: options?.identifierSchemas,
-		coerceSchema: options?.coerceSchema,
-	});
-}
-
-/**
- * Analyzes an array template recursively (standalone version).
- * Each element is analyzed individually, diagnostics are merged,
- * and the `outputSchema` reflects the array structure with a proper `items`.
- */
-function analyzeArrayTemplate(
-	template: TemplateInputArray,
-	inputSchema: JSONSchema7,
-	options?: AnalyzeOptions,
-): AnalysisResult {
-	const exclude = options?.excludeTemplateExpression === true;
-
-	if (exclude) {
-		// When excludeTemplateExpression is enabled, filter out elements
-		// that are strings containing Handlebars expressions.
-		const kept = template.filter(
-			(item) => !shouldExcludeEntry(item as TemplateInput),
-		);
-		return aggregateArrayAnalysis(kept.length, (index) =>
-			analyze(kept[index] as TemplateInput, inputSchema, options),
-		);
-	}
-
-	return aggregateArrayAnalysis(template.length, (index) =>
-		analyze(template[index] as TemplateInput, inputSchema, options),
+	return dispatchAnalyze(
+		template,
+		options,
+		// String handler — parse and analyze the AST
+		(tpl, coerceSchema) => {
+			const ast = parse(tpl);
+			return analyzeFromAst(ast, tpl, inputSchema, {
+				identifierSchemas: options?.identifierSchemas,
+				coerceSchema,
+			});
+		},
+		// Recursive handler — re-enter analyze() for child elements
+		(child, childOptions) => analyze(child, inputSchema, childOptions),
 	);
-}
-
-/**
- * Analyzes an object template recursively (standalone version).
- * Each property is analyzed individually, diagnostics are merged,
- * and the `outputSchema` reflects the object structure.
- */
-function analyzeObjectTemplate(
-	template: TemplateInputObject,
-	inputSchema: JSONSchema7,
-	options?: AnalyzeOptions,
-): AnalysisResult {
-	const coerceSchema = options?.coerceSchema;
-	const exclude = options?.excludeTemplateExpression === true;
-
-	// When excludeTemplateExpression is enabled, filter out keys whose
-	// values contain Handlebars expressions. Only static properties
-	// (literals, plain strings without `{{…}}`) are retained.
-	const keys = exclude
-		? Object.keys(template).filter(
-				(key) => !shouldExcludeEntry(template[key] as TemplateInput),
-			)
-		: Object.keys(template);
-
-	return aggregateObjectAnalysis(keys, (key) => {
-		// When a coerceSchema is provided, resolve the child property schema
-		// from the coercion schema. This allows deeply nested objects to
-		// propagate coercion at every level.
-		const childCoerceSchema = coerceSchema
-			? resolveSchemaPath(coerceSchema, [key])
-			: undefined;
-		return analyze(template[key] as TemplateInput, inputSchema, {
-			identifierSchemas: options?.identifierSchemas,
-			coerceSchema: childCoerceSchema,
-			excludeTemplateExpression: options?.excludeTemplateExpression,
-		});
-	});
-}
-
-/**
- * Determines whether a `TemplateInput` value should be excluded when
- * `excludeTemplateExpression` is enabled.
- *
- * A value is excluded if it is a string containing at least one Handlebars
- * expression (`{{…}}`). Literals (number, boolean, null), plain strings
- * without expressions, objects, and arrays are never excluded at the
- * entry level — objects and arrays are recursively filtered by the
- * analysis functions themselves.
- */
-function shouldExcludeEntry(input: TemplateInput): boolean {
-	return typeof input === "string" && hasHandlebarsExpression(input);
 }
 
 /**

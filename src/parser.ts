@@ -217,6 +217,36 @@ export function getEffectivelySingleExpression(
 	return null;
 }
 
+// ─── Handlebars Expression Detection ─────────────────────────────────────────
+// Fast heuristic to determine whether a string contains Handlebars expressions.
+// Used by `excludeTemplateExpression` filtering to skip dynamic entries.
+
+/**
+ * Determines whether a string contains Handlebars expressions.
+ *
+ * A string contains template expressions if it includes `{{` (opening
+ * delimiter for Handlebars mustache/block statements). This is a fast
+ * substring check — **no parsing is performed**.
+ *
+ * Used by `excludeTemplateExpression` to filter out properties whose
+ * values are dynamic templates.
+ *
+ * **Limitation:** This is a simple `includes("{{")` check, not a full
+ * parser. It will produce false positives for strings that contain `{{`
+ * as literal text (e.g. `"Use {{name}} syntax"` in documentation strings)
+ * or in escaped contexts. For the current use case (filtering object/array
+ * entries that are likely templates), this trade-off is acceptable because:
+ * - It avoids the cost of parsing every string value
+ * - False positives only cause an entry to be excluded from the output
+ *   schema (conservative behavior)
+ *
+ * @param value - The string to check
+ * @returns `true` if the string contains at least one `{{` sequence
+ */
+export function hasHandlebarsExpression(value: string): boolean {
+	return value.includes("{{");
+}
+
 // ─── Fast-Path Detection ─────────────────────────────────────────────────────
 // For templates consisting only of text and simple expressions (no blocks,
 // no helpers with parameters), we can bypass Handlebars entirely and perform
@@ -238,23 +268,6 @@ export function getEffectivelySingleExpression(
  * @param ast - The parsed AST of the template
  * @returns `true` if the template can use the fast-path
  */
-/**
- * Determines whether a string contains Handlebars expressions.
- *
- * A string contains template expressions if it includes `{{` (opening
- * delimiter for Handlebars mustache/block statements). This is a fast
- * regex-based check — no parsing is performed.
- *
- * Used by `excludeTemplateExpression` to filter out properties whose
- * values are dynamic templates.
- *
- * @param value - The string to check
- * @returns `true` if the string contains at least one `{{` sequence
- */
-export function hasHandlebarsExpression(value: string): boolean {
-	return value.includes("{{");
-}
-
 export function canUseFastPath(ast: hbs.AST.Program): boolean {
 	return ast.body.every(
 		(s) =>

@@ -5,6 +5,7 @@ import {
 	extractPathSegments,
 	isSingleExpression,
 	parse,
+	parseIdentifier,
 } from "../src/parser.ts";
 
 // ─── Colon Syntax Tests ──────────────────────────────────────────────────────
@@ -310,20 +311,9 @@ describe("Handlebars colon syntax — execute() type preservation", () => {
 });
 
 describe("Colon syntax — identifier extraction from path segments", () => {
-	// Helper to extract key and identifier from a path segment.
-	// This simulates the logic the engine needs to implement
-	// in order to resolve template identifiers.
-
-	function parseIdentifier(segment: string): {
-		key: string;
-		identifier: number | null;
-	} {
-		const match = segment.match(/^(.+):(\d+)$/);
-		if (match) {
-			return { key: match[1] ?? "", identifier: parseInt(match[2] ?? "0", 10) };
-		}
-		return { key: segment, identifier: null };
-	}
+	// Uses the real `parseIdentifier` from `parser.ts` (imported at the top)
+	// to verify that the engine correctly extracts key and identifier from
+	// path segments like `"meetingId:1"`.
 
 	test("extracts key and identifier from 'meetingId:1'", () => {
 		const { key, identifier } = parseIdentifier("meetingId:1");
