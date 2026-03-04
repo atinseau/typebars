@@ -524,5 +524,168 @@ describe("$root token", () => {
 			const result = compiled.execute(userData);
 			expect(result).toBeUndefined();
 		});
+
+		test("compiled template with {{ $root }} and primitive data → returns primitive", () => {
+			const compiled = tp.compile("{{ $root }}");
+			expect(compiled.execute(42)).toBe(42);
+			expect(compiled.execute("hello")).toBe("hello");
+			expect(compiled.execute(true)).toBe(true);
+			expect(compiled.execute(null)).toBeNull();
+		});
+	});
+
+	// ─── Primitive Data (TemplateData) ────────────────────────────────────────
+	// The `data` parameter accepts primitive values (number, string, boolean,
+	// null, array) in addition to `Record<string, unknown>`. This is useful
+	// when the entire data context is a single value accessed via `{{$root}}`.
+
+	describe("primitive data (TemplateData)", () => {
+		describe("execute with primitive data", () => {
+			test("{{ $root }} with number data → returns number", () => {
+				const result = tp.execute("{{ $root }}", 10);
+				expect(result).toBe(10);
+				expect(typeof result).toBe("number");
+			});
+
+			test("{{ $root }} with string data → returns string", () => {
+				const result = tp.execute("{{ $root }}", "hello");
+				expect(result).toBe("hello");
+				expect(typeof result).toBe("string");
+			});
+
+			test("{{ $root }} with boolean data → returns boolean", () => {
+				const result = tp.execute("{{ $root }}", true);
+				expect(result).toBe(true);
+				expect(typeof result).toBe("boolean");
+			});
+
+			test("{{ $root }} with null data → returns null", () => {
+				const result = tp.execute("{{ $root }}", null);
+				expect(result).toBeNull();
+			});
+
+			test("{{ $root }} with array data → returns array", () => {
+				const arr = [1, 2, 3];
+				const result = tp.execute("{{ $root }}", arr);
+				expect(result).toEqual(arr);
+			});
+
+			test("{{ $root }} with float data → returns float", () => {
+				const result = tp.execute("{{ $root }}", 3.14);
+				expect(result).toBe(3.14);
+			});
+
+			test("{{ $root }} with negative number data → returns negative number", () => {
+				const result = tp.execute("{{ $root }}", -99);
+				expect(result).toBe(-99);
+			});
+
+			test("{{ $root }} with zero data → returns 0", () => {
+				const result = tp.execute("{{ $root }}", 0);
+				expect(result).toBe(0);
+			});
+
+			test("{{ $root }} with empty string data → returns empty string", () => {
+				const result = tp.execute("{{ $root }}", "");
+				expect(result).toBe("");
+			});
+		});
+
+		describe("object template with primitive data", () => {
+			test("object template referencing $root with number data → wraps value", () => {
+				const result = tp.execute({ value: "{{ $root }}" }, 42);
+				expect(result).toEqual({ value: 42 });
+			});
+
+			test("object template referencing $root with string data → wraps value", () => {
+				const result = tp.execute({ label: "{{ $root }}" }, "hello");
+				expect(result).toEqual({ label: "hello" });
+			});
+		});
+
+		describe("analyzeAndExecute with primitive data", () => {
+			test("{{ $root }} with number schema and number data → valid + returns number", () => {
+				const { analysis, value } = tp.analyzeAndExecute(
+					"{{ $root }}",
+					{ type: "number" },
+					42,
+				);
+				expect(analysis.valid).toBe(true);
+				expect(analysis.outputSchema).toEqual({ type: "number" });
+				expect(value).toBe(42);
+			});
+
+			test("{{ $root }} with string schema and string data → valid + returns string", () => {
+				const { analysis, value } = tp.analyzeAndExecute(
+					"{{ $root }}",
+					{ type: "string" },
+					"world",
+				);
+				expect(analysis.valid).toBe(true);
+				expect(analysis.outputSchema).toEqual({ type: "string" });
+				expect(value).toBe("world");
+			});
+
+			test("{{ $root }} with boolean schema and boolean data → valid + returns boolean", () => {
+				const { analysis, value } = tp.analyzeAndExecute(
+					"{{ $root }}",
+					{ type: "boolean" },
+					true,
+				);
+				expect(analysis.valid).toBe(true);
+				expect(analysis.outputSchema).toEqual({ type: "boolean" });
+				expect(value).toBe(true);
+			});
+
+			test("object template with $root and primitive data → valid + returns wrapped value", () => {
+				const { analysis, value } = tp.analyzeAndExecute(
+					{ amount: "{{ $root }}" },
+					{ type: "number" },
+					99,
+				);
+				expect(analysis.valid).toBe(true);
+				expect(value).toEqual({ amount: 99 });
+			});
+		});
+
+		describe("CompiledTemplate with primitive data", () => {
+			test("compiled {{ $root }} with number data → returns number", () => {
+				const compiled = tp.compile("{{ $root }}");
+				expect(compiled.execute(10)).toBe(10);
+			});
+
+			test("compiled {{ $root }} with string data → returns string", () => {
+				const compiled = tp.compile("{{ $root }}");
+				expect(compiled.execute("test")).toBe("test");
+			});
+
+			test("compiled object template with $root and primitive data → wraps value", () => {
+				const compiled = tp.compile({ val: "{{ $root }}" });
+				expect(compiled.execute(7)).toEqual({ val: 7 });
+			});
+
+			test("compiled analyzeAndExecute with primitive data → valid + returns value", () => {
+				const compiled = tp.compile("{{ $root }}");
+				const { analysis, value } = compiled.analyzeAndExecute(
+					{ type: "number" },
+					55,
+				);
+				expect(analysis.valid).toBe(true);
+				expect(analysis.outputSchema).toEqual({ type: "number" });
+				expect(value).toBe(55);
+			});
+		});
+
+		describe("path resolution with primitive data → undefined", () => {
+			test("{{ name }} with number data → undefined (no properties on primitive)", () => {
+				const result = tp.execute("{{ name }}", 42);
+				expect(result).toBeUndefined();
+			});
+
+			test("{{ foo.bar }} with string data → undefined", () => {
+				const result = tp.execute("{{ foo.bar }}", "hello");
+				expect(result).toBeUndefined();
+			});
+		});
 	});
 });

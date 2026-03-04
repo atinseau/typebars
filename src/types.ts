@@ -51,6 +51,30 @@ export type TemplateInput =
 	| TemplateInputArray
 	| TemplateInputObject;
 
+// ─── Template Data ───────────────────────────────────────────────────────────
+// The data parameter accepted by `execute()` and `analyzeAndExecute()`.
+// In most cases this is a `Record<string, unknown>` (object context), but
+// primitives are also allowed — for example when using `{{$root}}` to
+// reference the entire data value directly.
+
+/**
+ * Data type accepted by the template engine's execution methods.
+ *
+ * - `Record<string, unknown>` → standard object context (most common)
+ * - `string`                  → primitive value (e.g. for `{{$root}}`)
+ * - `number`                  → primitive value
+ * - `boolean`                 → primitive value
+ * - `null`                    → null value
+ * - `unknown[]`               → array value
+ */
+export type TemplateData =
+	| Record<string, unknown>
+	| string
+	| number
+	| boolean
+	| null
+	| unknown[];
+
 /**
  * Checks whether a value is a non-string primitive literal (number, boolean, null).
  * These values are treated as passthrough by the engine.

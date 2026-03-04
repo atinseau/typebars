@@ -99,7 +99,7 @@ const globalCompilationCache = new LRUCache<string, HandlebarsTemplateDelegate>(
  */
 export function execute(
 	template: TemplateInput,
-	data: Record<string, unknown>,
+	data: unknown,
 	identifierData?: Record<number, Record<string, unknown>>,
 ): unknown {
 	if (isArrayInput(template)) {
@@ -120,7 +120,7 @@ export function execute(
  */
 function executeArrayTemplate(
 	template: TemplateInputArray,
-	data: Record<string, unknown>,
+	data: unknown,
 	identifierData?: Record<number, Record<string, unknown>>,
 ): unknown[] {
 	const result: unknown[] = [];
@@ -137,7 +137,7 @@ function executeArrayTemplate(
  */
 function executeObjectTemplate(
 	template: TemplateInputObject,
-	data: Record<string, unknown>,
+	data: unknown,
 	identifierData?: Record<number, Record<string, unknown>>,
 ): Record<string, unknown> {
 	const result: Record<string, unknown> = {};
@@ -165,7 +165,7 @@ function executeObjectTemplate(
 export function executeFromAst(
 	ast: hbs.AST.Program,
 	template: string,
-	data: Record<string, unknown>,
+	data: unknown,
 	ctx?: ExecutorContext,
 ): unknown {
 	const identifierData = ctx?.identifierData;
@@ -279,7 +279,7 @@ function coerceValue(raw: string, coerceSchema?: JSONSchema7): unknown {
  */
 function executeFastPath(
 	ast: hbs.AST.Program,
-	data: Record<string, unknown>,
+	data: unknown,
 	identifierData?: Record<number, Record<string, unknown>>,
 ): string {
 	let result = "";
@@ -321,7 +321,7 @@ function executeFastPath(
  */
 function resolveExpression(
 	expr: hbs.AST.Expression,
-	data: Record<string, unknown>,
+	data: unknown,
 	identifierData?: Record<number, Record<string, unknown>>,
 ): unknown {
 	// this / . → return the entire context
@@ -431,13 +431,19 @@ export function resolveDataPath(data: unknown, segments: string[]): unknown {
  * ```
  */
 function mergeDataWithIdentifiers(
-	data: Record<string, unknown>,
+	data: unknown,
 	identifierData?: Record<number, Record<string, unknown>>,
 ): Record<string, unknown> {
 	// Always include $root so that Handlebars can resolve {{$root}} in
 	// mixed templates and block helpers (where we delegate to Handlebars
 	// instead of resolving expressions ourselves).
-	const merged: Record<string, unknown> = { ...data, [ROOT_TOKEN]: data };
+	// When data is a primitive (e.g. number passed with {{$root}}), we
+	// wrap it into an object so Handlebars can still function.
+	const base: Record<string, unknown> =
+		data !== null && typeof data === "object" && !Array.isArray(data)
+			? (data as Record<string, unknown>)
+			: {};
+	const merged: Record<string, unknown> = { ...base, [ROOT_TOKEN]: data };
 
 	if (!identifierData) return merged;
 

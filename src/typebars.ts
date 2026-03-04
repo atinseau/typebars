@@ -16,6 +16,7 @@ import type {
 	AnalyzeAndExecuteOptions,
 	ExecuteOptions,
 	HelperDefinition,
+	TemplateData,
 	TemplateEngineOptions,
 	TemplateInput,
 	ValidationResult,
@@ -298,7 +299,7 @@ export class Typebars {
 	 */
 	execute(
 		template: TemplateInput,
-		data: Record<string, unknown>,
+		data?: TemplateData,
 		options?: ExecuteOptions,
 	): unknown {
 		// ── Array template → recursive execution ─────────────────────────────
@@ -371,7 +372,7 @@ export class Typebars {
 	analyzeAndExecute(
 		template: TemplateInput,
 		inputSchema: JSONSchema7 = {},
-		data: Record<string, unknown>,
+		data: TemplateData,
 		options?: AnalyzeAndExecuteOptions & { coerceSchema?: JSONSchema7 },
 	): { analysis: AnalysisResult; value: unknown } {
 		if (isArrayInput(template)) {

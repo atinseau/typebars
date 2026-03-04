@@ -10,6 +10,7 @@ import type {
 	AnalysisResult,
 	ExecuteOptions,
 	HelperDefinition,
+	TemplateData,
 	ValidationResult,
 } from "./types.ts";
 import { inferPrimitiveSchema } from "./types.ts";
@@ -306,7 +307,7 @@ export class CompiledTemplate {
 	 * @param options - Execution options (schema, identifierData, coerceSchema, etc.)
 	 * @returns The execution result
 	 */
-	execute(data: Record<string, unknown>, options?: ExecuteOptions): unknown {
+	execute(data: TemplateData, options?: ExecuteOptions): unknown {
 		switch (this.state.kind) {
 			case "array": {
 				const { elements } = this.state;
@@ -373,7 +374,7 @@ export class CompiledTemplate {
 	 */
 	analyzeAndExecute(
 		inputSchema: JSONSchema7 = {},
-		data: Record<string, unknown>,
+		data: TemplateData,
 		options?: {
 			identifierSchemas?: Record<number, JSONSchema7>;
 			identifierData?: Record<number, Record<string, unknown>>;
