@@ -467,7 +467,9 @@ describe("analyze() with identifierSchemas", () => {
 				},
 			};
 
-			const result = analyze("{{meetingId:1}}", schema, idSchemas);
+			const result = analyze("{{meetingId:1}}", schema, {
+				identifierSchemas: idSchemas,
+			});
 			expect(result.valid).toBe(true);
 			expect(
 				result.diagnostics.filter((d) => d.severity === "error"),
@@ -499,7 +501,9 @@ describe("analyze() with identifierSchemas", () => {
 				},
 			};
 
-			const result = analyze("{{meetingId:1}}", schema, idSchemas);
+			const result = analyze("{{meetingId:1}}", schema, {
+				identifierSchemas: idSchemas,
+			});
 			expect(result.valid).toBe(false);
 		});
 
@@ -515,7 +519,9 @@ describe("analyze() with identifierSchemas", () => {
 				},
 			};
 
-			const result = analyze("{{meetingId:1}}", schema, idSchemas);
+			const result = analyze("{{meetingId:1}}", schema, {
+				identifierSchemas: idSchemas,
+			});
 			expect(result.valid).toBe(false);
 		});
 
@@ -528,7 +534,9 @@ describe("analyze() with identifierSchemas", () => {
 				},
 			};
 
-			const result = analyze("{{val:0}}", schema, idSchemas);
+			const result = analyze("{{val:0}}", schema, {
+				identifierSchemas: idSchemas,
+			});
 			expect(result.valid).toBe(true);
 		});
 	});
@@ -543,7 +551,9 @@ describe("analyze() with identifierSchemas", () => {
 				},
 			};
 
-			const result = analyze("{{meetingId:1}}", schema, idSchemas);
+			const result = analyze("{{meetingId:1}}", schema, {
+				identifierSchemas: idSchemas,
+			});
 			expect(result.valid).toBe(true);
 			expect(result.outputSchema).toEqual({ type: "string" });
 		});
@@ -557,7 +567,9 @@ describe("analyze() with identifierSchemas", () => {
 				},
 			};
 
-			const result = analyze("{{age:1}}", schema, idSchemas);
+			const result = analyze("{{age:1}}", schema, {
+				identifierSchemas: idSchemas,
+			});
 			expect(result.valid).toBe(true);
 			expect(result.outputSchema).toEqual({ type: "number" });
 		});
@@ -571,7 +583,9 @@ describe("analyze() with identifierSchemas", () => {
 				},
 			};
 
-			const result = analyze("{{active:1}}", schema, idSchemas);
+			const result = analyze("{{active:1}}", schema, {
+				identifierSchemas: idSchemas,
+			});
 			expect(result.valid).toBe(true);
 			expect(result.outputSchema).toEqual({ type: "boolean" });
 		});
@@ -587,7 +601,9 @@ describe("analyze() with identifierSchemas", () => {
 				},
 			};
 
-			const result = analyze("{{ids:1}}", schema, idSchemas);
+			const result = analyze("{{ids:1}}", schema, {
+				identifierSchemas: idSchemas,
+			});
 			expect(result.valid).toBe(true);
 			expect(result.outputSchema).toEqual({
 				type: "array",
@@ -606,7 +622,9 @@ describe("analyze() with identifierSchemas", () => {
 				},
 			};
 
-			const result = analyze("{{role:1}}", schema, idSchemas);
+			const result = analyze("{{role:1}}", schema, {
+				identifierSchemas: idSchemas,
+			});
 			expect(result.valid).toBe(true);
 			expect(result.outputSchema).toEqual({
 				type: "string",
@@ -626,7 +644,9 @@ describe("analyze() with identifierSchemas", () => {
 				},
 			};
 
-			const result = analyze("{{name}} {{meetingId:1}}", schema, idSchemas);
+			const result = analyze("{{name}} {{meetingId:1}}", schema, {
+				identifierSchemas: idSchemas,
+			});
 			expect(result.valid).toBe(true);
 			expect(result.outputSchema).toEqual({ type: "string" });
 		});
@@ -647,13 +667,17 @@ describe("analyze() with identifierSchemas", () => {
 			};
 
 			{
-				const result = analyze("{{someKey:1}}", schema, idSchemas);
+				const result = analyze("{{someKey:1}}", schema, {
+					identifierSchemas: idSchemas,
+				});
 				expect(result.valid).toBe(true);
 				expect(result.outputSchema).toEqual({ type: "string" });
 			}
 
 			{
-				const result = analyze("{{someKey:2}}", schema, idSchemas);
+				const result = analyze("{{someKey:2}}", schema, {
+					identifierSchemas: idSchemas,
+				});
 				expect(result.valid).toBe(true);
 				expect(result.outputSchema).toEqual({ type: "boolean" });
 			}
@@ -673,11 +697,9 @@ describe("analyze() with identifierSchemas", () => {
 			};
 
 			// Both valid
-			const result = analyze(
-				"{{meetingId:1}} {{leadName:2}}",
-				schema,
-				idSchemas,
-			);
+			const result = analyze("{{meetingId:1}} {{leadName:2}}", schema, {
+				identifierSchemas: idSchemas,
+			});
 			expect(result.valid).toBe(true);
 		});
 
@@ -695,11 +717,9 @@ describe("analyze() with identifierSchemas", () => {
 			};
 
 			// meetingId:1 valid, leadName:2 invalid (not in id schema 2)
-			const result = analyze(
-				"{{meetingId:1}} {{leadName:2}}",
-				schema,
-				idSchemas,
-			);
+			const result = analyze("{{meetingId:1}} {{leadName:2}}", schema, {
+				identifierSchemas: idSchemas,
+			});
 			expect(result.valid).toBe(false);
 		});
 	});
@@ -717,7 +737,9 @@ describe("analyze() with identifierSchemas", () => {
 				},
 			};
 
-			const result = analyze("{{name}} {{meetingId:1}}", schema, idSchemas);
+			const result = analyze("{{name}} {{meetingId:1}}", schema, {
+				identifierSchemas: idSchemas,
+			});
 			expect(result.valid).toBe(true);
 		});
 
@@ -733,7 +755,9 @@ describe("analyze() with identifierSchemas", () => {
 				},
 			};
 
-			const result = analyze("{{badKey}} {{meetingId:1}}", schema, idSchemas);
+			const result = analyze("{{badKey}} {{meetingId:1}}", schema, {
+				identifierSchemas: idSchemas,
+			});
 			expect(result.valid).toBe(false);
 		});
 
@@ -749,7 +773,9 @@ describe("analyze() with identifierSchemas", () => {
 				},
 			};
 
-			const result = analyze("{{name}} {{meetingId:1}}", schema, idSchemas);
+			const result = analyze("{{name}} {{meetingId:1}}", schema, {
+				identifierSchemas: idSchemas,
+			});
 			expect(result.valid).toBe(false);
 		});
 	});
@@ -761,7 +787,9 @@ describe("analyze() with identifierSchemas", () => {
 				properties: { meetingId: { type: "string" } },
 			};
 
-			const result = analyze("{{meetingId:2}}", schema, {});
+			const result = analyze("{{meetingId:2}}", schema, {
+				identifierSchemas: {},
+			});
 			expect(result.valid).toBe(false);
 		});
 
@@ -771,7 +799,9 @@ describe("analyze() with identifierSchemas", () => {
 				properties: { meetingId: { type: "string" } },
 			};
 
-			const result = analyze("{{meetingId}}", schema, {});
+			const result = analyze("{{meetingId}}", schema, {
+				identifierSchemas: {},
+			});
 			expect(result.valid).toBe(true);
 		});
 	});
@@ -798,7 +828,9 @@ describe("Typebars with identifiers", () => {
 				},
 			};
 
-			const result = engine.analyze("{{meetingId:1}}", schema, idSchemas);
+			const result = engine.analyze("{{meetingId:1}}", schema, {
+				identifierSchemas: idSchemas,
+			});
 			expect(result.valid).toBe(true);
 			expect(result.outputSchema).toEqual({ type: "string" });
 		});
@@ -1091,7 +1123,9 @@ describe("Exact migration of old validateTemplateUsage tests with prevSchemas", 
 			},
 		};
 
-		const result = analyze("{{meetingId:2}}", schema, idSchemas);
+		const result = analyze("{{meetingId:2}}", schema, {
+			identifierSchemas: idSchemas,
+		});
 		expect(result.valid).toBe(true);
 	});
 
@@ -1101,7 +1135,9 @@ describe("Exact migration of old validateTemplateUsage tests with prevSchemas", 
 			properties: { meetingId: { type: "string" } },
 		};
 
-		const result = analyze("{{meetingId:2}}", schema, {});
+		const result = analyze("{{meetingId:2}}", schema, {
+			identifierSchemas: {},
+		});
 		expect(result.valid).toBe(false);
 		expect(
 			result.diagnostics.filter((d) => d.severity === "error").length,
@@ -1120,7 +1156,9 @@ describe("Exact migration of old validateTemplateUsage tests with prevSchemas", 
 			},
 		};
 
-		const result = analyze("{{meetingId:2}}", schema, idSchemas);
+		const result = analyze("{{meetingId:2}}", schema, {
+			identifierSchemas: idSchemas,
+		});
 		expect(result.valid).toBe(true);
 	});
 
@@ -1166,7 +1204,7 @@ describe("Exact migration of old findTemplateSchemaFromPrevSchemas behavior", ()
 		const result = analyze(
 			"{{someKey:1}}",
 			{ type: "object", properties: {} },
-			idSchemas,
+			{ identifierSchemas: idSchemas },
 		);
 		expect(result.valid).toBe(true);
 		expect(result.outputSchema).toEqual({ type: "string" });
@@ -1183,7 +1221,7 @@ describe("Exact migration of old findTemplateSchemaFromPrevSchemas behavior", ()
 		const result = analyze(
 			"{{someKey:1}}",
 			{ type: "object", properties: {} },
-			idSchemas,
+			{ identifierSchemas: idSchemas },
 		);
 		expect(result.valid).toBe(false);
 	});
@@ -1199,7 +1237,7 @@ describe("Exact migration of old findTemplateSchemaFromPrevSchemas behavior", ()
 		const result = analyze(
 			"{{someKey:1}}",
 			{ type: "object", properties: {} },
-			idSchemas,
+			{ identifierSchemas: idSchemas },
 		);
 		expect(result.valid).toBe(false);
 	});
@@ -1220,7 +1258,7 @@ describe("Exact migration of old findTemplateSchemaFromPrevSchemas behavior", ()
 			const result = analyze(
 				"{{someKey:2}}",
 				{ type: "object", properties: {} },
-				idSchemas,
+				{ identifierSchemas: idSchemas },
 			);
 			expect(result.valid).toBe(true);
 			expect(result.outputSchema).toEqual({ type: "boolean" });
@@ -1230,7 +1268,7 @@ describe("Exact migration of old findTemplateSchemaFromPrevSchemas behavior", ()
 			const result = analyze(
 				"{{someKey:1}}",
 				{ type: "object", properties: {} },
-				idSchemas,
+				{ identifierSchemas: idSchemas },
 			);
 			expect(result.valid).toBe(true);
 			expect(result.outputSchema).toEqual({ type: "string" });
@@ -1249,7 +1287,9 @@ describe("Exact migration of old findTemplateSchemaFromPrevSchemas behavior", ()
 			},
 		};
 
-		const result = analyze("{{someKey}}", schema, idSchemas);
+		const result = analyze("{{someKey}}", schema, {
+			identifierSchemas: idSchemas,
+		});
 		expect(result.valid).toBe(true);
 		expect(result.outputSchema).toEqual({ type: "number" });
 	});
@@ -1328,7 +1368,9 @@ describe("Template identifier edge cases", () => {
 			},
 		};
 
-		const result = analyze("{{#if active:1}}yes{{/if}}", schema, idSchemas);
+		const result = analyze("{{#if active:1}}yes{{/if}}", schema, {
+			identifierSchemas: idSchemas,
+		});
 		expect(result.valid).toBe(true);
 	});
 

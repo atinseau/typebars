@@ -69,6 +69,7 @@ tests/
 ├── conditional-schema.spec.ts # Conditional schema handling tests
 ├── colon-syntax.spec.ts       # Template identifier {{key:N}} tests
 ├── template-identifiers.spec.ts
+├── schema-type-coercion.spec.ts   # coerceSchema output type coercion tests
 ├── edge-cases.spec.ts         # Edge case tests
 ├── migration-interop.spec.ts  # Migration / interoperability tests
 └── integration/               # Post-build import tests (ESM + CJS)
@@ -209,6 +210,7 @@ bun biome check --write --unsafe src/analyzer.ts
 - **Do NOT** use `console.log` in library source code — errors should be communicated via the diagnostic system or thrown errors.
 - **Do NOT** write tests that depend on execution order — each test must be independent.
 - **Do NOT** hardcode values to make tests pass — implement the actual logic that solves the problem generally.
+- **Do NOT** derive output type coercion from `inputSchema` — use an explicit `coerceSchema` in `AnalyzeOptions`. The `inputSchema` is strictly for input variable validation.
 
 ## Key Design Decisions
 
@@ -218,6 +220,8 @@ bun biome check --write --unsafe src/analyzer.ts
 4. **`TemplateInput` union type** — the engine accepts `string | number | boolean | null | TemplateInputArray | TemplateInputObject`. Use `isArrayInput()`, `isLiteralInput()`, and `isObjectInput()` type guards. **Important:** always check `isArrayInput()` before `isObjectInput()` because arrays are also `typeof "object"` in JS.
 5. **Schema simplification** — `simplifySchema()` deduplicates `oneOf`/`anyOf` branches and unwraps single-element arrays. Always simplify output schemas.
 6. **Template identifiers `{{key:N}}`** — identifier is always on the last path segment. Parsed by `extractExpressionIdentifier()`.
+7. **`AnalyzeOptions` object** — `analyze()`, `validate()`, and `analyzeAndExecute()` accept an optional `AnalyzeOptions` object (not positional args) with `identifierSchemas?` and `coerceSchema?`. The `inputSchema` describes available variables for validation; it **never** influences output type coercion.
+8. **`coerceSchema` for output type coercion** — by default, static literal values (`"123"`, `"true"`, `"null"`) are auto-detected by `detectLiteralType`. An explicit `coerceSchema` in `AnalyzeOptions` overrides this for static content only. Handlebars expressions, mixed templates, and JS primitive literals are never affected by `coerceSchema`. For object templates, `coerceSchema` is resolved per-property via `resolveSchemaPath()` and propagated recursively to children.
 
 ## Validation Checklist
 

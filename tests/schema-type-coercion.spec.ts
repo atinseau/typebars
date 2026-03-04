@@ -4,17 +4,19 @@ import { analyze } from "../src/analyzer.ts";
 import { clearCompilationCache } from "../src/executor.ts";
 import { Typebars } from "../src/typebars.ts";
 
-// ─── Schema-Driven Type Coercion ─────────────────────────────────────────────
-// Comprehensive tests verifying that the `expectedOutputType` propagation
-// works correctly across all levels of nesting, block helpers, mixed content,
-// and edge cases. This validates that the inputSchema contract overrides
-// `detectLiteralType` for static literal values at every depth.
+// ─── Schema-Driven Type Coercion via coerceSchema ────────────────────────────
+// Comprehensive tests verifying that:
+// 1. By DEFAULT, `detectLiteralType` controls output type inference for static
+//    literals (e.g. "123" → number, "true" → boolean, "null" → null).
+//    The `inputSchema` must NEVER influence coercion.
+// 2. When an explicit `coerceSchema` option is provided, it overrides
+//    `detectLiteralType` for static literal values at every depth.
+// 3. Handlebars expressions ({{expr}}) are NEVER affected by `coerceSchema`.
 
 const engine = new Typebars();
 
 // ─── Complex Schema ──────────────────────────────────────────────────────────
-// A deeply nested schema that mixes strings, numbers, booleans, objects,
-// arrays, and various nesting depths.
+// A deeply nested schema used as both inputSchema and coerceSchema in tests.
 
 const complexSchema: JSONSchema7 = {
 	type: "object",
@@ -113,159 +115,92 @@ const complexData: Record<string, unknown> = {
 	},
 };
 
-describe("schema-driven type coercion — comprehensive stress tests", () => {
+// ─── Helper to dig into nested outputSchema properties ───────────────────────
+function getProps(
+	schema: JSONSchema7 | undefined,
+): Record<string, JSONSchema7> | undefined {
+	if (!schema || typeof schema === "boolean") return undefined;
+	return schema.properties as Record<string, JSONSchema7> | undefined;
+}
+
+function getPropAt(
+	schema: JSONSchema7,
+	...path: string[]
+): JSONSchema7 | undefined {
+	let current: JSONSchema7 | undefined = schema;
+	for (const key of path) {
+		const props = getProps(current);
+		if (!props) return undefined;
+		current = props[key];
+	}
+	return current;
+}
+
+describe("schema-driven type coercion via coerceSchema", () => {
 	beforeEach(() => {
 		clearCompilationCache();
 	});
 
-	// ─── Deep Nesting (4+ levels) ────────────────────────────────────────────
+	// ─── Default Behavior — No Coercion from inputSchema ─────────────────────
 
-	describe("deep nesting (4+ levels)", () => {
-		test("4 levels deep — static '123' respects string schema at leaf", () => {
-			const result = engine.analyze(
-				{
-					config: {
-						nested: {
-							deep: {
-								value: "123",
-							},
-						},
-					},
-				},
-				complexSchema,
-			);
+	describe("default behavior — inputSchema never influences coercion", () => {
+		test("string template '123' → detectLiteralType → number (regardless of inputSchema)", () => {
+			const result = engine.analyze("123", { type: "string" });
 			expect(result.valid).toBe(true);
-			const leaf = (result.outputSchema as Record<string, unknown>)
-				?.properties as Record<string, unknown> | undefined;
-			const configL1 = (leaf?.config as Record<string, unknown>)?.properties as
-				| Record<string, unknown>
-				| undefined;
-			const nestedL1 = (configL1?.nested as Record<string, unknown>)
-				?.properties as Record<string, unknown> | undefined;
-			const deepL1 = (nestedL1?.deep as Record<string, unknown>)?.properties as
-				| Record<string, unknown>
-				| undefined;
-			const leafValue = deepL1?.value;
-			expect(leafValue).toEqual({ type: "string" });
+			expect(result.outputSchema).toEqual({ type: "number" });
 		});
 
-		test("4 levels deep — static '42' respects integer schema at leaf", () => {
-			const result = engine.analyze(
-				{
-					config: {
-						nested: {
-							deep: {
-								count: "42",
-							},
-						},
-					},
-				},
-				complexSchema,
-			);
+		test("string template 'true' → detectLiteralType → boolean (regardless of inputSchema)", () => {
+			const result = engine.analyze("true", { type: "string" });
 			expect(result.valid).toBe(true);
-			const props2 = (result.outputSchema as Record<string, unknown>)
-				?.properties as Record<string, unknown> | undefined;
-			const config2 = (props2?.config as Record<string, unknown>)?.properties as
-				| Record<string, unknown>
-				| undefined;
-			const nested2 = (config2?.nested as Record<string, unknown>)
-				?.properties as Record<string, unknown> | undefined;
-			const deep2 = (nested2?.deep as Record<string, unknown>)?.properties as
-				| Record<string, unknown>
-				| undefined;
-			expect(deep2?.count).toEqual({ type: "integer" });
+			expect(result.outputSchema).toEqual({ type: "boolean" });
 		});
 
-		test("4 levels deep — static 'true' respects boolean schema at leaf", () => {
-			const result = engine.analyze(
-				{
-					config: {
-						nested: {
-							deep: {
-								flag: "true",
-							},
-						},
-					},
-				},
-				complexSchema,
-			);
+		test("string template 'null' → detectLiteralType → null (regardless of inputSchema)", () => {
+			const result = engine.analyze("null", { type: "string" });
 			expect(result.valid).toBe(true);
-			const props3 = (result.outputSchema as Record<string, unknown>)
-				?.properties as Record<string, unknown> | undefined;
-			const config3 = (props3?.config as Record<string, unknown>)?.properties as
-				| Record<string, unknown>
-				| undefined;
-			const nested3 = (config3?.nested as Record<string, unknown>)
-				?.properties as Record<string, unknown> | undefined;
-			const deep3 = (nested3?.deep as Record<string, unknown>)?.properties as
-				| Record<string, unknown>
-				| undefined;
-			expect(deep3?.flag).toEqual({ type: "boolean" });
+			expect(result.outputSchema).toEqual({ type: "null" });
 		});
 
-		test("5 levels deep — static '999' respects string schema at ultraDeep leaf", () => {
-			const result = engine.analyze(
-				{
-					config: {
-						nested: {
-							deep: {
-								ultraDeep: {
-									finalValue: "999",
-								},
-							},
-						},
-					},
-				},
-				complexSchema,
-			);
+		test("string template '42' with inputSchema type integer → still number (no coercion)", () => {
+			const result = engine.analyze("42", { type: "integer" });
 			expect(result.valid).toBe(true);
-			const props4 = (result.outputSchema as Record<string, unknown>)
-				?.properties as Record<string, unknown> | undefined;
-			const config4 = (props4?.config as Record<string, unknown>)?.properties as
-				| Record<string, unknown>
-				| undefined;
-			const nested4 = (config4?.nested as Record<string, unknown>)
-				?.properties as Record<string, unknown> | undefined;
-			const deep4 = (nested4?.deep as Record<string, unknown>)?.properties as
-				| Record<string, unknown>
-				| undefined;
-			const ultraDeep4 = (deep4?.ultraDeep as Record<string, unknown>)
-				?.properties as Record<string, unknown> | undefined;
-			expect(ultraDeep4?.finalValue).toEqual({ type: "string" });
+			expect(result.outputSchema).toEqual({ type: "number" });
 		});
 
-		test("5 levels deep — static '3.14' respects number schema at ultraDeep leaf", () => {
+		test("object template '123' with inputSchema string property → detectLiteralType → number", () => {
 			const result = engine.analyze(
+				{ meetingId: "123" },
 				{
-					config: {
-						nested: {
-							deep: {
-								ultraDeep: {
-									finalNumber: "3.14",
-								},
-							},
-						},
-					},
+					type: "object",
+					properties: { meetingId: { type: "string" } },
 				},
-				complexSchema,
 			);
 			expect(result.valid).toBe(true);
-			const props5 = (result.outputSchema as Record<string, unknown>)
-				?.properties as Record<string, unknown> | undefined;
-			const config5 = (props5?.config as Record<string, unknown>)?.properties as
-				| Record<string, unknown>
-				| undefined;
-			const nested5 = (config5?.nested as Record<string, unknown>)
-				?.properties as Record<string, unknown> | undefined;
-			const deep5 = (nested5?.deep as Record<string, unknown>)?.properties as
-				| Record<string, unknown>
-				| undefined;
-			const ultraDeep5 = (deep5?.ultraDeep as Record<string, unknown>)
-				?.properties as Record<string, unknown> | undefined;
-			expect(ultraDeep5?.finalNumber).toEqual({ type: "number" });
+			expect(result.outputSchema).toEqual({
+				type: "object",
+				properties: { meetingId: { type: "number" } },
+				required: ["meetingId"],
+			});
 		});
 
-		test("multiple leaves at different depths — all respect their schemas", () => {
+		test("object template with non-numeric string → always string", () => {
+			const result = engine.analyze(
+				{ status: "success" },
+				{
+					type: "object",
+					properties: { status: { type: "string" } },
+				},
+			);
+			expect(result.valid).toBe(true);
+			expect(result.outputSchema).toEqual({
+				type: "object",
+				properties: { status: { type: "string" } },
+				required: ["status"],
+			});
+		});
+
+		test("deeply nested object without coerceSchema → all detectLiteralType", () => {
 			const result = engine.analyze(
 				{
 					config: {
@@ -286,37 +221,497 @@ describe("schema-driven type coercion — comprehensive stress tests", () => {
 				complexSchema,
 			);
 			expect(result.valid).toBe(true);
-			const topProps6 = (result.outputSchema as Record<string, unknown>)
-				?.properties as Record<string, unknown> | undefined;
-			const configProps = (topProps6?.config as Record<string, unknown>)
-				?.properties as Record<string, unknown> | undefined;
-			// maxRetries is string in schema → "3" stays string
-			expect(configProps?.maxRetries).toEqual({ type: "string" });
-			// timeout is number in schema → "5000" becomes number
-			expect(configProps?.timeout).toEqual({ type: "number" });
+			// Without coerceSchema, everything uses detectLiteralType:
+			// "3" → number, "5000" → number, "42" → number, "10" → number,
+			// "100" → number, "99" → number
+			expect(
+				getPropAt(result.outputSchema as JSONSchema7, "config", "maxRetries"),
+			).toEqual({ type: "number" });
+			expect(
+				getPropAt(result.outputSchema as JSONSchema7, "config", "timeout"),
+			).toEqual({ type: "number" });
+			expect(
+				getPropAt(
+					result.outputSchema as JSONSchema7,
+					"config",
+					"nested",
+					"deep",
+					"value",
+				),
+			).toEqual({ type: "number" });
+			expect(
+				getPropAt(
+					result.outputSchema as JSONSchema7,
+					"config",
+					"nested",
+					"deep",
+					"count",
+				),
+			).toEqual({ type: "number" });
+			expect(
+				getPropAt(
+					result.outputSchema as JSONSchema7,
+					"config",
+					"nested",
+					"deep",
+					"ultraDeep",
+					"finalValue",
+				),
+			).toEqual({ type: "number" });
+			expect(
+				getPropAt(
+					result.outputSchema as JSONSchema7,
+					"config",
+					"nested",
+					"deep",
+					"ultraDeep",
+					"finalNumber",
+				),
+			).toEqual({ type: "number" });
+		});
 
-			const nestedProps6 = (configProps?.nested as Record<string, unknown>)
-				?.properties as Record<string, unknown> | undefined;
-			const deepProps = (nestedProps6?.deep as Record<string, unknown>)
-				?.properties as Record<string, unknown> | undefined;
-			// value is string → "42" stays string
-			expect(deepProps?.value).toEqual({ type: "string" });
-			// count is integer → "10" becomes integer
-			expect(deepProps?.count).toEqual({ type: "integer" });
+		test("Handlebars expression resolves from inputSchema as usual (no coercion involved)", () => {
+			const result = engine.analyze("{{name}}", complexSchema);
+			expect(result.valid).toBe(true);
+			expect(result.outputSchema).toEqual({ type: "string" });
+		});
 
-			const ultraDeepProps = (deepProps?.ultraDeep as Record<string, unknown>)
-				?.properties as Record<string, unknown> | undefined;
-			// finalValue is string → "100" stays string
-			expect(ultraDeepProps?.finalValue).toEqual({ type: "string" });
-			// finalNumber is number → "99" becomes number
-			expect(ultraDeepProps?.finalNumber).toEqual({ type: "number" });
+		test("standalone analyze() without coerceSchema → detectLiteralType", () => {
+			const r1 = analyze("123", { type: "string" });
+			expect(r1.outputSchema).toEqual({ type: "number" });
+
+			const r2 = analyze("true", { type: "boolean" });
+			expect(r2.outputSchema).toEqual({ type: "boolean" });
+
+			const r3 = analyze("null", { type: "number" });
+			expect(r3.outputSchema).toEqual({ type: "null" });
+
+			const r4 = analyze("hello", { type: "number" });
+			expect(r4.outputSchema).toEqual({ type: "string" });
 		});
 	});
 
-	// ─── Mixed: Static Literals + Handlebars Expressions ─────────────────────
+	// ─── Explicit coerceSchema — Overrides detectLiteralType ─────────────────
 
-	describe("mixed static literals and Handlebars expressions", () => {
-		test("sibling properties: some static, some with {{}} — each correctly typed", () => {
+	describe("explicit coerceSchema — overrides detectLiteralType", () => {
+		test("string template '123' with coerceSchema string → outputSchema string", () => {
+			const result = engine.analyze(
+				"123",
+				{ type: "object", properties: {} },
+				{
+					coerceSchema: { type: "string" },
+				},
+			);
+			expect(result.valid).toBe(true);
+			expect(result.outputSchema).toEqual({ type: "string" });
+		});
+
+		test("string template '123' with coerceSchema number → outputSchema number", () => {
+			const result = engine.analyze(
+				"123",
+				{ type: "object", properties: {} },
+				{
+					coerceSchema: { type: "number" },
+				},
+			);
+			expect(result.valid).toBe(true);
+			expect(result.outputSchema).toEqual({ type: "number" });
+		});
+
+		test("string template '123' with coerceSchema integer → outputSchema integer", () => {
+			const result = engine.analyze(
+				"123",
+				{ type: "object", properties: {} },
+				{
+					coerceSchema: { type: "integer" },
+				},
+			);
+			expect(result.valid).toBe(true);
+			expect(result.outputSchema).toEqual({ type: "integer" });
+		});
+
+		test("string template 'true' with coerceSchema string → outputSchema string", () => {
+			const result = engine.analyze(
+				"true",
+				{ type: "object", properties: {} },
+				{
+					coerceSchema: { type: "string" },
+				},
+			);
+			expect(result.valid).toBe(true);
+			expect(result.outputSchema).toEqual({ type: "string" });
+		});
+
+		test("string template 'null' with coerceSchema string → outputSchema string", () => {
+			const result = engine.analyze(
+				"null",
+				{ type: "object", properties: {} },
+				{
+					coerceSchema: { type: "string" },
+				},
+			);
+			expect(result.valid).toBe(true);
+			expect(result.outputSchema).toEqual({ type: "string" });
+		});
+
+		test("string template 'null' with coerceSchema null → outputSchema null", () => {
+			const result = engine.analyze(
+				"null",
+				{ type: "object", properties: {} },
+				{
+					coerceSchema: { type: "null" },
+				},
+			);
+			expect(result.valid).toBe(true);
+			expect(result.outputSchema).toEqual({ type: "null" });
+		});
+
+		test("string template 'true' with coerceSchema boolean → outputSchema boolean", () => {
+			const result = engine.analyze(
+				"true",
+				{ type: "object", properties: {} },
+				{
+					coerceSchema: { type: "boolean" },
+				},
+			);
+			expect(result.valid).toBe(true);
+			expect(result.outputSchema).toEqual({ type: "boolean" });
+		});
+	});
+
+	// ─── coerceSchema with Object Templates ──────────────────────────────────
+
+	describe("coerceSchema with object templates", () => {
+		test("object template with coerceSchema — property respects coercion", () => {
+			const result = engine.analyze(
+				{ meetingId: "123" },
+				{
+					type: "object",
+					properties: { meetingId: { type: "number" } },
+				},
+				{
+					coerceSchema: {
+						type: "object",
+						properties: { meetingId: { type: "string" } },
+					},
+				},
+			);
+			expect(result.valid).toBe(true);
+			expect(result.outputSchema).toEqual({
+				type: "object",
+				properties: { meetingId: { type: "string" } },
+				required: ["meetingId"],
+			});
+		});
+
+		test("object template without coerceSchema — detectLiteralType wins", () => {
+			const result = engine.analyze(
+				{ meetingId: "123" },
+				{
+					type: "object",
+					properties: { meetingId: { type: "string" } },
+				},
+			);
+			expect(result.valid).toBe(true);
+			expect(result.outputSchema).toEqual({
+				type: "object",
+				properties: { meetingId: { type: "number" } },
+				required: ["meetingId"],
+			});
+		});
+
+		test("object template with nested coerceSchema — deep propagation", () => {
+			const result = engine.analyze(
+				{
+					outer: {
+						count: "42",
+					},
+				},
+				{
+					type: "object",
+					properties: {
+						outer: {
+							type: "object",
+							properties: { count: { type: "number" } },
+						},
+					},
+				},
+				{
+					coerceSchema: {
+						type: "object",
+						properties: {
+							outer: {
+								type: "object",
+								properties: { count: { type: "string" } },
+							},
+						},
+					},
+				},
+			);
+			expect(result.valid).toBe(true);
+			expect(result.outputSchema).toEqual({
+				type: "object",
+				properties: {
+					outer: {
+						type: "object",
+						properties: { count: { type: "string" } },
+						required: ["count"],
+					},
+				},
+				required: ["outer"],
+			});
+		});
+
+		test("mixed: some properties in coerceSchema, some not → partial coercion", () => {
+			const result = engine.analyze(
+				{
+					accountId: "12345",
+					balance: "100.50",
+					unknown: "999",
+				},
+				complexSchema,
+				{
+					coerceSchema: {
+						type: "object",
+						properties: {
+							accountId: { type: "string" },
+							// balance NOT in coerceSchema → detectLiteralType
+							// unknown NOT in coerceSchema → detectLiteralType
+						},
+					},
+				},
+			);
+			expect(result.valid).toBe(true);
+			const props = getProps(result.outputSchema as JSONSchema7);
+			// accountId: coerceSchema says string → "12345" stays string
+			expect(props?.accountId).toEqual({ type: "string" });
+			// balance: not in coerceSchema → detectLiteralType → number
+			expect(props?.balance).toEqual({ type: "number" });
+			// unknown: not in coerceSchema → detectLiteralType → number
+			expect(props?.unknown).toEqual({ type: "number" });
+		});
+	});
+
+	// ─── Deep Nesting with coerceSchema (4+ levels) ──────────────────────────
+
+	describe("deep nesting with coerceSchema (4+ levels)", () => {
+		test("4 levels deep — static '123' respects string coerceSchema at leaf", () => {
+			const result = engine.analyze(
+				{
+					config: {
+						nested: {
+							deep: {
+								value: "123",
+							},
+						},
+					},
+				},
+				complexSchema,
+				{ coerceSchema: complexSchema },
+			);
+			expect(result.valid).toBe(true);
+			// complexSchema.config.nested.deep.value is { type: "string" }
+			expect(
+				getPropAt(
+					result.outputSchema as JSONSchema7,
+					"config",
+					"nested",
+					"deep",
+					"value",
+				),
+			).toEqual({ type: "string" });
+		});
+
+		test("4 levels deep — static '42' respects integer coerceSchema at leaf", () => {
+			const result = engine.analyze(
+				{
+					config: {
+						nested: {
+							deep: {
+								count: "42",
+							},
+						},
+					},
+				},
+				complexSchema,
+				{ coerceSchema: complexSchema },
+			);
+			expect(result.valid).toBe(true);
+			expect(
+				getPropAt(
+					result.outputSchema as JSONSchema7,
+					"config",
+					"nested",
+					"deep",
+					"count",
+				),
+			).toEqual({ type: "integer" });
+		});
+
+		test("4 levels deep — static 'true' respects boolean coerceSchema at leaf", () => {
+			const result = engine.analyze(
+				{
+					config: {
+						nested: {
+							deep: {
+								flag: "true",
+							},
+						},
+					},
+				},
+				complexSchema,
+				{ coerceSchema: complexSchema },
+			);
+			expect(result.valid).toBe(true);
+			expect(
+				getPropAt(
+					result.outputSchema as JSONSchema7,
+					"config",
+					"nested",
+					"deep",
+					"flag",
+				),
+			).toEqual({ type: "boolean" });
+		});
+
+		test("5 levels deep — static '999' respects string coerceSchema at ultraDeep leaf", () => {
+			const result = engine.analyze(
+				{
+					config: {
+						nested: {
+							deep: {
+								ultraDeep: {
+									finalValue: "999",
+								},
+							},
+						},
+					},
+				},
+				complexSchema,
+				{ coerceSchema: complexSchema },
+			);
+			expect(result.valid).toBe(true);
+			expect(
+				getPropAt(
+					result.outputSchema as JSONSchema7,
+					"config",
+					"nested",
+					"deep",
+					"ultraDeep",
+					"finalValue",
+				),
+			).toEqual({ type: "string" });
+		});
+
+		test("5 levels deep — static '3.14' respects number coerceSchema at ultraDeep leaf", () => {
+			const result = engine.analyze(
+				{
+					config: {
+						nested: {
+							deep: {
+								ultraDeep: {
+									finalNumber: "3.14",
+								},
+							},
+						},
+					},
+				},
+				complexSchema,
+				{ coerceSchema: complexSchema },
+			);
+			expect(result.valid).toBe(true);
+			expect(
+				getPropAt(
+					result.outputSchema as JSONSchema7,
+					"config",
+					"nested",
+					"deep",
+					"ultraDeep",
+					"finalNumber",
+				),
+			).toEqual({ type: "number" });
+		});
+
+		test("multiple leaves at different depths — all respect coerceSchema", () => {
+			const result = engine.analyze(
+				{
+					config: {
+						maxRetries: "3",
+						timeout: "5000",
+						nested: {
+							deep: {
+								value: "42",
+								count: "10",
+								ultraDeep: {
+									finalValue: "100",
+									finalNumber: "99",
+								},
+							},
+						},
+					},
+				},
+				complexSchema,
+				{ coerceSchema: complexSchema },
+			);
+			expect(result.valid).toBe(true);
+
+			// maxRetries: coerceSchema says string → "3" stays string
+			expect(
+				getPropAt(result.outputSchema as JSONSchema7, "config", "maxRetries"),
+			).toEqual({ type: "string" });
+			// timeout: coerceSchema says number → "5000" → number
+			expect(
+				getPropAt(result.outputSchema as JSONSchema7, "config", "timeout"),
+			).toEqual({ type: "number" });
+			// value: coerceSchema says string → "42" stays string
+			expect(
+				getPropAt(
+					result.outputSchema as JSONSchema7,
+					"config",
+					"nested",
+					"deep",
+					"value",
+				),
+			).toEqual({ type: "string" });
+			// count: coerceSchema says integer → "10" → integer
+			expect(
+				getPropAt(
+					result.outputSchema as JSONSchema7,
+					"config",
+					"nested",
+					"deep",
+					"count",
+				),
+			).toEqual({ type: "integer" });
+			// finalValue: coerceSchema says string → "100" stays string
+			expect(
+				getPropAt(
+					result.outputSchema as JSONSchema7,
+					"config",
+					"nested",
+					"deep",
+					"ultraDeep",
+					"finalValue",
+				),
+			).toEqual({ type: "string" });
+			// finalNumber: coerceSchema says number → "99" → number
+			expect(
+				getPropAt(
+					result.outputSchema as JSONSchema7,
+					"config",
+					"nested",
+					"deep",
+					"ultraDeep",
+					"finalNumber",
+				),
+			).toEqual({ type: "number" });
+		});
+	});
+
+	// ─── Mixed: Static Literals + Handlebars Expressions with coerceSchema ───
+
+	describe("mixed static literals and Handlebars expressions with coerceSchema", () => {
+		test("sibling properties: static coerced + expressions → each correctly typed", () => {
 			const result = engine.analyze(
 				{
 					accountId: "12345",
@@ -325,17 +720,17 @@ describe("schema-driven type coercion — comprehensive stress tests", () => {
 					balance: "100.50",
 				},
 				complexSchema,
+				{ coerceSchema: complexSchema },
 			);
 			expect(result.valid).toBe(true);
-			const props = (result.outputSchema as Record<string, unknown>)
-				?.properties as Record<string, unknown> | undefined;
-			// accountId: schema says string → "12345" stays string
+			const props = getProps(result.outputSchema as JSONSchema7);
+			// accountId: coerceSchema says string → "12345" stays string
 			expect(props?.accountId).toEqual({ type: "string" });
-			// name: resolved from schema as string
+			// name: Handlebars expression → resolved from inputSchema as string
 			expect(props?.name).toEqual({ type: "string" });
-			// age: resolved from schema as number
+			// age: Handlebars expression → resolved from inputSchema as number
 			expect(props?.age).toEqual({ type: "number" });
-			// balance: schema says number → "100.50" becomes number
+			// balance: coerceSchema says number → "100.50" → number
 			expect(props?.balance).toEqual({ type: "number" });
 		});
 
@@ -353,69 +748,92 @@ describe("schema-driven type coercion — comprehensive stress tests", () => {
 					},
 				},
 				complexSchema,
+				{ coerceSchema: complexSchema },
 			);
 			expect(result.valid).toBe(true);
-			const topProps7 = (result.outputSchema as Record<string, unknown>)
-				?.properties as Record<string, unknown> | undefined;
-			const config7 = (topProps7?.config as Record<string, unknown>)
-				?.properties as Record<string, unknown> | undefined;
-			const nested7 = (config7?.nested as Record<string, unknown>)
-				?.properties as Record<string, unknown> | undefined;
-			const deepProps = (nested7?.deep as Record<string, unknown>)
-				?.properties as Record<string, unknown> | undefined;
-			// value: string schema → "999" stays string
-			expect(deepProps?.value).toEqual({ type: "string" });
-			// count: {{score}} resolves to integer from inputSchema
-			expect(deepProps?.count).toEqual({ type: "integer" });
+			// value: coerceSchema says string → "999" stays string
+			expect(
+				getPropAt(
+					result.outputSchema as JSONSchema7,
+					"config",
+					"nested",
+					"deep",
+					"value",
+				),
+			).toEqual({ type: "string" });
+			// count: {{score}} is a Handlebars expression → resolves to integer from inputSchema
+			expect(
+				getPropAt(
+					result.outputSchema as JSONSchema7,
+					"config",
+					"nested",
+					"deep",
+					"count",
+				),
+			).toEqual({ type: "integer" });
 		});
 
-		test("mixed template (text + expression) is always string regardless of schema", () => {
+		test("mixed template (text + expression) is always string regardless of coerceSchema", () => {
 			const result = engine.analyze(
 				{
 					accountId: "ACC-{{name}}",
 				},
 				complexSchema,
+				{
+					coerceSchema: {
+						type: "object",
+						properties: { accountId: { type: "number" } },
+					},
+				},
 			);
 			expect(result.valid).toBe(true);
-			const props = (result.outputSchema as Record<string, unknown>)
-				?.properties as Record<string, unknown> | undefined;
-			// Mixed template → always string (concatenation)
+			const props = getProps(result.outputSchema as JSONSchema7);
+			// Mixed template → always string (concatenation), coerceSchema ignored
 			expect(props?.accountId).toEqual({ type: "string" });
+		});
+
+		test("Handlebars expression ignores coerceSchema — only static literals affected", () => {
+			const result = engine.analyze("{{name}}", complexSchema, {
+				coerceSchema: { type: "number" },
+			});
+			expect(result.valid).toBe(true);
+			// {{name}} resolves to string from inputSchema, not number from coerceSchema
+			expect(result.outputSchema).toEqual({ type: "string" });
 		});
 	});
 
-	// ─── Conditional Blocks ({{#if}}) ────────────────────────────────────────
+	// ─── Coexistence with Block Helpers ───────────────────────────────────────
 
-	describe("coexistence with {{#if}} blocks", () => {
-		test("property with #if block — type coercion does not interfere", () => {
+	describe("coexistence with {{#if}} blocks + coerceSchema", () => {
+		test("property with #if block — coerceSchema on sibling static literal", () => {
 			const result = engine.analyze(
 				{
 					accountId: "12345",
 					name: "{{#if active}}{{name}}{{else}}unknown{{/if}}",
 				},
 				complexSchema,
+				{ coerceSchema: complexSchema },
 			);
 			expect(result.valid).toBe(true);
-			const props = (result.outputSchema as Record<string, unknown>)
-				?.properties as Record<string, unknown> | undefined;
-			// Static literal with schema coercion
+			const props = getProps(result.outputSchema as JSONSchema7);
+			// Static literal + coerceSchema string → stays string
 			expect(props?.accountId).toEqual({ type: "string" });
 			// #if block: both branches are string
 			expect(props?.name).toEqual({ type: "string" });
 		});
 
-		test("#if block returning different types → oneOf", () => {
+		test("#if block returning different types → oneOf, coerceSchema on sibling", () => {
 			const result = engine.analyze(
 				{
 					accountId: "67890",
 					result: "{{#if active}}{{age}}{{else}}{{name}}{{/if}}",
 				},
 				complexSchema,
+				{ coerceSchema: complexSchema },
 			);
 			expect(result.valid).toBe(true);
-			const props = (result.outputSchema as Record<string, unknown>)
-				?.properties as Record<string, unknown> | undefined;
-			// Static → string schema
+			const props = getProps(result.outputSchema as JSONSchema7);
+			// Static → coerceSchema string
 			expect(props?.accountId).toEqual({ type: "string" });
 			// if block: age is number, name is string → oneOf
 			expect(props?.result).toEqual({
@@ -423,7 +841,7 @@ describe("schema-driven type coercion — comprehensive stress tests", () => {
 			});
 		});
 
-		test("nested object with some #if and some static literals", () => {
+		test("nested object with some #if and some static literals + coerceSchema", () => {
 			const result = engine.analyze(
 				{
 					config: {
@@ -432,152 +850,135 @@ describe("schema-driven type coercion — comprehensive stress tests", () => {
 					},
 				},
 				complexSchema,
+				{ coerceSchema: complexSchema },
 			);
 			expect(result.valid).toBe(true);
-			const topProps8 = (result.outputSchema as Record<string, unknown>)
-				?.properties as Record<string, unknown> | undefined;
-			const configProps = (topProps8?.config as Record<string, unknown>)
-				?.properties as Record<string, unknown> | undefined;
-			// Static "3" with string schema → string
-			expect(configProps?.maxRetries).toEqual({ type: "string" });
-			// #if returns "true"/"false" as static content → boolean (detectLiteralType)
-			expect(configProps?.enabled).toEqual({ type: "boolean" });
+			// Static "3" with coerceSchema string → string
+			expect(
+				getPropAt(result.outputSchema as JSONSchema7, "config", "maxRetries"),
+			).toEqual({ type: "string" });
+			// #if returns "true"/"false" as static content → boolean (detectLiteralType in block)
+			expect(
+				getPropAt(result.outputSchema as JSONSchema7, "config", "enabled"),
+			).toEqual({ type: "boolean" });
 		});
 	});
 
-	// ─── {{#each}} Blocks ────────────────────────────────────────────────────
-
-	describe("coexistence with {{#each}} blocks", () => {
-		test("property with #each block alongside static coerced values", () => {
+	describe("coexistence with {{#each}} blocks + coerceSchema", () => {
+		test("property with #each block alongside coerced static values", () => {
 			const result = engine.analyze(
 				{
 					accountId: "55555",
 					tagList: "{{#each tags}}{{this}}, {{/each}}",
 				},
 				complexSchema,
+				{ coerceSchema: complexSchema },
 			);
 			expect(result.valid).toBe(true);
-			const props = (result.outputSchema as Record<string, unknown>)
-				?.properties as Record<string, unknown> | undefined;
-			// Static coercion: string schema
+			const props = getProps(result.outputSchema as JSONSchema7);
+			// Static coercion: coerceSchema string
 			expect(props?.accountId).toEqual({ type: "string" });
 			// #each with text → mixed template → string
 			expect(props?.tagList).toEqual({ type: "string" });
 		});
 
-		test("#each producing single expression alongside static literals", () => {
+		test("#each producing single expression alongside coerced static literals", () => {
 			const result = engine.analyze(
 				{
 					accountId: "99",
 					firstTag: "{{#each tags}}{{this}}{{/each}}",
 				},
 				complexSchema,
+				{ coerceSchema: complexSchema },
 			);
 			expect(result.valid).toBe(true);
-			const props = (result.outputSchema as Record<string, unknown>)
-				?.properties as Record<string, unknown> | undefined;
-			// "99" with string schema → string
+			const props = getProps(result.outputSchema as JSONSchema7);
+			// "99" with coerceSchema string → string
 			expect(props?.accountId).toEqual({ type: "string" });
 			// #each always produces string
 			expect(props?.firstTag).toEqual({ type: "string" });
 		});
 	});
 
-	// ─── {{#with}} Blocks ────────────────────────────────────────────────────
-
-	describe("coexistence with {{#with}} blocks", () => {
-		test("#with block alongside static coerced values", () => {
+	describe("coexistence with {{#with}} blocks + coerceSchema", () => {
+		test("#with block alongside coerced static values", () => {
 			const result = engine.analyze(
 				{
 					accountId: "42",
 					metaRole: "{{#with metadata}}{{role}}{{/with}}",
 				},
 				complexSchema,
+				{ coerceSchema: complexSchema },
 			);
 			expect(result.valid).toBe(true);
-			const props = (result.outputSchema as Record<string, unknown>)
-				?.properties as Record<string, unknown> | undefined;
-			// "42" with string schema → string
+			const props = getProps(result.outputSchema as JSONSchema7);
+			// "42" with coerceSchema string → string
 			expect(props?.accountId).toEqual({ type: "string" });
 			// #with resolves to metadata.role which is string
 			expect(props?.metaRole).toEqual({ type: "string" });
 		});
 	});
 
-	// ─── Properties Not In Schema (Fallback to detectLiteralType) ────────────
+	// ─── Properties Not In coerceSchema → Fallback to detectLiteralType ──────
 
-	describe("properties not in schema → fallback to default detection", () => {
+	describe("properties not in coerceSchema → fallback to detectLiteralType", () => {
 		test("unknown property with numeric string → defaults to number", () => {
-			const result = engine.analyze(
-				{
-					unknownProp: "123",
-				},
-				complexSchema,
-			);
+			const result = engine.analyze({ unknownProp: "123" }, complexSchema, {
+				coerceSchema: complexSchema,
+			});
 			expect(result.valid).toBe(true);
-			const props = (result.outputSchema as Record<string, unknown>)
-				?.properties as Record<string, unknown> | undefined;
-			// Not in schema → falls back to detectLiteralType → number
+			const props = getProps(result.outputSchema as JSONSchema7);
+			// Not in coerceSchema → falls back to detectLiteralType → number
 			expect(props?.unknownProp).toEqual({ type: "number" });
 		});
 
 		test("unknown property with boolean string → defaults to boolean", () => {
-			const result = engine.analyze(
-				{
-					unknownProp: "true",
-				},
-				complexSchema,
-			);
+			const result = engine.analyze({ unknownProp: "true" }, complexSchema, {
+				coerceSchema: complexSchema,
+			});
 			expect(result.valid).toBe(true);
-			const props = (result.outputSchema as Record<string, unknown>)
-				?.properties as Record<string, unknown> | undefined;
+			const props = getProps(result.outputSchema as JSONSchema7);
 			expect(props?.unknownProp).toEqual({ type: "boolean" });
 		});
 
 		test("unknown property with null string → defaults to null", () => {
-			const result = engine.analyze(
-				{
-					unknownProp: "null",
-				},
-				complexSchema,
-			);
+			const result = engine.analyze({ unknownProp: "null" }, complexSchema, {
+				coerceSchema: complexSchema,
+			});
 			expect(result.valid).toBe(true);
-			const props = (result.outputSchema as Record<string, unknown>)
-				?.properties as Record<string, unknown> | undefined;
+			const props = getProps(result.outputSchema as JSONSchema7);
 			expect(props?.unknownProp).toEqual({ type: "null" });
 		});
 
 		test("unknown property with non-literal string → defaults to string", () => {
 			const result = engine.analyze(
-				{
-					unknownProp: "hello world",
-				},
+				{ unknownProp: "hello world" },
 				complexSchema,
+				{ coerceSchema: complexSchema },
 			);
 			expect(result.valid).toBe(true);
-			const props = (result.outputSchema as Record<string, unknown>)
-				?.properties as Record<string, unknown> | undefined;
+			const props = getProps(result.outputSchema as JSONSchema7);
 			expect(props?.unknownProp).toEqual({ type: "string" });
 		});
 
-		test("mix of known + unknown properties at the same level", () => {
+		test("mix of coerced + unknown properties at the same level", () => {
 			const result = engine.analyze(
 				{
 					accountId: "12345",
 					notInSchema: "67890",
 				},
 				complexSchema,
+				{ coerceSchema: complexSchema },
 			);
 			expect(result.valid).toBe(true);
-			const props = (result.outputSchema as Record<string, unknown>)
-				?.properties as Record<string, unknown> | undefined;
-			// Known: schema says string → stays string
+			const props = getProps(result.outputSchema as JSONSchema7);
+			// Known in coerceSchema: string → stays string
 			expect(props?.accountId).toEqual({ type: "string" });
-			// Unknown: no schema → detectLiteralType → number
+			// Unknown: no coerceSchema entry → detectLiteralType → number
 			expect(props?.notInSchema).toEqual({ type: "number" });
 		});
 
-		test("deep unknown property — parent known but child unknown", () => {
+		test("deep unknown property — parent known but child unknown in coerceSchema", () => {
 			const result = engine.analyze(
 				{
 					config: {
@@ -585,35 +986,77 @@ describe("schema-driven type coercion — comprehensive stress tests", () => {
 					},
 				},
 				complexSchema,
+				{ coerceSchema: complexSchema },
 			);
 			expect(result.valid).toBe(true);
-			const topProps9 = (result.outputSchema as Record<string, unknown>)
-				?.properties as Record<string, unknown> | undefined;
-			const configProps = (topProps9?.config as Record<string, unknown>)
-				?.properties as Record<string, unknown> | undefined;
-			// config is in schema, but notDeclared is not → fallback to number
-			expect(configProps?.notDeclared).toEqual({ type: "number" });
+			// config is in coerceSchema, but notDeclared is not → fallback to number
+			expect(
+				getPropAt(result.outputSchema as JSONSchema7, "config", "notDeclared"),
+			).toEqual({ type: "number" });
 		});
 	});
 
-	// ─── Standalone analyze() Function ───────────────────────────────────────
+	// ─── Standalone analyze() Function with coerceSchema ─────────────────────
 
-	describe("standalone analyze() function", () => {
-		test("string template with primitive inputSchema type → respects schema", () => {
-			const r1 = analyze("123", { type: "string" });
+	describe("standalone analyze() function with coerceSchema", () => {
+		test("string template with coerceSchema → respects coercion", () => {
+			const r1 = analyze(
+				"123",
+				{ type: "string" },
+				{ coerceSchema: { type: "string" } },
+			);
 			expect(r1.outputSchema).toEqual({ type: "string" });
 
-			const r2 = analyze("123", { type: "number" });
+			const r2 = analyze(
+				"123",
+				{ type: "string" },
+				{ coerceSchema: { type: "number" } },
+			);
 			expect(r2.outputSchema).toEqual({ type: "number" });
 
-			const r3 = analyze("true", { type: "string" });
+			const r3 = analyze(
+				"true",
+				{ type: "string" },
+				{ coerceSchema: { type: "string" } },
+			);
 			expect(r3.outputSchema).toEqual({ type: "string" });
 
-			const r4 = analyze("null", { type: "string" });
+			const r4 = analyze(
+				"null",
+				{ type: "string" },
+				{ coerceSchema: { type: "string" } },
+			);
 			expect(r4.outputSchema).toEqual({ type: "string" });
 		});
 
-		test("standalone analyze with object template → deep nesting works", () => {
+		test("standalone analyze with object template + coerceSchema → deep nesting works", () => {
+			const result = analyze(
+				{
+					config: {
+						nested: {
+							deep: {
+								value: "456",
+							},
+						},
+					},
+				},
+				complexSchema,
+				{ coerceSchema: complexSchema },
+			);
+			expect(result.valid).toBe(true);
+			// complexSchema says value is string → "456" stays string
+			expect(
+				getPropAt(
+					result.outputSchema as JSONSchema7,
+					"config",
+					"nested",
+					"deep",
+					"value",
+				),
+			).toEqual({ type: "string" });
+		});
+
+		test("standalone analyze with object template without coerceSchema → detectLiteralType", () => {
 			const result = analyze(
 				{
 					config: {
@@ -627,94 +1070,64 @@ describe("schema-driven type coercion — comprehensive stress tests", () => {
 				complexSchema,
 			);
 			expect(result.valid).toBe(true);
-			const saProps = (result.outputSchema as Record<string, unknown>)
-				?.properties as Record<string, unknown> | undefined;
-			const saConfig = (saProps?.config as Record<string, unknown>)
-				?.properties as Record<string, unknown> | undefined;
-			const saNested = (saConfig?.nested as Record<string, unknown>)
-				?.properties as Record<string, unknown> | undefined;
-			const saDeep = (saNested?.deep as Record<string, unknown>)?.properties as
-				| Record<string, unknown>
-				| undefined;
-			expect(saDeep?.value).toEqual({ type: "string" });
+			// No coerceSchema → "456" → number
+			expect(
+				getPropAt(
+					result.outputSchema as JSONSchema7,
+					"config",
+					"nested",
+					"deep",
+					"value",
+				),
+			).toEqual({ type: "number" });
 		});
 	});
 
-	// ─── Primitive Literals (number, boolean, null) Are Not Affected ─────────
+	// ─── JS Primitive Literals Are Not Affected ──────────────────────────────
 
-	describe("JS primitive literals are not affected by type coercion", () => {
-		test("numeric JS literal → always integer/number regardless of schema", () => {
-			const result = engine.analyze(
-				{
-					accountId: 42,
-				},
-				complexSchema,
-			);
-			expect(result.valid).toBe(true);
-			// JS number 42 → inferPrimitiveSchema → integer, not affected by schema
-			expect(
-				(
-					(result.outputSchema as Record<string, unknown>)?.properties as
-						| Record<string, unknown>
-						| undefined
-				)?.accountId,
-			).toEqual({
-				type: "integer",
+	describe("JS primitive literals are not affected by coerceSchema", () => {
+		test("numeric JS literal → always integer/number regardless of coerceSchema", () => {
+			const result = engine.analyze({ accountId: 42 }, complexSchema, {
+				coerceSchema: complexSchema,
 			});
+			expect(result.valid).toBe(true);
+			const props = getProps(result.outputSchema as JSONSchema7);
+			// JS number 42 → inferPrimitiveSchema → integer, coerceSchema irrelevant
+			expect(props?.accountId).toEqual({ type: "integer" });
 		});
 
-		test("boolean JS literal → always boolean regardless of schema", () => {
-			const result = engine.analyze(
-				{
-					accountId: true,
-				},
-				complexSchema,
-			);
-			expect(result.valid).toBe(true);
-			expect(
-				(
-					(result.outputSchema as Record<string, unknown>)?.properties as
-						| Record<string, unknown>
-						| undefined
-				)?.accountId,
-			).toEqual({
-				type: "boolean",
+		test("boolean JS literal → always boolean regardless of coerceSchema", () => {
+			const result = engine.analyze({ accountId: true }, complexSchema, {
+				coerceSchema: complexSchema,
 			});
+			expect(result.valid).toBe(true);
+			const props = getProps(result.outputSchema as JSONSchema7);
+			expect(props?.accountId).toEqual({ type: "boolean" });
 		});
 
-		test("null JS literal → always null regardless of schema", () => {
-			const result = engine.analyze(
-				{
-					accountId: null,
-				},
-				complexSchema,
-			);
-			expect(result.valid).toBe(true);
-			expect(
-				(
-					(result.outputSchema as Record<string, unknown>)?.properties as
-						| Record<string, unknown>
-						| undefined
-				)?.accountId,
-			).toEqual({
-				type: "null",
+		test("null JS literal → always null regardless of coerceSchema", () => {
+			const result = engine.analyze({ accountId: null }, complexSchema, {
+				coerceSchema: complexSchema,
 			});
+			expect(result.valid).toBe(true);
+			const props = getProps(result.outputSchema as JSONSchema7);
+			expect(props?.accountId).toEqual({ type: "null" });
 		});
 	});
 
-	// ─── The Mega Test: Everything Combined ──────────────────────────────────
+	// ─── The Mega Test: Everything Combined with coerceSchema ────────────────
 
-	describe("mega integration test — all features coexisting", () => {
-		test("deeply nested object with static coercion, expressions, #if, #each, #with, unknown props, and literals", () => {
+	describe("mega integration test — all features with coerceSchema", () => {
+		test("deeply nested object with coerceSchema coercion, expressions, #if, unknown props, and literals", () => {
 			const result = engine.analyze(
 				{
-					// Static literal coerced by schema (string schema → stays string)
+					// Static literal coerced by coerceSchema (string → stays string)
 					accountId: "12345",
 					// Expression resolved from inputSchema
 					name: "{{name}}",
-					// JS numeric literal (not affected by schema)
+					// JS numeric literal (not affected by coerceSchema)
 					priority: 7,
-					// Static literal coerced by schema (number schema → becomes number)
+					// Static literal coerced by coerceSchema (number → becomes number)
 					balance: "500.25",
 					// Mixed template → always string
 					greeting: "Hello {{name}}!",
@@ -728,47 +1141,47 @@ describe("schema-driven type coercion — comprehensive stress tests", () => {
 					notInSchema: "9999",
 					// Unknown property → falls back to string (non-numeric)
 					alsoNotInSchema: "hello",
-					// Deep nesting with schema coercion
+					// Deep nesting with coerceSchema coercion
 					config: {
-						// String schema → "3" stays string
+						// coerceSchema: string → "3" stays string
 						maxRetries: "3",
-						// Number schema → "5000" becomes number
+						// coerceSchema: number → "5000" becomes number
 						timeout: "5000",
 						// Expression
 						enabled: "{{active}}",
 						nested: {
 							deep: {
-								// String schema → "42" stays string
+								// coerceSchema: string → "42" stays string
 								value: "42",
-								// Integer schema → "10" becomes integer
+								// coerceSchema: integer → "10" becomes integer
 								count: "10",
 								// Expression
 								flag: "{{active}}",
 								ultraDeep: {
-									// String schema → "100" stays string
+									// coerceSchema: string → "100" stays string
 									finalValue: "100",
-									// Number schema → "99" becomes number
+									// coerceSchema: number → "99" becomes number
 									finalNumber: "99",
 								},
 							},
 						},
 					},
-					// Nested object with schema
+					// Nested object with coerceSchema
 					metadata: {
-						// String schema → "admin" stays string
+						// coerceSchema: string → "admin" stays string
 						role: "admin",
-						// Number schema → "5" becomes number
+						// coerceSchema: number → "5" becomes number
 						level: "5",
 					},
 				},
 				complexSchema,
+				{ coerceSchema: complexSchema },
 			);
 
 			expect(result.valid).toBe(true);
 			expect(result.diagnostics).toEqual([]);
 
-			const props = (result.outputSchema as Record<string, unknown>)
-				?.properties as Record<string, unknown> | undefined;
+			const props = getProps(result.outputSchema as JSONSchema7);
 
 			// ── Top-level properties ──────────────────────────────────────
 			expect(props?.accountId).toEqual({ type: "string" });
@@ -783,32 +1196,74 @@ describe("schema-driven type coercion — comprehensive stress tests", () => {
 			expect(props?.alsoNotInSchema).toEqual({ type: "string" });
 
 			// ── config (level 2) ──────────────────────────────────────────
-			const configProps = (props?.config as Record<string, unknown>)
-				?.properties as Record<string, unknown> | undefined;
-			expect(configProps?.maxRetries).toEqual({ type: "string" });
-			expect(configProps?.timeout).toEqual({ type: "number" });
-			expect(configProps?.enabled).toEqual({ type: "boolean" });
+			expect(
+				getPropAt(result.outputSchema as JSONSchema7, "config", "maxRetries"),
+			).toEqual({ type: "string" });
+			expect(
+				getPropAt(result.outputSchema as JSONSchema7, "config", "timeout"),
+			).toEqual({ type: "number" });
+			expect(
+				getPropAt(result.outputSchema as JSONSchema7, "config", "enabled"),
+			).toEqual({ type: "boolean" });
 
 			// ── config.nested.deep (level 4) ──────────────────────────────
-			const nestedMega = (configProps?.nested as Record<string, unknown>)
-				?.properties as Record<string, unknown> | undefined;
-			const deepProps = (nestedMega?.deep as Record<string, unknown>)
-				?.properties as Record<string, unknown> | undefined;
-			expect(deepProps?.value).toEqual({ type: "string" });
-			expect(deepProps?.count).toEqual({ type: "integer" });
-			expect(deepProps?.flag).toEqual({ type: "boolean" });
+			expect(
+				getPropAt(
+					result.outputSchema as JSONSchema7,
+					"config",
+					"nested",
+					"deep",
+					"value",
+				),
+			).toEqual({ type: "string" });
+			expect(
+				getPropAt(
+					result.outputSchema as JSONSchema7,
+					"config",
+					"nested",
+					"deep",
+					"count",
+				),
+			).toEqual({ type: "integer" });
+			expect(
+				getPropAt(
+					result.outputSchema as JSONSchema7,
+					"config",
+					"nested",
+					"deep",
+					"flag",
+				),
+			).toEqual({ type: "boolean" });
 
 			// ── config.nested.deep.ultraDeep (level 5) ────────────────────
-			const ultraDeepProps = (deepProps?.ultraDeep as Record<string, unknown>)
-				?.properties as Record<string, unknown> | undefined;
-			expect(ultraDeepProps?.finalValue).toEqual({ type: "string" });
-			expect(ultraDeepProps?.finalNumber).toEqual({ type: "number" });
+			expect(
+				getPropAt(
+					result.outputSchema as JSONSchema7,
+					"config",
+					"nested",
+					"deep",
+					"ultraDeep",
+					"finalValue",
+				),
+			).toEqual({ type: "string" });
+			expect(
+				getPropAt(
+					result.outputSchema as JSONSchema7,
+					"config",
+					"nested",
+					"deep",
+					"ultraDeep",
+					"finalNumber",
+				),
+			).toEqual({ type: "number" });
 
 			// ── metadata (level 2) ────────────────────────────────────────
-			const metaProps = (props?.metadata as Record<string, unknown>)
-				?.properties as Record<string, unknown> | undefined;
-			expect(metaProps?.role).toEqual({ type: "string" });
-			expect(metaProps?.level).toEqual({ type: "number" });
+			expect(
+				getPropAt(result.outputSchema as JSONSchema7, "metadata", "role"),
+			).toEqual({ type: "string" });
+			expect(
+				getPropAt(result.outputSchema as JSONSchema7, "metadata", "level"),
+			).toEqual({ type: "number" });
 		});
 
 		test("mega analyzeAndExecute — analysis types correct AND execution values correct", () => {
@@ -843,14 +1298,14 @@ describe("schema-driven type coercion — comprehensive stress tests", () => {
 				},
 				complexSchema,
 				complexData,
+				{ coerceSchema: complexSchema },
 			);
 
 			expect(analysis.valid).toBe(true);
 			expect(analysis.diagnostics).toEqual([]);
 
 			// ── Analysis types ─────────────────────────────────────────────
-			const props = (analysis.outputSchema as Record<string, unknown>)
-				?.properties as Record<string, unknown> | undefined;
+			const props = getProps(analysis.outputSchema as JSONSchema7);
 			expect(props?.accountId).toEqual({ type: "string" });
 			expect(props?.name).toEqual({ type: "string" });
 			expect(props?.age).toEqual({ type: "number" });
@@ -861,118 +1316,125 @@ describe("schema-driven type coercion — comprehensive stress tests", () => {
 			expect(props?.isNull).toEqual({ type: "null" });
 			expect(props?.notInSchema).toEqual({ type: "number" });
 
-			const configProps = (props?.config as Record<string, unknown>)
-				?.properties as Record<string, unknown> | undefined;
-			expect(configProps?.maxRetries).toEqual({ type: "string" });
-			expect(configProps?.timeout).toEqual({ type: "number" });
+			expect(
+				getPropAt(analysis.outputSchema as JSONSchema7, "config", "maxRetries"),
+			).toEqual({ type: "string" });
+			expect(
+				getPropAt(analysis.outputSchema as JSONSchema7, "config", "timeout"),
+			).toEqual({ type: "number" });
+			expect(
+				getPropAt(
+					analysis.outputSchema as JSONSchema7,
+					"config",
+					"nested",
+					"deep",
+					"value",
+				),
+			).toEqual({ type: "string" });
 
-			const nestedM2 = (configProps?.nested as Record<string, unknown>)
-				?.properties as Record<string, unknown> | undefined;
-			const deepProps = (nestedM2?.deep as Record<string, unknown>)
-				?.properties as Record<string, unknown> | undefined;
-			expect(deepProps?.value).toEqual({ type: "string" });
+			expect(
+				getPropAt(
+					analysis.outputSchema as JSONSchema7,
+					"config",
+					"nested",
+					"deep",
+					"ultraDeep",
+					"finalValue",
+				),
+			).toEqual({ type: "string" });
 
-			const ultraDeepProps = (deepProps?.ultraDeep as Record<string, unknown>)
-				?.properties as Record<string, unknown> | undefined;
-			expect(ultraDeepProps?.finalValue).toEqual({ type: "string" });
-
-			const metaProps = (props?.metadata as Record<string, unknown>)
-				?.properties as Record<string, unknown> | undefined;
-			expect(metaProps?.role).toEqual({ type: "string" });
-			expect(metaProps?.level).toEqual({ type: "number" });
+			expect(
+				getPropAt(analysis.outputSchema as JSONSchema7, "metadata", "role"),
+			).toEqual({ type: "string" });
+			expect(
+				getPropAt(analysis.outputSchema as JSONSchema7, "metadata", "level"),
+			).toEqual({ type: "number" });
 
 			// ── Execution values ───────────────────────────────────────────
+			// With coerceSchema provided, static literals are coerced at
+			// execution time to match the declared schema type.
 			const v = value as Record<string, unknown>;
+			// accountId: coerceSchema says string → stays "12345"
 			expect(v.accountId).toBe("12345");
+			// name: {{name}} resolves from data → "Alice"
 			expect(v.name).toBe("Alice");
+			// age: {{age}} resolves from data → 30
 			expect(v.age).toBe(30);
-			expect(v.balance).toBe("500.25");
+			// balance: coerceSchema says number → "500.25" coerced to 500.25
+			expect(v.balance).toBe(500.25);
+			// greeting: mixed template → always string
 			expect(v.greeting).toBe("Hello Alice!");
+			// active: {{active}} resolves from data → true
 			expect(v.active).toBe(true);
+			// priority: JS literal 7 → passthrough
 			expect(v.priority).toBe(7);
+			// isNull: JS literal null → passthrough
 			expect(v.isNull).toBe(null);
-			// notInSchema: static "42" → execution renders as string "42",
-			// but since there's no expression, Handlebars just returns the raw text
-			expect(v.notInSchema).toBe("42");
+			// notInSchema: not in coerceSchema → auto-detect → number
+			expect(v.notInSchema).toBe(42);
 
 			const vConfig = v.config as Record<string, unknown>;
+			// maxRetries: coerceSchema says string → stays "3"
 			expect(vConfig.maxRetries).toBe("3");
-			expect(vConfig.timeout).toBe("5000");
+			// timeout: coerceSchema says number → "5000" coerced to 5000
+			expect(vConfig.timeout).toBe(5000);
 
 			const vNested = vConfig.nested as Record<string, unknown>;
-			const vDeep = (vNested as Record<string, unknown>).deep as Record<
-				string,
-				unknown
-			>;
+			const vDeep = vNested.deep as Record<string, unknown>;
+			// value: coerceSchema says string → stays "999"
 			expect(vDeep.value).toBe("999");
+			// count: {{score}} resolves from data → 95
 			expect(vDeep.count).toBe(95); // {{score}} → 95
 
 			const vUltraDeep = vDeep.ultraDeep as Record<string, unknown>;
+			// finalValue: coerceSchema says string → stays "100"
 			expect(vUltraDeep.finalValue).toBe("100");
 
 			const vMeta = v.metadata as Record<string, unknown>;
+			// role: coerceSchema says string → stays "admin"
 			expect(vMeta.role).toBe("admin");
-			expect(vMeta.level).toBe("5");
+			// level: coerceSchema says number → "5" coerced to 5
+			expect(vMeta.level).toBe(5);
 		});
 	});
 
 	// ─── Edge Cases ──────────────────────────────────────────────────────────
 
 	describe("edge cases", () => {
-		test("empty string template with string schema → string", () => {
-			const result = engine.analyze({ accountId: "" }, complexSchema);
-			expect(result.valid).toBe(true);
-			expect(
-				(
-					(result.outputSchema as Record<string, unknown>)?.properties as
-						| Record<string, unknown>
-						| undefined
-				)?.accountId,
-			).toEqual({
-				type: "string",
+		test("empty string template with coerceSchema string → string", () => {
+			const result = engine.analyze({ accountId: "" }, complexSchema, {
+				coerceSchema: complexSchema,
 			});
+			expect(result.valid).toBe(true);
+			const props = getProps(result.outputSchema as JSONSchema7);
+			expect(props?.accountId).toEqual({ type: "string" });
 		});
 
-		test("whitespace-only string with string schema → string", () => {
-			const result = engine.analyze({ accountId: "   " }, complexSchema);
-			expect(result.valid).toBe(true);
-			expect(
-				(
-					(result.outputSchema as Record<string, unknown>)?.properties as
-						| Record<string, unknown>
-						| undefined
-				)?.accountId,
-			).toEqual({
-				type: "string",
+		test("whitespace-only string with coerceSchema string → string", () => {
+			const result = engine.analyze({ accountId: "   " }, complexSchema, {
+				coerceSchema: complexSchema,
 			});
+			expect(result.valid).toBe(true);
+			const props = getProps(result.outputSchema as JSONSchema7);
+			expect(props?.accountId).toEqual({ type: "string" });
 		});
 
-		test("negative number string with number schema → number", () => {
-			const result = engine.analyze({ balance: "-500" }, complexSchema);
-			expect(result.valid).toBe(true);
-			expect(
-				(
-					(result.outputSchema as Record<string, unknown>)?.properties as
-						| Record<string, unknown>
-						| undefined
-				)?.balance,
-			).toEqual({
-				type: "number",
+		test("negative number string with coerceSchema number → number", () => {
+			const result = engine.analyze({ balance: "-500" }, complexSchema, {
+				coerceSchema: complexSchema,
 			});
+			expect(result.valid).toBe(true);
+			const props = getProps(result.outputSchema as JSONSchema7);
+			expect(props?.balance).toEqual({ type: "number" });
 		});
 
-		test("decimal string with number schema → number", () => {
-			const result = engine.analyze({ balance: "3.14159" }, complexSchema);
-			expect(result.valid).toBe(true);
-			expect(
-				(
-					(result.outputSchema as Record<string, unknown>)?.properties as
-						| Record<string, unknown>
-						| undefined
-				)?.balance,
-			).toEqual({
-				type: "number",
+		test("decimal string with coerceSchema number → number", () => {
+			const result = engine.analyze({ balance: "3.14159" }, complexSchema, {
+				coerceSchema: complexSchema,
 			});
+			expect(result.valid).toBe(true);
+			const props = getProps(result.outputSchema as JSONSchema7);
+			expect(props?.balance).toEqual({ type: "number" });
 		});
 
 		test("empty object template → empty object output", () => {
@@ -991,81 +1453,118 @@ describe("schema-driven type coercion — comprehensive stress tests", () => {
 				complexSchema,
 			);
 			expect(result.valid).toBe(true);
-			const ecProps = (result.outputSchema as Record<string, unknown>)
-				?.properties as Record<string, unknown> | undefined;
-			const ecConfig = (ecProps?.config as Record<string, unknown>)
-				?.properties as Record<string, unknown> | undefined;
-			const ecNested = (ecConfig?.nested as Record<string, unknown>)
-				?.properties as Record<string, unknown> | undefined;
-			const deepProps = ecNested?.deep;
-			expect(deepProps).toEqual({
+			expect(
+				getPropAt(
+					result.outputSchema as JSONSchema7,
+					"config",
+					"nested",
+					"deep",
+				),
+			).toEqual({
 				type: "object",
 				properties: {},
 				required: [],
 			});
 		});
 
-		test("schema with no type for a property → falls back to detectLiteralType", () => {
-			const schemaWithNoType: JSONSchema7 = {
-				type: "object",
-				properties: {
-					value: {}, // No type declared
+		test("coerceSchema with no type for a property → falls back to detectLiteralType", () => {
+			const result = engine.analyze(
+				{ value: "123" },
+				{ type: "object", properties: {} },
+				{
+					coerceSchema: {
+						type: "object",
+						properties: { value: {} }, // No type declared
+					},
 				},
-			};
-			const result = engine.analyze({ value: "123" }, schemaWithNoType);
+			);
 			expect(result.valid).toBe(true);
-			// Schema has no type → doesn't match primitive type check → falls back to detectLiteralType
-			expect(
-				(
-					(result.outputSchema as Record<string, unknown>)?.properties as
-						| Record<string, unknown>
-						| undefined
-				)?.value,
-			).toEqual({
-				type: "number",
-			});
+			const props = getProps(result.outputSchema as JSONSchema7);
+			// coerceSchema has no type → doesn't match primitive type check → falls back
+			expect(props?.value).toEqual({ type: "number" });
 		});
 
-		test("schema with array type for a property → falls back to detectLiteralType", () => {
-			const schemaWithArrayType: JSONSchema7 = {
-				type: "object",
-				properties: {
-					value: { type: "array", items: { type: "string" } },
+		test("coerceSchema with array type for a property → falls back to detectLiteralType", () => {
+			const result = engine.analyze(
+				{ value: "123" },
+				{ type: "object", properties: {} },
+				{
+					coerceSchema: {
+						type: "object",
+						properties: { value: { type: "array", items: { type: "string" } } },
+					},
 				},
-			};
-			const result = engine.analyze({ value: "123" }, schemaWithArrayType);
+			);
 			expect(result.valid).toBe(true);
-			// Schema type is "array" (not a primitive) → falls back to detectLiteralType
-			expect(
-				(
-					(result.outputSchema as Record<string, unknown>)?.properties as
-						| Record<string, unknown>
-						| undefined
-				)?.value,
-			).toEqual({
-				type: "number",
-			});
+			const props = getProps(result.outputSchema as JSONSchema7);
+			// coerceSchema type is "array" (not a primitive) → falls back
+			expect(props?.value).toEqual({ type: "number" });
 		});
 
-		test("inputSchema is a primitive type (not object) — direct string template", () => {
-			// When inputSchema itself is a primitive type, the template is a
-			// direct string and the schema constrains its output type.
+		test("coerceSchema with non-primitive type → falls back to detectLiteralType", () => {
+			const result = engine.analyze(
+				"123",
+				{ type: "object", properties: {} },
+				{
+					coerceSchema: { type: "object", properties: {} },
+				},
+			);
+			expect(result.valid).toBe(true);
+			expect(result.outputSchema).toEqual({ type: "number" });
+		});
+
+		test("coerceSchema with no type → falls back to detectLiteralType", () => {
+			const result = engine.analyze(
+				"123",
+				{ type: "object", properties: {} },
+				{
+					coerceSchema: {},
+				},
+			);
+			expect(result.valid).toBe(true);
+			expect(result.outputSchema).toEqual({ type: "number" });
+		});
+
+		test("coerceSchema is a primitive type (not object) — direct string template", () => {
+			expect(
+				engine.analyze(
+					"42",
+					{ type: "string" },
+					{ coerceSchema: { type: "string" } },
+				).outputSchema,
+			).toEqual({ type: "string" });
+			expect(
+				engine.analyze(
+					"42",
+					{ type: "string" },
+					{ coerceSchema: { type: "number" } },
+				).outputSchema,
+			).toEqual({ type: "number" });
+			expect(
+				engine.analyze(
+					"42",
+					{ type: "string" },
+					{ coerceSchema: { type: "integer" } },
+				).outputSchema,
+			).toEqual({ type: "integer" });
+		});
+
+		test("without coerceSchema, inputSchema primitive type does NOT influence output", () => {
+			// This is the critical test: inputSchema is { type: "string" } but
+			// without coerceSchema, "42" should be detected as number
 			expect(engine.analyze("42", { type: "string" }).outputSchema).toEqual({
-				type: "string",
-			});
-			expect(engine.analyze("42", { type: "number" }).outputSchema).toEqual({
 				type: "number",
 			});
 			expect(engine.analyze("42", { type: "integer" }).outputSchema).toEqual({
-				type: "integer",
+				type: "number",
 			});
 		});
 	});
 
-	// ─── Schema with additionalProperties ────────────────────────────────────
+	// ─── Schema with additionalProperties + coerceSchema ─────────────────────
 
-	describe("schema with additionalProperties", () => {
-		test("additionalProperties: true → unknown properties fall back to detectLiteralType", () => {
+	describe("schema with additionalProperties + coerceSchema", () => {
+		test("additionalProperties: true in coerceSchema → unknown properties fall back to detectLiteralType", () => {
 			const schema: JSONSchema7 = {
 				type: "object",
 				properties: {
@@ -1073,18 +1572,38 @@ describe("schema-driven type coercion — comprehensive stress tests", () => {
 				},
 				additionalProperties: true,
 			};
-			const result = engine.analyze({ name: "123", extra: "456" }, schema);
+			const result = engine.analyze({ name: "123", extra: "456" }, schema, {
+				coerceSchema: schema,
+			});
 			expect(result.valid).toBe(true);
-			const props = (result.outputSchema as Record<string, unknown>)
-				?.properties as Record<string, unknown> | undefined;
-			// name has string schema → "123" stays string
+			const props = getProps(result.outputSchema as JSONSchema7);
+			// name has coerceSchema string → "123" stays string
 			expect(props?.name).toEqual({ type: "string" });
 			// extra: additionalProperties is true → resolveSchemaPath returns {}
 			// → no type → falls back to detectLiteralType → number
 			expect(props?.extra).toEqual({ type: "number" });
 		});
 
-		test("additionalProperties with typed schema → coerces extra properties", () => {
+		test("additionalProperties with typed schema in coerceSchema → coerces extra properties", () => {
+			const schema: JSONSchema7 = {
+				type: "object",
+				properties: {
+					name: { type: "string" },
+				},
+				additionalProperties: { type: "string" },
+			};
+			const result = engine.analyze({ name: "123", extra: "456" }, schema, {
+				coerceSchema: schema,
+			});
+			expect(result.valid).toBe(true);
+			const props = getProps(result.outputSchema as JSONSchema7);
+			// name: coerceSchema string → "123" stays string
+			expect(props?.name).toEqual({ type: "string" });
+			// extra: additionalProperties says string → "456" stays string
+			expect(props?.extra).toEqual({ type: "string" });
+		});
+
+		test("additionalProperties without coerceSchema → all detectLiteralType", () => {
 			const schema: JSONSchema7 = {
 				type: "object",
 				properties: {
@@ -1094,12 +1613,77 @@ describe("schema-driven type coercion — comprehensive stress tests", () => {
 			};
 			const result = engine.analyze({ name: "123", extra: "456" }, schema);
 			expect(result.valid).toBe(true);
-			const props = (result.outputSchema as Record<string, unknown>)
-				?.properties as Record<string, unknown> | undefined;
-			// name: string schema → "123" stays string
+			const props = getProps(result.outputSchema as JSONSchema7);
+			// Without coerceSchema → all detectLiteralType → number
+			expect(props?.name).toEqual({ type: "number" });
+			expect(props?.extra).toEqual({ type: "number" });
+		});
+	});
+
+	// ─── coerceSchema separate from inputSchema ──────────────────────────────
+
+	describe("coerceSchema is independent from inputSchema", () => {
+		test("inputSchema and coerceSchema can have different structures", () => {
+			const inputSchema: JSONSchema7 = {
+				type: "object",
+				properties: {
+					userName: { type: "string" },
+					userAge: { type: "number" },
+				},
+			};
+			const coerceSchema: JSONSchema7 = {
+				type: "object",
+				properties: {
+					meetingId: { type: "string" },
+					count: { type: "integer" },
+				},
+			};
+			const result = engine.analyze(
+				{
+					meetingId: "12345",
+					count: "42",
+					label: "{{userName}}",
+				},
+				inputSchema,
+				{ coerceSchema },
+			);
+			expect(result.valid).toBe(true);
+			const props = getProps(result.outputSchema as JSONSchema7);
+			// meetingId: coerceSchema says string → stays string
+			expect(props?.meetingId).toEqual({ type: "string" });
+			// count: coerceSchema says integer → becomes integer
+			expect(props?.count).toEqual({ type: "integer" });
+			// label: Handlebars → resolves from inputSchema as string
+			expect(props?.label).toEqual({ type: "string" });
+		});
+
+		test("coerceSchema with properties not in inputSchema — no cross-contamination", () => {
+			const inputSchema: JSONSchema7 = {
+				type: "object",
+				properties: {
+					name: { type: "string" },
+				},
+			};
+			const coerceSchema: JSONSchema7 = {
+				type: "object",
+				properties: {
+					code: { type: "string" },
+				},
+			};
+			const result = engine.analyze(
+				{
+					code: "404",
+					name: "{{name}}",
+				},
+				inputSchema,
+				{ coerceSchema },
+			);
+			expect(result.valid).toBe(true);
+			const props = getProps(result.outputSchema as JSONSchema7);
+			// code: coerceSchema says string → "404" stays string
+			expect(props?.code).toEqual({ type: "string" });
+			// name: Handlebars → resolved from inputSchema as string
 			expect(props?.name).toEqual({ type: "string" });
-			// extra: additionalProperties says string → "456" stays string
-			expect(props?.extra).toEqual({ type: "string" });
 		});
 	});
 });

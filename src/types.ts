@@ -256,6 +256,12 @@ export interface ExecuteOptions {
 	identifierData?: Record<number, Record<string, unknown>>;
 	/** Schemas by identifier (for static validation with identifiers) */
 	identifierSchemas?: Record<number, JSONSchema7>;
+	/**
+	 * Explicit coercion schema for the output value.
+	 * When provided with a primitive type, the execution result will be
+	 * coerced to match the declared type instead of using auto-detection.
+	 */
+	coerceSchema?: JSONSchema7;
 }
 
 // ─── Combined Analyze-and-Execute Options ────────────────────────────────────
@@ -267,6 +273,12 @@ export interface AnalyzeAndExecuteOptions {
 	identifierSchemas?: Record<number, JSONSchema7>;
 	/** Data by identifier `{ [id]: { key: value } }` for execution */
 	identifierData?: Record<number, Record<string, unknown>>;
+	/**
+	 * Explicit coercion schema for the output value.
+	 * When provided with a primitive type, the execution result will be
+	 * coerced to match the declared type instead of using auto-detection.
+	 */
+	coerceSchema?: JSONSchema7;
 }
 
 // ─── Custom Helpers ──────────────────────────────────────────────────────────

@@ -88,16 +88,33 @@ interface AnalysisContext {
 	/** Registered custom helpers (for static analysis) */
 	helpers?: Map<string, HelperDefinition>;
 	/**
-	 * Expected output type from the inputSchema.
-	 * When the inputSchema declares a specific type (e.g. `{ type: "string" }`),
-	 * static literal values like `"123"` should respect that type instead of
-	 * being auto-detected as `number`. This allows the schema contract to
-	 * override the default `detectLiteralType` inference.
+	 * Explicit coercion schema provided by the caller.
+	 * When set, static literal values like `"123"` will respect the type
+	 * declared in this schema instead of being auto-detected by
+	 * `detectLiteralType`. Unlike the previous `expectedOutputType`,
+	 * this is NEVER derived from the inputSchema — it must be explicitly
+	 * provided via the `coerceSchema` option.
 	 */
-	expectedOutputType?: JSONSchema7;
+	coerceSchema?: JSONSchema7;
 }
 
 // ─── Public API ──────────────────────────────────────────────────────────────
+
+/** Options for the standalone `analyze()` function */
+export interface AnalyzeOptions {
+	/** Schemas by template identifier (for the `{{key:N}}` syntax) */
+	identifierSchemas?: Record<number, JSONSchema7>;
+	/**
+	 * Explicit coercion schema. When provided, static literal values
+	 * will respect the types declared in this schema instead of being
+	 * auto-detected by `detectLiteralType`.
+	 *
+	 * This schema is independent from the `inputSchema` (which describes
+	 * available variables) — it only controls the output type inference
+	 * for static content.
+	 */
+	coerceSchema?: JSONSchema7;
+}
 
 /**
  * Statically analyzes a template against a JSON Schema v7 describing the
@@ -107,26 +124,20 @@ interface AnalysisContext {
  *
  * @param template           - The template string (e.g. `"Hello {{user.name}}"`)
  * @param inputSchema        - JSON Schema v7 describing the available variables
- * @param identifierSchemas  - (optional) Schemas by identifier `{ [id]: JSONSchema7 }`
+ * @param options            - (optional) Analysis options (identifierSchemas, coerceSchema)
  * @returns An `AnalysisResult` containing validity, diagnostics, and the
  *          inferred output schema.
  */
 export function analyze(
 	template: TemplateInput,
 	inputSchema: JSONSchema7,
-	identifierSchemas?: Record<number, JSONSchema7>,
-	expectedOutputType?: JSONSchema7,
+	options?: AnalyzeOptions,
 ): AnalysisResult {
 	if (isArrayInput(template)) {
-		return analyzeArrayTemplate(template, inputSchema, identifierSchemas);
+		return analyzeArrayTemplate(template, inputSchema, options);
 	}
 	if (isObjectInput(template)) {
-		return analyzeObjectTemplate(
-			template,
-			inputSchema,
-			identifierSchemas,
-			expectedOutputType,
-		);
+		return analyzeObjectTemplate(template, inputSchema, options);
 	}
 	if (isLiteralInput(template)) {
 		return {
@@ -136,13 +147,9 @@ export function analyze(
 		};
 	}
 	const ast = parse(template);
-	// When an explicit expectedOutputType is provided (e.g. from an object
-	// template property), use it. Otherwise, fall back to the inputSchema
-	// itself — when the inputSchema has a primitive type (e.g. { type: "string" }),
-	// it constrains the output type of static literal values.
 	return analyzeFromAst(ast, template, inputSchema, {
-		identifierSchemas,
-		expectedOutputType: expectedOutputType ?? inputSchema,
+		identifierSchemas: options?.identifierSchemas,
+		coerceSchema: options?.coerceSchema,
 	});
 }
 
@@ -154,10 +161,10 @@ export function analyze(
 function analyzeArrayTemplate(
 	template: TemplateInputArray,
 	inputSchema: JSONSchema7,
-	identifierSchemas?: Record<number, JSONSchema7>,
+	options?: AnalyzeOptions,
 ): AnalysisResult {
 	return aggregateArrayAnalysis(template.length, (index) =>
-		analyze(template[index] as TemplateInput, inputSchema, identifierSchemas),
+		analyze(template[index] as TemplateInput, inputSchema, options),
 	);
 }
 
@@ -169,23 +176,20 @@ function analyzeArrayTemplate(
 function analyzeObjectTemplate(
 	template: TemplateInputObject,
 	inputSchema: JSONSchema7,
-	identifierSchemas?: Record<number, JSONSchema7>,
-	expectedOutputType?: JSONSchema7,
+	options?: AnalyzeOptions,
 ): AnalysisResult {
-	// Use the expectedOutputType (if it describes an object) to resolve
-	// child property schemas. This is critical for deeply nested objects:
-	// when the template is `{ a: { b: { c: "123" } } }`, each level must
-	// resolve its children from the *corresponding* sub-schema, not from
-	// the root inputSchema.
-	const schemaForProperties = expectedOutputType ?? inputSchema;
+	const coerceSchema = options?.coerceSchema;
 	return aggregateObjectAnalysis(Object.keys(template), (key) => {
-		const propertySchema = resolveSchemaPath(schemaForProperties, [key]);
-		return analyze(
-			template[key] as TemplateInput,
-			inputSchema,
-			identifierSchemas,
-			propertySchema,
-		);
+		// When a coerceSchema is provided, resolve the child property schema
+		// from the coercion schema. This allows deeply nested objects to
+		// propagate coercion at every level.
+		const childCoerceSchema = coerceSchema
+			? resolveSchemaPath(coerceSchema, [key])
+			: undefined;
+		return analyze(template[key] as TemplateInput, inputSchema, {
+			identifierSchemas: options?.identifierSchemas,
+			coerceSchema: childCoerceSchema,
+		});
 	});
 }
 
@@ -209,11 +213,11 @@ export function analyzeFromAst(
 		identifierSchemas?: Record<number, JSONSchema7>;
 		helpers?: Map<string, HelperDefinition>;
 		/**
-		 * When set, provides the expected output type from the parent context
-		 * (e.g. the inputSchema's property sub-schema for an object template key).
-		 * Static literal values will respect this type instead of auto-detecting.
+		 * Explicit coercion schema. When set, static literal values will
+		 * respect the types declared in this schema instead of auto-detecting.
+		 * Unlike `expectedOutputType`, this is NEVER derived from inputSchema.
 		 */
-		expectedOutputType?: JSONSchema7;
+		coerceSchema?: JSONSchema7;
 	},
 ): AnalysisResult {
 	// ── Reject unsupported schema features before analysis ────────────
@@ -235,7 +239,7 @@ export function analyzeFromAst(
 		template,
 		identifierSchemas: options?.identifierSchemas,
 		helpers: options?.helpers,
-		expectedOutputType: options?.expectedOutputType,
+		coerceSchema: options?.coerceSchema,
 	};
 
 	// Single pass: type inference + validation in one traversal.
@@ -490,19 +494,21 @@ function inferProgramType(
 
 		if (text === "") return { type: "string" };
 
-		// If the inputSchema declares a specific primitive type for this value,
-		// respect the schema contract instead of auto-detecting. For example,
-		// "123" with inputSchema `{ type: "string" }` should stay "string".
-		const expectedType = ctx.expectedOutputType?.type;
+		// If an explicit coerceSchema was provided and declares a specific
+		// primitive type, respect it instead of auto-detecting. For example,
+		// "123" with coerceSchema `{ type: "string" }` should stay "string".
+		// This only applies when coerceSchema is explicitly set — the
+		// inputSchema is NEVER used for coercion.
+		const coercedType = ctx.coerceSchema?.type;
 		if (
-			typeof expectedType === "string" &&
-			(expectedType === "string" ||
-				expectedType === "number" ||
-				expectedType === "integer" ||
-				expectedType === "boolean" ||
-				expectedType === "null")
+			typeof coercedType === "string" &&
+			(coercedType === "string" ||
+				coercedType === "number" ||
+				coercedType === "integer" ||
+				coercedType === "boolean" ||
+				coercedType === "null")
 		) {
-			return { type: expectedType };
+			return { type: coercedType };
 		}
 
 		const literalType = detectLiteralType(text);
