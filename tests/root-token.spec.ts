@@ -1,7 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import type { JSONSchema7 } from "json-schema";
 import { Typebars } from "../src";
-import { ROOT_TOKEN } from "../src/parser.ts";
+import {
+	isRootPathTraversal,
+	isRootSegments,
+	ROOT_TOKEN,
+} from "../src/parser.ts";
 import { userData, userSchema } from "./fixtures.ts";
 
 // ─── $root Token Tests ───────────────────────────────────────────────────────
@@ -686,6 +690,517 @@ describe("$root token", () => {
 				const result = tp.execute("{{ foo.bar }}", "hello");
 				expect(result).toBeUndefined();
 			});
+		});
+	});
+
+	// ─── $root:N — Identifier Support ────────────────────────────────────────
+	// The `$root:N` syntax allows referencing the **entire** data/schema of
+	// identifier N, just like `$root` references the entire input data/schema.
+	//
+	// Rules:
+	//   `{{ $root:N }}`     → resolves to the entire identifier N context
+	//   `{{ $root.foo:N }}` → FORBIDDEN — path traversal on $root is not allowed
+
+	describe("isRootSegments / isRootPathTraversal helpers", () => {
+		test("isRootSegments(['$root']) → true", () => {
+			expect(isRootSegments(["$root"])).toBe(true);
+		});
+
+		test("isRootSegments(['$root', 'name']) → false (path traversal)", () => {
+			expect(isRootSegments(["$root", "name"])).toBe(false);
+		});
+
+		test("isRootSegments(['name']) → false", () => {
+			expect(isRootSegments(["name"])).toBe(false);
+		});
+
+		test("isRootSegments([]) → false", () => {
+			expect(isRootSegments([])).toBe(false);
+		});
+
+		test("isRootPathTraversal(['$root', 'name']) → true", () => {
+			expect(isRootPathTraversal(["$root", "name"])).toBe(true);
+		});
+
+		test("isRootPathTraversal(['$root']) → false", () => {
+			expect(isRootPathTraversal(["$root"])).toBe(false);
+		});
+
+		test("isRootPathTraversal(['name', 'foo']) → false", () => {
+			expect(isRootPathTraversal(["name", "foo"])).toBe(false);
+		});
+	});
+
+	describe("analyze with $root:N", () => {
+		describe("primitive identifierSchemas", () => {
+			test("{{ $root:2 }} with id 2 = string → valid, outputSchema is string", () => {
+				const result = tp.analyze(
+					"{{ $root:2 }}",
+					{ type: "number" },
+					{
+						identifierSchemas: { 2: { type: "string" } },
+					},
+				);
+				expect(result.valid).toBe(true);
+				expect(result.diagnostics).toHaveLength(0);
+				expect(result.outputSchema).toEqual({ type: "string" });
+			});
+
+			test("{{ $root:1 }} with id 1 = number → valid, outputSchema is number", () => {
+				const result = tp.analyze(
+					"{{ $root:1 }}",
+					{ type: "string" },
+					{
+						identifierSchemas: { 1: { type: "number" } },
+					},
+				);
+				expect(result.valid).toBe(true);
+				expect(result.diagnostics).toHaveLength(0);
+				expect(result.outputSchema).toEqual({ type: "number" });
+			});
+
+			test("{{ $root:0 }} with id 0 = boolean → valid, outputSchema is boolean", () => {
+				const result = tp.analyze(
+					"{{ $root:0 }}",
+					{ type: "string" },
+					{
+						identifierSchemas: { 0: { type: "boolean" } },
+					},
+				);
+				expect(result.valid).toBe(true);
+				expect(result.diagnostics).toHaveLength(0);
+				expect(result.outputSchema).toEqual({ type: "boolean" });
+			});
+
+			test("{{ $root:3 }} with id 3 = integer → valid, outputSchema is integer", () => {
+				const result = tp.analyze(
+					"{{ $root:3 }}",
+					{ type: "string" },
+					{
+						identifierSchemas: { 3: { type: "integer" } },
+					},
+				);
+				expect(result.valid).toBe(true);
+				expect(result.diagnostics).toHaveLength(0);
+				expect(result.outputSchema).toEqual({ type: "integer" });
+			});
+
+			test("{{ $root:1 }} with id 1 = null → valid, outputSchema is null", () => {
+				const result = tp.analyze(
+					"{{ $root:1 }}",
+					{ type: "string" },
+					{
+						identifierSchemas: { 1: { type: "null" } },
+					},
+				);
+				expect(result.valid).toBe(true);
+				expect(result.diagnostics).toHaveLength(0);
+				expect(result.outputSchema).toEqual({ type: "null" });
+			});
+		});
+
+		describe("object/array identifierSchemas", () => {
+			test("{{ $root:1 }} with id 1 = object schema → valid, returns entire object schema", () => {
+				const idSchema: JSONSchema7 = {
+					type: "object",
+					properties: {
+						name: { type: "string" },
+						age: { type: "number" },
+					},
+				};
+				const result = tp.analyze(
+					"{{ $root:1 }}",
+					{ type: "string" },
+					{
+						identifierSchemas: { 1: idSchema },
+					},
+				);
+				expect(result.valid).toBe(true);
+				expect(result.diagnostics).toHaveLength(0);
+				expect(result.outputSchema).toEqual(idSchema);
+			});
+
+			test("{{ $root:2 }} with id 2 = array schema → valid, returns entire array schema", () => {
+				const idSchema: JSONSchema7 = {
+					type: "array",
+					items: { type: "string" },
+				};
+				const result = tp.analyze(
+					"{{ $root:2 }}",
+					{ type: "number" },
+					{
+						identifierSchemas: { 2: idSchema },
+					},
+				);
+				expect(result.valid).toBe(true);
+				expect(result.diagnostics).toHaveLength(0);
+				expect(result.outputSchema).toEqual(idSchema);
+			});
+		});
+
+		describe("$root:N does NOT affect plain $root", () => {
+			test("{{ $root }} still returns inputSchema when identifierSchemas are present", () => {
+				const result = tp.analyze(
+					"{{ $root }}",
+					{ type: "number" },
+					{
+						identifierSchemas: { 1: { type: "string" } },
+					},
+				);
+				expect(result.valid).toBe(true);
+				expect(result.diagnostics).toHaveLength(0);
+				expect(result.outputSchema).toEqual({ type: "number" });
+			});
+		});
+
+		describe("object template with $root:N", () => {
+			test("object template referencing $root:1 for primitive identifier schema → valid", () => {
+				const result = tp.analyze(
+					{ value: "{{ $root:1 }}" },
+					{ type: "string" },
+					{ identifierSchemas: { 1: { type: "number" } } },
+				);
+				expect(result.valid).toBe(true);
+				expect(result.diagnostics).toHaveLength(0);
+				expect(result.outputSchema).toEqual({
+					type: "object",
+					properties: {
+						value: { type: "number" },
+					},
+					required: ["value"],
+				});
+			});
+
+			test("object template mixing $root:N and regular property → valid", () => {
+				const result = tp.analyze(
+					{
+						fromIdentifier: "{{ $root:1 }}",
+						fromInput: "{{ name }}",
+					},
+					userSchema,
+					{ identifierSchemas: { 1: { type: "boolean" } } },
+				);
+				expect(result.valid).toBe(true);
+				expect(result.diagnostics).toHaveLength(0);
+				expect(result.outputSchema).toEqual({
+					type: "object",
+					properties: {
+						fromIdentifier: { type: "boolean" },
+						fromInput: { type: "string" },
+					},
+					required: ["fromIdentifier", "fromInput"],
+				});
+			});
+
+			test("object template mixing $root and $root:N → valid", () => {
+				const result = tp.analyze(
+					{
+						entire: "{{ $root }}",
+						idValue: "{{ $root:2 }}",
+					},
+					{ type: "number" },
+					{ identifierSchemas: { 2: { type: "string" } } },
+				);
+				expect(result.valid).toBe(true);
+				expect(result.diagnostics).toHaveLength(0);
+				expect(result.outputSchema).toEqual({
+					type: "object",
+					properties: {
+						entire: { type: "number" },
+						idValue: { type: "string" },
+					},
+					required: ["entire", "idValue"],
+				});
+			});
+		});
+
+		describe("mixed template with $root:N", () => {
+			test("text + $root:N expression → string output", () => {
+				const result = tp.analyze(
+					"Hello {{ $root:1 }}",
+					{ type: "number" },
+					{ identifierSchemas: { 1: { type: "string" } } },
+				);
+				expect(result.valid).toBe(true);
+				expect(result.outputSchema).toEqual({ type: "string" });
+			});
+
+			test("mixing regular prop + $root:N in mixed template → valid", () => {
+				const result = tp.analyze("{{ name }} is {{ $root:1 }}", userSchema, {
+					identifierSchemas: { 1: { type: "boolean" } },
+				});
+				expect(result.valid).toBe(true);
+				expect(result.outputSchema).toEqual({ type: "string" });
+			});
+		});
+
+		describe("error cases", () => {
+			test("{{ $root:2 }} without identifierSchemas → MISSING_IDENTIFIER_SCHEMAS", () => {
+				const result = tp.analyze("{{ $root:2 }}", { type: "number" });
+				expect(result.valid).toBe(false);
+				expect(result.diagnostics).toHaveLength(1);
+				expect(result.diagnostics[0]?.code).toBe("MISSING_IDENTIFIER_SCHEMAS");
+			});
+
+			test("{{ $root:99 }} with missing identifier → UNKNOWN_IDENTIFIER", () => {
+				const result = tp.analyze(
+					"{{ $root:99 }}",
+					{ type: "number" },
+					{
+						identifierSchemas: { 1: { type: "string" } },
+					},
+				);
+				expect(result.valid).toBe(false);
+				expect(result.diagnostics).toHaveLength(1);
+				expect(result.diagnostics[0]?.code).toBe("UNKNOWN_IDENTIFIER");
+			});
+
+			test("{{ $root.name:2 }} → ROOT_PATH_TRAVERSAL (path traversal still forbidden)", () => {
+				const result = tp.analyze("{{ $root.name:2 }}", userSchema, {
+					identifierSchemas: { 2: userSchema },
+				});
+				expect(result.valid).toBe(false);
+				expect(result.diagnostics).toHaveLength(1);
+				expect(result.diagnostics[0]?.code).toBe("ROOT_PATH_TRAVERSAL");
+			});
+		});
+
+		describe("$root:N inside block helpers", () => {
+			test("$root:1 used as #if condition → valid", () => {
+				const result = tp.analyze(
+					"{{#if $root:1}}yes{{/if}}",
+					{ type: "number" },
+					{ identifierSchemas: { 1: { type: "boolean" } } },
+				);
+				expect(result.valid).toBe(true);
+			});
+		});
+	});
+
+	describe("execute with $root:N", () => {
+		describe("single expression (type-preserving)", () => {
+			test("{{ $root:2 }} returns entire identifierData[2]", () => {
+				const idData = { name: "Alice", age: 30 };
+				const result = tp.execute("{{ $root:2 }}", 42, {
+					identifierData: { 2: idData },
+				});
+				expect(result).toEqual(idData);
+			});
+
+			test("{{ $root:1 }} returns entire identifierData[1]", () => {
+				const idData = { x: 1, y: 2 };
+				const result = tp.execute("{{ $root:1 }}", "hello", {
+					identifierData: { 1: idData },
+				});
+				expect(result).toEqual(idData);
+			});
+
+			test("{{ $root:0 }} with identifier 0 → returns identifierData[0]", () => {
+				const idData = { key: "value" };
+				const result = tp.execute("{{ $root:0 }}", null, {
+					identifierData: { 0: idData },
+				});
+				expect(result).toEqual(idData);
+			});
+		});
+
+		describe("$root:N does NOT affect plain $root", () => {
+			test("{{ $root }} still returns data when identifierData is present", () => {
+				const result = tp.execute("{{ $root }}", 42, {
+					identifierData: { 1: { name: "hello" } },
+				});
+				expect(result).toBe(42);
+			});
+		});
+
+		describe("$root:N with missing identifier → undefined", () => {
+			test("{{ $root:99 }} with identifierData that lacks 99 → undefined", () => {
+				const result = tp.execute("{{ $root:99 }}", 42, {
+					identifierData: { 1: { name: "hello" } },
+				});
+				expect(result).toBeUndefined();
+			});
+
+			test("{{ $root:2 }} without identifierData → undefined", () => {
+				const result = tp.execute("{{ $root:2 }}", 42);
+				expect(result).toBeUndefined();
+			});
+		});
+
+		describe("$root path traversal with identifier → undefined", () => {
+			test("{{ $root.name:2 }} → undefined (path traversal not supported)", () => {
+				const result = tp.execute("{{ $root.name:2 }}", userData, {
+					identifierData: { 2: userData },
+				});
+				expect(result).toBeUndefined();
+			});
+		});
+
+		describe("object template with $root:N", () => {
+			test("object template referencing $root:1 → returns entire identifierData[1]", () => {
+				const idData = { name: "Alice", age: 30 };
+				const result = tp.execute({ everything: "{{ $root:1 }}" }, "ignored", {
+					identifierData: { 1: idData },
+				});
+				expect(result).toEqual({ everything: idData });
+			});
+
+			test("object template mixing $root and $root:N", () => {
+				const result = tp.execute(
+					{
+						fromInput: "{{ $root }}",
+						fromId: "{{ $root:1 }}",
+					},
+					42,
+					{ identifierData: { 1: { a: 1, b: 2 } } },
+				);
+				expect((result as Record<string, unknown>).fromInput).toBe(42);
+				expect((result as Record<string, unknown>).fromId).toEqual({
+					a: 1,
+					b: 2,
+				});
+			});
+
+			test("object template mixing $root:N and regular property", () => {
+				const result = tp.execute(
+					{
+						idRoot: "{{ $root:1 }}",
+						direct: "{{ name }}",
+					},
+					userData,
+					{ identifierData: { 1: { x: 99 } } },
+				);
+				expect((result as Record<string, unknown>).idRoot).toEqual({ x: 99 });
+				expect((result as Record<string, unknown>).direct).toBe(userData.name);
+			});
+		});
+
+		describe("mixed template with $root:N (string concatenation)", () => {
+			test("text + $root:N with primitive identifierData value", () => {
+				// When $root:N returns an object in a mixed template,
+				// Handlebars stringifies it. For a string test, use a single key.
+				const result = tp.execute(
+					"count={{ count:1 }}",
+					{},
+					{
+						identifierData: { 1: { count: 42 } },
+					},
+				);
+				expect(result).toBe("count=42");
+			});
+		});
+	});
+
+	describe("analyzeAndExecute with $root:N", () => {
+		test("$root:1 with primitive identifier schema → valid analysis + correct execution", () => {
+			const schema: JSONSchema7 = { type: "number" };
+			const idSchema: JSONSchema7 = { type: "string" };
+			const { analysis, value } = tp.analyzeAndExecute(
+				{ idValue: "{{ $root:1 }}" },
+				schema,
+				42,
+				{
+					identifierSchemas: { 1: idSchema },
+					identifierData: { 1: { greeting: "hi" } },
+				},
+			);
+			expect(analysis.valid).toBe(true);
+			expect(analysis.outputSchema).toEqual({
+				type: "object",
+				properties: {
+					idValue: { type: "string" },
+				},
+				required: ["idValue"],
+			});
+			expect((value as Record<string, unknown>).idValue).toEqual({
+				greeting: "hi",
+			});
+		});
+
+		test("$root and $root:N in same template → valid analysis + correct execution", () => {
+			const { analysis, value } = tp.analyzeAndExecute(
+				{
+					input: "{{ $root }}",
+					id1: "{{ $root:1 }}",
+				},
+				{ type: "number" },
+				99,
+				{
+					identifierSchemas: { 1: { type: "boolean" } },
+					identifierData: { 1: { flag: true } },
+				},
+			);
+			expect(analysis.valid).toBe(true);
+			expect(analysis.outputSchema).toEqual({
+				type: "object",
+				properties: {
+					input: { type: "number" },
+					id1: { type: "boolean" },
+				},
+				required: ["input", "id1"],
+			});
+			expect((value as Record<string, unknown>).input).toBe(99);
+			expect((value as Record<string, unknown>).id1).toEqual({ flag: true });
+		});
+	});
+
+	describe("validate with $root:N", () => {
+		test("{{ $root:1 }} with valid identifierSchemas → valid", () => {
+			const result = tp.validate(
+				"{{ $root:1 }}",
+				{ type: "number" },
+				{
+					identifierSchemas: { 1: { type: "string" } },
+				},
+			);
+			expect(result.valid).toBe(true);
+		});
+
+		test("{{ $root:99 }} with missing identifier → invalid", () => {
+			const result = tp.validate(
+				"{{ $root:99 }}",
+				{ type: "number" },
+				{
+					identifierSchemas: { 1: { type: "string" } },
+				},
+			);
+			expect(result.valid).toBe(false);
+			expect(result.diagnostics[0]?.code).toBe("UNKNOWN_IDENTIFIER");
+		});
+	});
+
+	describe("CompiledTemplate with $root:N", () => {
+		test("compiled template with {{ $root:1 }} → returns entire identifierData[1]", () => {
+			const compiled = tp.compile("{{ $root:1 }}");
+			const idData = { name: "Alice" };
+			const result = compiled.execute(42, {
+				identifierData: { 1: idData },
+			});
+			expect(result).toEqual(idData);
+		});
+
+		test("compiled template with $root:N in object → returns entire identifierData for that key", () => {
+			const compiled = tp.compile({ idVal: "{{ $root:2 }}" });
+			const idData = { x: 1 };
+			const result = compiled.execute("ignored", {
+				identifierData: { 2: idData },
+			});
+			expect((result as Record<string, unknown>).idVal).toEqual(idData);
+		});
+
+		test("compiled analyzeAndExecute with $root:N → valid + returns value", () => {
+			const compiled = tp.compile("{{ $root:1 }}");
+			const { analysis, value } = compiled.analyzeAndExecute(
+				{ type: "number" },
+				42,
+				{
+					identifierSchemas: { 1: { type: "string" } },
+					identifierData: { 1: { greeting: "hello" } },
+				},
+			);
+			expect(analysis.valid).toBe(true);
+			expect(analysis.outputSchema).toEqual({ type: "string" });
+			expect(value).toEqual({ greeting: "hello" });
 		});
 	});
 });

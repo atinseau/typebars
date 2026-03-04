@@ -9,7 +9,8 @@ import {
 	getEffectiveBody,
 	getEffectivelySingleBlock,
 	getEffectivelySingleExpression,
-	isRootExpression,
+	isRootPathTraversal,
+	isRootSegments,
 	isSingleExpression,
 	isThisExpression,
 	parse,
@@ -329,18 +330,6 @@ function resolveExpression(
 		return data;
 	}
 
-	// $root → return the entire data context
-	// Path traversal ($root.name) is silently ignored at execution time
-	// (the analyzer already rejects it with a diagnostic).
-	if (isRootExpression(expr)) {
-		const parts = (expr as hbs.AST.PathExpression).parts;
-		if (parts.length === 1) {
-			return data;
-		}
-		// $root.x — not supported, return undefined
-		return undefined;
-	}
-
 	// Literals
 	if (expr.type === "StringLiteral")
 		return (expr as hbs.AST.StringLiteral).value;
@@ -359,8 +348,29 @@ function resolveExpression(
 		);
 	}
 
-	// Extract the potential identifier from the last segment
+	// Extract the potential identifier from the last segment BEFORE
+	// checking for $root, so that both {{$root}} and {{$root:N}} are
+	// handled uniformly.
 	const { cleanSegments, identifier } = extractExpressionIdentifier(segments);
+
+	// $root path traversal ($root.name) — not supported, return undefined
+	// (the analyzer already rejects it with a diagnostic).
+	if (isRootPathTraversal(cleanSegments)) {
+		return undefined;
+	}
+
+	// $root → return the entire data context (or identifier data)
+	if (isRootSegments(cleanSegments)) {
+		if (identifier !== null && identifierData) {
+			const source = identifierData[identifier];
+			return source ?? undefined;
+		}
+		if (identifier !== null) {
+			// Template uses an identifier but no identifierData was provided
+			return undefined;
+		}
+		return data;
+	}
 
 	if (identifier !== null && identifierData) {
 		const source = identifierData[identifier];
@@ -448,6 +458,11 @@ function mergeDataWithIdentifiers(
 	if (!identifierData) return merged;
 
 	for (const [id, idData] of Object.entries(identifierData)) {
+		// Add `$root:N` so Handlebars can resolve {{$root:N}} in mixed/block
+		// templates (where we delegate to Handlebars instead of resolving
+		// expressions ourselves). The value is the entire identifier data object.
+		merged[`${ROOT_TOKEN}:${id}`] = idData;
+
 		for (const [key, value] of Object.entries(idData)) {
 			merged[`${key}:${id}`] = value;
 		}

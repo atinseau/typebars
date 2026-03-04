@@ -15,7 +15,8 @@ import {
 	getEffectivelySingleBlock,
 	getEffectivelySingleExpression,
 	hasHandlebarsExpression,
-	isRootExpression,
+	isRootPathTraversal,
+	isRootSegments,
 	isThisExpression,
 	parse,
 } from "./parser";
@@ -824,27 +825,6 @@ function resolveExpressionWithDiagnostics(
 		return ctx.current;
 	}
 
-	// ── $root token → return the entire root schema ──────────────────────
-	// `{{$root}}` references the entire input schema. Path traversal
-	// (e.g. `{{$root.name}}`) is not allowed — use `{{name}}` instead.
-	if (isRootExpression(expr)) {
-		const parts = (expr as hbs.AST.PathExpression).parts;
-		if (parts.length > 1) {
-			const fullPath = parts.join(".");
-			addDiagnostic(
-				ctx,
-				"ROOT_PATH_TRAVERSAL",
-				"error",
-				createRootPathTraversalMessage(fullPath),
-				parentNode ?? expr,
-				{ path: fullPath },
-			);
-			return undefined;
-		}
-		// Single segment `$root` → return the full current context schema
-		return ctx.current;
-	}
-
 	// ── SubExpression (nested helper call, e.g. `(lt account.balance 500)`) ──
 	if (expr.type === "SubExpression") {
 		return resolveSubExpression(expr as hbs.AST.SubExpression, ctx, parentNode);
@@ -870,7 +850,34 @@ function resolveExpressionWithDiagnostics(
 	}
 
 	// ── Identifier extraction ──────────────────────────────────────────────
+	// Extract the `:N` suffix BEFORE checking for `$root` so that both
+	// `{{$root}}` and `{{$root:2}}` are handled uniformly.
 	const { cleanSegments, identifier } = extractExpressionIdentifier(segments);
+
+	// ── $root token ──────────────────────────────────────────────────────
+	// Path traversal ($root.name, $root.address.city) is always forbidden,
+	// regardless of whether an identifier is present.
+	if (isRootPathTraversal(cleanSegments)) {
+		const fullPath = cleanSegments.join(".");
+		addDiagnostic(
+			ctx,
+			"ROOT_PATH_TRAVERSAL",
+			"error",
+			createRootPathTraversalMessage(fullPath),
+			parentNode ?? expr,
+			{ path: fullPath },
+		);
+		return undefined;
+	}
+
+	// `{{$root}}` → return the entire current context schema
+	// `{{$root:N}}` → return the entire schema for identifier N
+	if (isRootSegments(cleanSegments)) {
+		if (identifier !== null) {
+			return resolveRootWithIdentifier(identifier, ctx, parentNode ?? expr);
+		}
+		return ctx.current;
+	}
 
 	if (identifier !== null) {
 		// The expression uses the {{key:N}} syntax — resolve from
@@ -900,6 +907,53 @@ function resolveExpressionWithDiagnostics(
 	}
 
 	return resolved;
+}
+
+/**
+ * Resolves `{{$root:N}}` — returns the **entire** schema for identifier N.
+ *
+ * This is the identifier-aware counterpart of returning `ctx.current` for
+ * a plain `{{$root}}`. Instead of navigating into properties, it returns
+ * the identifier's root schema directly.
+ *
+ * Emits an error diagnostic if:
+ * - No `identifierSchemas` were provided
+ * - Identifier N has no associated schema
+ */
+function resolveRootWithIdentifier(
+	identifier: number,
+	ctx: AnalysisContext,
+	node: hbs.AST.Node,
+): JSONSchema7 | undefined {
+	// No identifierSchemas provided at all
+	if (!ctx.identifierSchemas) {
+		addDiagnostic(
+			ctx,
+			"MISSING_IDENTIFIER_SCHEMAS",
+			"error",
+			`Property "$root:${identifier}" uses an identifier but no identifier schemas were provided`,
+			node,
+			{ path: `$root:${identifier}`, identifier },
+		);
+		return undefined;
+	}
+
+	// The identifier does not exist in the provided schemas
+	const idSchema = ctx.identifierSchemas[identifier];
+	if (!idSchema) {
+		addDiagnostic(
+			ctx,
+			"UNKNOWN_IDENTIFIER",
+			"error",
+			`Property "$root:${identifier}" references identifier ${identifier} but no schema exists for this identifier`,
+			node,
+			{ path: `$root:${identifier}`, identifier },
+		);
+		return undefined;
+	}
+
+	// Return the entire schema for identifier N
+	return idSchema;
 }
 
 /**

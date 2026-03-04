@@ -112,11 +112,46 @@ export function isThisExpression(expr: hbs.AST.Expression): boolean {
  * This covers both the valid `{{$root}}` case (single segment) and the
  * invalid `{{$root.name}}` case (multiple segments). The caller must
  * check `parts.length` to distinguish valid from invalid usage.
+ *
+ * **Note:** This does NOT match `{{$root:2}}` because Handlebars parses
+ * it as `parts: ["$root:2"]` (identifier still attached). Use
+ * `isRootSegments()` on cleaned segments instead when identifier
+ * extraction has already been performed.
  */
 export function isRootExpression(expr: hbs.AST.Expression): boolean {
 	if (expr.type !== "PathExpression") return false;
 	const path = expr as hbs.AST.PathExpression;
 	return path.parts.length > 0 && path.parts[0] === ROOT_TOKEN;
+}
+
+/**
+ * Checks whether an array of **cleaned** path segments represents a
+ * `$root` reference (i.e. exactly one segment equal to `"$root"`).
+ *
+ * This is the segment-level counterpart of `isRootExpression()` and is
+ * meant to be called **after** `extractExpressionIdentifier()` has
+ * stripped the `:N` suffix. It correctly handles both `{{$root}}` and
+ * `{{$root:2}}`.
+ *
+ * @param cleanSegments - Path segments with identifiers already removed
+ * @returns `true` if the segments represent a `$root` reference
+ */
+export function isRootSegments(cleanSegments: string[]): boolean {
+	return cleanSegments.length === 1 && cleanSegments[0] === ROOT_TOKEN;
+}
+
+/**
+ * Checks whether cleaned segments represent a **path traversal** on
+ * `$root` (e.g. `$root.name`, `$root.address.city`).
+ *
+ * Path traversal on `$root` is forbidden — users should write `{{name}}`
+ * instead of `{{$root.name}}`.
+ *
+ * @param cleanSegments - Path segments with identifiers already removed
+ * @returns `true` if the first segment is `$root` and there are additional segments
+ */
+export function isRootPathTraversal(cleanSegments: string[]): boolean {
+	return cleanSegments.length > 1 && cleanSegments[0] === ROOT_TOKEN;
 }
 
 // ─── Filtering Semantically Significant Nodes ───────────────────────────────
