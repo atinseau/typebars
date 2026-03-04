@@ -1,10 +1,12 @@
 import Handlebars from "handlebars";
+import type { JSONSchema7 } from "json-schema";
 import { TemplateRuntimeError } from "./errors.ts";
 import {
 	canUseFastPath,
 	coerceLiteral,
 	extractExpressionIdentifier,
 	extractPathSegments,
+	getEffectiveBody,
 	getEffectivelySingleBlock,
 	getEffectivelySingleExpression,
 	isSingleExpression,
@@ -64,6 +66,12 @@ export interface ExecutorContext {
 	hbs?: typeof Handlebars;
 	/** Compilation cache shared by the engine */
 	compilationCache?: LRUCache<string, HandlebarsTemplateDelegate>;
+	/**
+	 * Explicit coercion schema for the output value.
+	 * When set with a primitive type, the execution result will be coerced
+	 * to match the declared type instead of using auto-detection.
+	 */
+	coerceSchema?: JSONSchema7;
 }
 
 // ─── Global Compilation Cache ────────────────────────────────────────────────
@@ -184,7 +192,7 @@ export function executeFromAst(
 	if (singleExpr && (singleExpr.params.length > 0 || singleExpr.hash)) {
 		const merged = mergeDataWithIdentifiers(data, identifierData);
 		const raw = renderWithHandlebars(template, merged, ctx);
-		return coerceLiteral(raw);
+		return coerceValue(raw, ctx?.coerceSchema);
 	}
 
 	// ── Case 2: fast-path for simple templates (text + expressions) ──────
@@ -202,12 +210,54 @@ export function executeFromAst(
 	if (singleBlock) {
 		const merged = mergeDataWithIdentifiers(data, identifierData);
 		const raw = renderWithHandlebars(template, merged, ctx);
-		return coerceLiteral(raw);
+		return coerceValue(raw, ctx?.coerceSchema);
 	}
 
-	// ── Case 4: mixed template → string ──────────────────────────────────
+	// ── Case 4: mixed template ───────────────────────────────────────────
+	// For purely static templates (only ContentStatements), coerce the
+	// result to match the coerceSchema type or auto-detect the literal type.
+	// For truly mixed templates (text + blocks + expressions), return string.
 	const merged = mergeDataWithIdentifiers(data, identifierData);
-	return renderWithHandlebars(template, merged, ctx);
+	const raw = renderWithHandlebars(template, merged, ctx);
+
+	const effective = getEffectiveBody(ast);
+	const allContent = effective.every((s) => s.type === "ContentStatement");
+	if (allContent) {
+		return coerceValue(raw, ctx?.coerceSchema);
+	}
+
+	return raw;
+}
+
+// ─── Value Coercion ──────────────────────────────────────────────────────────
+// Coerces a raw string from Handlebars rendering based on an optional
+// coerceSchema. When no schema is provided, falls back to auto-detection
+// via `coerceLiteral`.
+
+/**
+ * Coerces a raw string value based on an optional coercion schema.
+ *
+ * - If `coerceSchema` declares a primitive type (`string`, `number`,
+ *   `integer`, `boolean`, `null`), the value is cast to that type.
+ * - Otherwise, falls back to `coerceLiteral` (auto-detection).
+ *
+ * @param raw          - The raw string from Handlebars rendering
+ * @param coerceSchema - Optional schema declaring the desired output type
+ * @returns The coerced value
+ */
+function coerceValue(raw: string, coerceSchema?: JSONSchema7): unknown {
+	if (coerceSchema) {
+		const targetType = coerceSchema.type;
+		if (typeof targetType === "string") {
+			if (targetType === "string") return raw;
+			if (targetType === "number" || targetType === "integer")
+				return Number(raw.trim());
+			if (targetType === "boolean") return raw.trim() === "true";
+			if (targetType === "null") return null;
+		}
+	}
+	// No coerceSchema or non-primitive type → auto-detect
+	return coerceLiteral(raw);
 }
 
 // ─── Fast-Path Execution ─────────────────────────────────────────────────────

@@ -171,7 +171,9 @@ describe("literal input (non-string TemplateInput)", () => {
 
 		test("identifierSchemas is ignored for literals", () => {
 			const result = engine.analyze(42, userSchema, {
-				1: { type: "object", properties: { x: { type: "string" } } },
+				identifierSchemas: {
+					1: { type: "object", properties: { x: { type: "string" } } },
+				},
 			});
 			expect(result.valid).toBe(true);
 			expect(result.outputSchema).toEqual({ type: "integer" });
@@ -562,44 +564,27 @@ describe("object template input (TemplateInputObject)", () => {
 			});
 		});
 
-		describe("schema-driven type coercion for static literals", () => {
-			test("string template '123' with inputSchema type string → outputSchema string", () => {
+		describe("default behavior — no coercion from inputSchema", () => {
+			test("string template '123' with inputSchema type string → detectLiteralType → number", () => {
 				const result = engine.analyze("123", { type: "string" });
-				expect(result.valid).toBe(true);
-				expect(result.outputSchema).toEqual({ type: "string" });
-			});
-
-			test("string template '123' with inputSchema type number → outputSchema number", () => {
-				const result = engine.analyze("123", { type: "number" });
 				expect(result.valid).toBe(true);
 				expect(result.outputSchema).toEqual({ type: "number" });
 			});
 
-			test("string template 'true' with inputSchema type string → outputSchema string", () => {
+			test("string template 'true' with inputSchema type string → detectLiteralType → boolean", () => {
 				const result = engine.analyze("true", { type: "string" });
-				expect(result.valid).toBe(true);
-				expect(result.outputSchema).toEqual({ type: "string" });
-			});
-
-			test("string template 'true' with inputSchema type boolean → outputSchema boolean", () => {
-				const result = engine.analyze("true", { type: "boolean" });
 				expect(result.valid).toBe(true);
 				expect(result.outputSchema).toEqual({ type: "boolean" });
 			});
 
-			test("string template 'null' with inputSchema type string → outputSchema string", () => {
+			test("string template 'null' with inputSchema type string → detectLiteralType → null", () => {
 				const result = engine.analyze("null", { type: "string" });
 				expect(result.valid).toBe(true);
-				expect(result.outputSchema).toEqual({ type: "string" });
+				expect(result.outputSchema).toEqual({ type: "null" });
 			});
 
-			test("string template '123' with inputSchema type integer → outputSchema integer", () => {
-				const result = engine.analyze("123", { type: "integer" });
-				expect(result.valid).toBe(true);
-				expect(result.outputSchema).toEqual({ type: "integer" });
-			});
-
-			test("object template with property matching inputSchema string → property stays string", () => {
+			test("object template '123' with inputSchema string property → detectLiteralType → number", () => {
+				// inputSchema should NOT influence output type coercion
 				const result = engine.analyze(
 					{ meetingId: "123" },
 					{
@@ -611,49 +596,13 @@ describe("object template input (TemplateInputObject)", () => {
 				expect(result.outputSchema).toEqual({
 					type: "object",
 					properties: {
-						meetingId: { type: "string" },
-					},
-					required: ["meetingId"],
-				});
-			});
-
-			test("object template with property matching inputSchema number → property is number", () => {
-				const result = engine.analyze(
-					{ meetingId: "123" },
-					{
-						type: "object",
-						properties: { meetingId: { type: "number" } },
-					},
-				);
-				expect(result.valid).toBe(true);
-				expect(result.outputSchema).toEqual({
-					type: "object",
-					properties: {
 						meetingId: { type: "number" },
 					},
 					required: ["meetingId"],
 				});
 			});
 
-			test("object template with property NOT in inputSchema → default detection (number)", () => {
-				const result = engine.analyze(
-					{ meetingId: "123" },
-					{
-						type: "object",
-						properties: {},
-					},
-				);
-				expect(result.valid).toBe(true);
-				expect(result.outputSchema).toEqual({
-					type: "object",
-					properties: {
-						meetingId: { type: "number" },
-					},
-					required: ["meetingId"],
-				});
-			});
-
-			test("object template with non-numeric static string → always string regardless of schema", () => {
+			test("object template with non-numeric string → always string", () => {
 				const result = engine.analyze(
 					{ status: "success" },
 					{
@@ -671,7 +620,117 @@ describe("object template input (TemplateInputObject)", () => {
 				});
 			});
 
-			test("object template with nested object + schema-driven coercion", () => {
+			test("Handlebars expression resolves from inputSchema as usual", () => {
+				const result = engine.analyze("{{name}}", userSchema);
+				expect(result.valid).toBe(true);
+				expect(result.outputSchema).toEqual({ type: "string" });
+			});
+		});
+
+		describe("explicit coerceSchema — overrides detectLiteralType", () => {
+			test("string template '123' with coerceSchema string → outputSchema string", () => {
+				const result = engine.analyze(
+					"123",
+					{ type: "string" },
+					{
+						coerceSchema: { type: "string" },
+					},
+				);
+				expect(result.valid).toBe(true);
+				expect(result.outputSchema).toEqual({ type: "string" });
+			});
+
+			test("string template '123' with coerceSchema number → outputSchema number", () => {
+				const result = engine.analyze(
+					"123",
+					{ type: "string" },
+					{
+						coerceSchema: { type: "number" },
+					},
+				);
+				expect(result.valid).toBe(true);
+				expect(result.outputSchema).toEqual({ type: "number" });
+			});
+
+			test("string template 'true' with coerceSchema string → outputSchema string", () => {
+				const result = engine.analyze(
+					"true",
+					{ type: "object", properties: {} },
+					{
+						coerceSchema: { type: "string" },
+					},
+				);
+				expect(result.valid).toBe(true);
+				expect(result.outputSchema).toEqual({ type: "string" });
+			});
+
+			test("string template '123' with coerceSchema integer → outputSchema integer", () => {
+				const result = engine.analyze(
+					"123",
+					{ type: "object", properties: {} },
+					{
+						coerceSchema: { type: "integer" },
+					},
+				);
+				expect(result.valid).toBe(true);
+				expect(result.outputSchema).toEqual({ type: "integer" });
+			});
+
+			test("string template 'null' with coerceSchema string → outputSchema string", () => {
+				const result = engine.analyze(
+					"null",
+					{ type: "object", properties: {} },
+					{
+						coerceSchema: { type: "string" },
+					},
+				);
+				expect(result.valid).toBe(true);
+				expect(result.outputSchema).toEqual({ type: "string" });
+			});
+
+			test("object template with coerceSchema — property respects coercion", () => {
+				const result = engine.analyze(
+					{ meetingId: "123" },
+					{
+						type: "object",
+						properties: { meetingId: { type: "string" } },
+					},
+					{
+						coerceSchema: {
+							type: "object",
+							properties: { meetingId: { type: "string" } },
+						},
+					},
+				);
+				expect(result.valid).toBe(true);
+				expect(result.outputSchema).toEqual({
+					type: "object",
+					properties: {
+						meetingId: { type: "string" },
+					},
+					required: ["meetingId"],
+				});
+			});
+
+			test("object template without coerceSchema — detectLiteralType wins", () => {
+				const result = engine.analyze(
+					{ meetingId: "123" },
+					{
+						type: "object",
+						properties: { meetingId: { type: "string" } },
+					},
+				);
+				expect(result.valid).toBe(true);
+				expect(result.outputSchema).toEqual({
+					type: "object",
+					properties: {
+						meetingId: { type: "number" },
+					},
+					required: ["meetingId"],
+				});
+			});
+
+			test("object template with nested coerceSchema — deep propagation", () => {
 				const result = engine.analyze(
 					{
 						outer: {
@@ -683,13 +742,22 @@ describe("object template input (TemplateInputObject)", () => {
 						properties: {
 							outer: {
 								type: "object",
-								properties: {},
+								properties: { count: { type: "number" } },
+							},
+						},
+					},
+					{
+						coerceSchema: {
+							type: "object",
+							properties: {
+								outer: {
+									type: "object",
+									properties: { count: { type: "string" } },
+								},
 							},
 						},
 					},
 				);
-				// outer is in the schema but has no 'count' property declared,
-				// so count falls back to default detection → number
 				expect(result.valid).toBe(true);
 				expect(result.outputSchema).toEqual({
 					type: "object",
@@ -697,7 +765,7 @@ describe("object template input (TemplateInputObject)", () => {
 						outer: {
 							type: "object",
 							properties: {
-								count: { type: "number" },
+								count: { type: "string" },
 							},
 							required: ["count"],
 						},
@@ -706,22 +774,36 @@ describe("object template input (TemplateInputObject)", () => {
 				});
 			});
 
-			test("string template with inputSchema type object → default detection (no primitive constraint)", () => {
-				// inputSchema is an object, not a primitive — should fall back to detectLiteralType
-				const result = engine.analyze("123", {
-					type: "object",
-					properties: { meetingId: { type: "string" } },
+			test("Handlebars expression ignores coerceSchema — only static literals affected", () => {
+				const result = engine.analyze("{{name}}", userSchema, {
+					coerceSchema: { type: "number" },
 				});
+				expect(result.valid).toBe(true);
+				expect(result.outputSchema).toEqual({ type: "string" });
+			});
+
+			test("coerceSchema with non-primitive type → falls back to detectLiteralType", () => {
+				const result = engine.analyze(
+					"123",
+					{ type: "object", properties: {} },
+					{
+						coerceSchema: { type: "object", properties: {} },
+					},
+				);
 				expect(result.valid).toBe(true);
 				expect(result.outputSchema).toEqual({ type: "number" });
 			});
 
-			test("string template with Handlebars expression ignores expectedOutputType", () => {
-				// When the template has expressions, the schema-driven coercion
-				// should NOT override — only static literals are affected
-				const result = engine.analyze("{{name}}", userSchema);
+			test("coerceSchema with no type → falls back to detectLiteralType", () => {
+				const result = engine.analyze(
+					"123",
+					{ type: "object", properties: {} },
+					{
+						coerceSchema: {},
+					},
+				);
 				expect(result.valid).toBe(true);
-				expect(result.outputSchema).toEqual({ type: "string" });
+				expect(result.outputSchema).toEqual({ type: "number" });
 			});
 		});
 	});

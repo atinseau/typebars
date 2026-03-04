@@ -1,5 +1,6 @@
 import Handlebars from "handlebars";
 import type { JSONSchema7 } from "json-schema";
+import type { AnalyzeOptions } from "./analyzer.ts";
 import { analyzeFromAst } from "./analyzer.ts";
 import {
 	CompiledTemplate,
@@ -57,7 +58,7 @@ import {
 //
 // Usage:
 //   engine.execute("{{meetingId:1}}", data, { identifierData: { 1: node1Data } });
-//   engine.analyze("{{meetingId:1}}", schema, { 1: node1Schema });
+//   engine.analyze("{{meetingId:1}}", schema, { identifierSchemas: { 1: node1Schema } });
 
 // ─── Main Class ──────────────────────────────────────────────────────────────
 
@@ -156,40 +157,33 @@ export class Typebars {
 	 * For objects, each property is analyzed recursively and the
 	 * `outputSchema` reflects the object structure with resolved types.
 	 *
-	 * @param template           - The template to analyze
-	 * @param inputSchema        - JSON Schema v7 describing the available variables
-	 * @param identifierSchemas  - (optional) Schemas by identifier `{ [id]: JSONSchema7 }`
+	 * @param template    - The template to analyze
+	 * @param inputSchema - JSON Schema v7 describing the available variables
+	 * @param options     - (optional) Analysis options (identifierSchemas, coerceSchema)
 	 */
 	analyze(
 		template: TemplateInput,
 		inputSchema: JSONSchema7,
-		identifierSchemas?: Record<number, JSONSchema7>,
-		expectedOutputType?: JSONSchema7,
+		options?: AnalyzeOptions,
 	): AnalysisResult {
 		if (isArrayInput(template)) {
 			return aggregateArrayAnalysis(template.length, (index) =>
-				this.analyze(
-					template[index] as TemplateInput,
-					inputSchema,
-					identifierSchemas,
-				),
+				this.analyze(template[index] as TemplateInput, inputSchema, options),
 			);
 		}
 		if (isObjectInput(template)) {
-			// Use the expectedOutputType (if it describes an object) to resolve
-			// child property schemas. This is critical for deeply nested objects:
-			// when the template is `{ a: { b: { c: "123" } } }`, each level must
-			// resolve its children from the *corresponding* sub-schema, not from
-			// the root inputSchema.
-			const schemaForProperties = expectedOutputType ?? inputSchema;
+			const coerceSchema = options?.coerceSchema;
 			return aggregateObjectAnalysis(Object.keys(template), (key) => {
-				const propertySchema = resolveSchemaPath(schemaForProperties, [key]);
-				return this.analyze(
-					template[key] as TemplateInput,
-					inputSchema,
-					identifierSchemas,
-					propertySchema,
-				);
+				// When a coerceSchema is provided, resolve the child property
+				// schema from it. This allows deeply nested objects to propagate
+				// coercion at every level.
+				const childCoerceSchema = coerceSchema
+					? resolveSchemaPath(coerceSchema, [key])
+					: undefined;
+				return this.analyze(template[key] as TemplateInput, inputSchema, {
+					identifierSchemas: options?.identifierSchemas,
+					coerceSchema: childCoerceSchema,
+				});
 			});
 		}
 		if (isLiteralInput(template)) {
@@ -201,9 +195,9 @@ export class Typebars {
 		}
 		const ast = this.getCachedAst(template);
 		return analyzeFromAst(ast, template, inputSchema, {
-			identifierSchemas,
+			identifierSchemas: options?.identifierSchemas,
 			helpers: this.helpers,
-			expectedOutputType: expectedOutputType ?? inputSchema,
+			coerceSchema: options?.coerceSchema,
 		});
 	}
 
@@ -224,9 +218,9 @@ export class Typebars {
 	validate(
 		template: TemplateInput,
 		inputSchema: JSONSchema7,
-		identifierSchemas?: Record<number, JSONSchema7>,
+		options?: AnalyzeOptions,
 	): ValidationResult {
-		const analysis = this.analyze(template, inputSchema, identifierSchemas);
+		const analysis = this.analyze(template, inputSchema, options);
 		return {
 			valid: analysis.valid,
 			diagnostics: analysis.diagnostics,
@@ -293,9 +287,16 @@ export class Typebars {
 
 		// ── Object template → recursive execution ────────────────────────────
 		if (isObjectInput(template)) {
+			const coerceSchema = options?.coerceSchema;
 			const result: Record<string, unknown> = {};
 			for (const [key, value] of Object.entries(template)) {
-				result[key] = this.execute(value, data, options);
+				const childCoerceSchema = coerceSchema
+					? resolveSchemaPath(coerceSchema, [key])
+					: undefined;
+				result[key] = this.execute(value, data, {
+					...options,
+					coerceSchema: childCoerceSchema,
+				});
 			}
 			return result;
 		}
@@ -309,7 +310,7 @@ export class Typebars {
 		// ── Pre-execution static validation ──────────────────────────────────
 		if (options?.schema) {
 			const analysis = analyzeFromAst(ast, template, options.schema, {
-				identifierSchemas: options.identifierSchemas,
+				identifierSchemas: options?.identifierSchemas,
 				helpers: this.helpers,
 			});
 			if (!analysis.valid) {
@@ -322,6 +323,7 @@ export class Typebars {
 			identifierData: options?.identifierData,
 			hbs: this.hbs,
 			compilationCache: this.compilationCache,
+			coerceSchema: options?.coerceSchema,
 		});
 	}
 
@@ -345,8 +347,7 @@ export class Typebars {
 		template: TemplateInput,
 		inputSchema: JSONSchema7,
 		data: Record<string, unknown>,
-		options?: AnalyzeAndExecuteOptions,
-		expectedOutputType?: JSONSchema7,
+		options?: AnalyzeAndExecuteOptions & { coerceSchema?: JSONSchema7 },
 	): { analysis: AnalysisResult; value: unknown } {
 		if (isArrayInput(template)) {
 			return aggregateArrayAnalysisAndExecution(template.length, (index) =>
@@ -359,19 +360,24 @@ export class Typebars {
 			);
 		}
 		if (isObjectInput(template)) {
-			// Use the expectedOutputType (if it describes an object) to resolve
-			// child property schemas. This is critical for deeply nested objects.
-			const schemaForProperties = expectedOutputType ?? inputSchema;
+			const coerceSchema = options?.coerceSchema;
 			return aggregateObjectAnalysisAndExecution(
 				Object.keys(template),
 				(key) => {
-					const propertySchema = resolveSchemaPath(schemaForProperties, [key]);
+					// When a coerceSchema is provided, resolve the child property
+					// schema from it for deeply nested coercion propagation.
+					const childCoerceSchema = coerceSchema
+						? resolveSchemaPath(coerceSchema, [key])
+						: undefined;
 					return this.analyzeAndExecute(
 						template[key] as TemplateInput,
 						inputSchema,
 						data,
-						options,
-						propertySchema,
+						{
+							identifierSchemas: options?.identifierSchemas,
+							identifierData: options?.identifierData,
+							coerceSchema: childCoerceSchema,
+						},
 					);
 				},
 			);
@@ -392,7 +398,7 @@ export class Typebars {
 		const analysis = analyzeFromAst(ast, template, inputSchema, {
 			identifierSchemas: options?.identifierSchemas,
 			helpers: this.helpers,
-			expectedOutputType: expectedOutputType ?? inputSchema,
+			coerceSchema: options?.coerceSchema,
 		});
 
 		if (!analysis.valid) {
@@ -403,6 +409,7 @@ export class Typebars {
 			identifierData: options?.identifierData,
 			hbs: this.hbs,
 			compilationCache: this.compilationCache,
+			coerceSchema: options?.coerceSchema,
 		});
 		return { analysis, value };
 	}

@@ -1,8 +1,10 @@
 import type Handlebars from "handlebars";
 import type { JSONSchema7 } from "json-schema";
+import type { AnalyzeOptions } from "./analyzer.ts";
 import { analyzeFromAst } from "./analyzer.ts";
 import { TemplateAnalysisError } from "./errors.ts";
 import { type ExecutorContext, executeFromAst } from "./executor.ts";
+import { resolveSchemaPath } from "./schema-resolver.ts";
 import type {
 	AnalysisResult,
 	ExecuteOptions,
@@ -182,13 +184,10 @@ export class CompiledTemplate {
 	 *
 	 * Since the AST is pre-parsed, this method never re-parses the template.
 	 *
-	 * @param inputSchema        - JSON Schema describing the available variables
-	 * @param identifierSchemas  - (optional) Schemas by identifier `{ [id]: JSONSchema7 }`
+	 * @param inputSchema - JSON Schema describing the available variables
+	 * @param options     - (optional) Analysis options (identifierSchemas, coerceSchema)
 	 */
-	analyze(
-		inputSchema: JSONSchema7,
-		identifierSchemas?: Record<number, JSONSchema7>,
-	): AnalysisResult {
+	analyze(inputSchema: JSONSchema7, options?: AnalyzeOptions): AnalysisResult {
 		switch (this.state.kind) {
 			case "array": {
 				const { elements } = this.state;
@@ -196,16 +195,23 @@ export class CompiledTemplate {
 					const element = elements[index];
 					if (!element)
 						throw new Error(`unreachable: missing element at index ${index}`);
-					return element.analyze(inputSchema, identifierSchemas);
+					return element.analyze(inputSchema, options);
 				});
 			}
 
 			case "object": {
 				const { children } = this.state;
+				const coerceSchema = options?.coerceSchema;
 				return aggregateObjectAnalysis(Object.keys(children), (key) => {
 					const child = children[key];
 					if (!child) throw new Error(`unreachable: missing child "${key}"`);
-					return child.analyze(inputSchema, identifierSchemas);
+					const childCoerceSchema = coerceSchema
+						? resolveSchemaPath(coerceSchema, [key])
+						: undefined;
+					return child.analyze(inputSchema, {
+						identifierSchemas: options?.identifierSchemas,
+						coerceSchema: childCoerceSchema,
+					});
 				});
 			}
 
@@ -218,8 +224,9 @@ export class CompiledTemplate {
 
 			case "template":
 				return analyzeFromAst(this.state.ast, this.state.source, inputSchema, {
-					identifierSchemas,
+					identifierSchemas: options?.identifierSchemas,
 					helpers: this.options.helpers,
+					coerceSchema: options?.coerceSchema,
 				});
 		}
 	}
@@ -234,14 +241,14 @@ export class CompiledTemplate {
 	 * inference) is executed internally — this method provides no performance
 	 * gain, only a simplified API.
 	 *
-	 * @param inputSchema        - JSON Schema describing the available variables
-	 * @param identifierSchemas  - (optional) Schemas by identifier
+	 * @param inputSchema - JSON Schema describing the available variables
+	 * @param options     - (optional) Analysis options (identifierSchemas, coerceSchema)
 	 */
 	validate(
 		inputSchema: JSONSchema7,
-		identifierSchemas?: Record<number, JSONSchema7>,
+		options?: AnalyzeOptions,
 	): ValidationResult {
-		const analysis = this.analyze(inputSchema, identifierSchemas);
+		const analysis = this.analyze(inputSchema, options);
 		return {
 			valid: analysis.valid,
 			diagnostics: analysis.diagnostics,
@@ -264,7 +271,7 @@ export class CompiledTemplate {
 	 * before execution. A `TemplateAnalysisError` is thrown on errors.
 	 *
 	 * @param data    - The context data for rendering
-	 * @param options - Execution options (schema, identifierData, etc.)
+	 * @param options - Execution options (schema, identifierData, coerceSchema, etc.)
 	 * @returns The execution result
 	 */
 	execute(data: Record<string, unknown>, options?: ExecuteOptions): unknown {
@@ -280,9 +287,16 @@ export class CompiledTemplate {
 
 			case "object": {
 				const { children } = this.state;
+				const coerceSchema = options?.coerceSchema;
 				const result: Record<string, unknown> = {};
 				for (const [key, child] of Object.entries(children)) {
-					result[key] = child.execute(data, options);
+					const childCoerceSchema = coerceSchema
+						? resolveSchemaPath(coerceSchema, [key])
+						: undefined;
+					result[key] = child.execute(data, {
+						...options,
+						coerceSchema: childCoerceSchema,
+					});
 				}
 				return result;
 			}
@@ -293,10 +307,10 @@ export class CompiledTemplate {
 			case "template": {
 				// Pre-execution static validation if a schema is provided
 				if (options?.schema) {
-					const analysis = this.analyze(
-						options.schema,
-						options.identifierSchemas,
-					);
+					const analysis = this.analyze(options.schema, {
+						identifierSchemas: options.identifierSchemas,
+						coerceSchema: options.coerceSchema,
+					});
 					if (!analysis.valid) {
 						throw new TemplateAnalysisError(analysis.diagnostics);
 					}
@@ -320,9 +334,9 @@ export class CompiledTemplate {
 	 * Returns both the analysis result and the executed value.
 	 * If analysis fails, `value` is `undefined`.
 	 *
-	 * @param inputSchema        - JSON Schema describing the available variables
-	 * @param data               - The context data for rendering
-	 * @param options            - Additional options
+	 * @param inputSchema - JSON Schema describing the available variables
+	 * @param data        - The context data for rendering
+	 * @param options     - Additional options (identifierSchemas, identifierData, coerceSchema)
 	 * @returns `{ analysis, value }`
 	 */
 	analyzeAndExecute(
@@ -331,6 +345,7 @@ export class CompiledTemplate {
 		options?: {
 			identifierSchemas?: Record<number, JSONSchema7>;
 			identifierData?: Record<number, Record<string, unknown>>;
+			coerceSchema?: JSONSchema7;
 		},
 	): { analysis: AnalysisResult; value: unknown } {
 		switch (this.state.kind) {
@@ -346,10 +361,21 @@ export class CompiledTemplate {
 
 			case "object": {
 				const { children } = this.state;
+				const coerceSchema = options?.coerceSchema;
 				return aggregateObjectAnalysisAndExecution(
 					Object.keys(children),
-					// biome-ignore lint/style/noNonNullAssertion: key comes from Object.keys(children), access is guaranteed
-					(key) => children[key]!.analyzeAndExecute(inputSchema, data, options),
+					(key) => {
+						const child = children[key];
+						if (!child) throw new Error(`unreachable: missing child "${key}"`);
+						const childCoerceSchema = coerceSchema
+							? resolveSchemaPath(coerceSchema, [key])
+							: undefined;
+						return child.analyzeAndExecute(inputSchema, data, {
+							identifierSchemas: options?.identifierSchemas,
+							identifierData: options?.identifierData,
+							coerceSchema: childCoerceSchema,
+						});
+					},
 				);
 			}
 
@@ -364,7 +390,10 @@ export class CompiledTemplate {
 				};
 
 			case "template": {
-				const analysis = this.analyze(inputSchema, options?.identifierSchemas);
+				const analysis = this.analyze(inputSchema, {
+					identifierSchemas: options?.identifierSchemas,
+					coerceSchema: options?.coerceSchema,
+				});
 
 				if (!analysis.valid) {
 					return { analysis, value: undefined };
@@ -376,6 +405,7 @@ export class CompiledTemplate {
 					data,
 					this.buildExecutorContext({
 						identifierData: options?.identifierData,
+						coerceSchema: options?.coerceSchema,
 					}),
 				);
 
@@ -398,6 +428,7 @@ export class CompiledTemplate {
 			compiledTemplate: this.getOrCompileHbs(),
 			hbs: this.options.hbs,
 			compilationCache: this.options.compilationCache,
+			coerceSchema: options?.coerceSchema,
 		};
 	}
 

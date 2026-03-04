@@ -532,7 +532,7 @@ describe("conditional schema detection (if/then/else)", () => {
 				},
 			};
 			expect(() =>
-				engine.analyze("{{value:1}}", inputSchema, identifierSchemas),
+				engine.analyze("{{value:1}}", inputSchema, { identifierSchemas }),
 			).toThrow(UnsupportedSchemaError);
 		});
 
@@ -554,7 +554,9 @@ describe("conditional schema detection (if/then/else)", () => {
 				},
 			};
 			expect(() =>
-				engine.analyze("{{config.extra:1}}", inputSchema, identifierSchemas),
+				engine.analyze("{{config.extra:1}}", inputSchema, {
+					identifierSchemas,
+				}),
 			).toThrow(UnsupportedSchemaError);
 		});
 
@@ -569,11 +571,9 @@ describe("conditional schema detection (if/then/else)", () => {
 					properties: { meetingId: { type: "string" } },
 				},
 			};
-			const result = engine.analyze(
-				"{{meetingId:1}}",
-				inputSchema,
+			const result = engine.analyze("{{meetingId:1}}", inputSchema, {
 				identifierSchemas,
-			);
+			});
 			expect(result.valid).toBe(true);
 		});
 

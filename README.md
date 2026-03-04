@@ -79,6 +79,7 @@ The output schema is inferred **statically** from the template structure and the
   - [`registerHelper`](#registerhelper)
   - [`defineHelper` (Type-Safe)](#definehelper-type-safe)
 - [Template Identifiers (`{{key:N}}`)](#template-identifiers-keyn)
+- [Output Type Coercion (`coerceSchema`)](#output-type-coercion-coerceschema)
 - [Error Handling](#error-handling)
 - [Configuration & API Reference](#configuration--api-reference)
 
@@ -1348,7 +1349,7 @@ The `{{key:N}}` syntax references variables from **different data sources**, ide
 
 ### Analysis with Identifier Schemas
 
-Each identifier maps to its own JSON Schema:
+Each identifier maps to its own JSON Schema. Pass them via the `options` object:
 
 ```ts
 const engine = new Typebars();
@@ -1367,15 +1368,15 @@ const identifierSchemas = {
 };
 
 // ✅ Valid — meetingId exists in identifier 1's schema
-engine.analyze("{{meetingId:1}}", inputSchema, identifierSchemas);
+engine.analyze("{{meetingId:1}}", inputSchema, { identifierSchemas });
 // → valid: true, outputSchema: { type: "string" }
 
 // ❌ Invalid — identifier 1 doesn't have "badKey"
-engine.analyze("{{badKey:1}}", inputSchema, identifierSchemas);
+engine.analyze("{{badKey:1}}", inputSchema, { identifierSchemas });
 // → valid: false, code: IDENTIFIER_PROPERTY_NOT_FOUND
 
 // ❌ Invalid — identifier 99 doesn't exist
-engine.analyze("{{meetingId:99}}", inputSchema, identifierSchemas);
+engine.analyze("{{meetingId:99}}", inputSchema, { identifierSchemas });
 // → valid: false, code: UNKNOWN_IDENTIFIER
 
 // ❌ Invalid — identifiers used but no schemas provided
@@ -1401,7 +1402,9 @@ const idSchemas = {
 };
 
 // ✅ "name" validated against schema, "meetingId:1" against idSchemas[1]
-engine.analyze("{{name}} — {{meetingId:1}}", schema, idSchemas);
+engine.analyze("{{name}} — {{meetingId:1}}", schema, {
+  identifierSchemas: idSchemas,
+});
 // → valid: true
 ```
 
@@ -1447,6 +1450,142 @@ const { analysis, value } = engine.analyzeAndExecute(
 analysis.valid;        // true
 analysis.outputSchema; // { type: "number" }
 value;                 // 99.95
+```
+
+---
+
+## Output Type Coercion (`coerceSchema`)
+
+By default, static literal values in templates are auto-detected by `detectLiteralType`:
+- `"123"` → `number`
+- `"true"` → `boolean`
+- `"null"` → `null`
+- `"hello"` → `string`
+
+The `inputSchema` **never** influences this detection. However, you can provide an explicit `coerceSchema` in the options to override the output type inference for static literals.
+
+### Why `coerceSchema`?
+
+When building objects from templates, you may want to force the output type of a static value to match a specific schema — for example, keeping `"123"` as a `string` instead of auto-detecting it as `number`. The `coerceSchema` is a **separate source of truth** from `inputSchema`, which avoids false positives in validation.
+
+### Basic Usage
+
+```ts
+const engine = new Typebars();
+
+// Without coerceSchema — "123" is auto-detected as number
+engine.analyze("123", { type: "string" });
+// → outputSchema: { type: "number" }
+
+// With coerceSchema — "123" respects the coercion schema
+engine.analyze("123", { type: "string" }, {
+  coerceSchema: { type: "string" },
+});
+// → outputSchema: { type: "string" }
+```
+
+### Object Templates with `coerceSchema`
+
+For object templates, `coerceSchema` is resolved per-property and propagated recursively through nested objects:
+
+```ts
+const inputSchema = {
+  type: "object",
+  properties: {
+    userName: { type: "string" },
+  },
+};
+
+const coerceSchema = {
+  type: "object",
+  properties: {
+    meetingId: { type: "string" },
+    config: {
+      type: "object",
+      properties: {
+        retries: { type: "string" },
+      },
+    },
+  },
+};
+
+const result = engine.analyze(
+  {
+    meetingId: "12345",        // coerceSchema says string → stays string
+    count: "42",               // not in coerceSchema → detectLiteralType → number
+    label: "{{userName}}",     // Handlebars expression → resolved from inputSchema
+    config: {
+      retries: "3",            // coerceSchema says string → stays string
+    },
+  },
+  inputSchema,
+  { coerceSchema },
+);
+
+result.outputSchema;
+// → {
+//   type: "object",
+//   properties: {
+//     meetingId: { type: "string" },  ← coerced
+//     count:     { type: "number" },  ← auto-detected
+//     label:     { type: "string" },  ← from inputSchema
+//     config: {
+//       type: "object",
+//       properties: {
+//         retries: { type: "string" },  ← coerced (deep propagation)
+//       },
+//       required: ["retries"],
+//     },
+//   },
+//   required: ["meetingId", "count", "label", "config"],
+// }
+```
+
+### Rules
+
+| Scenario | Output type |
+|----------|-------------|
+| Static literal, no `coerceSchema` | `detectLiteralType` (e.g. `"123"` → `number`) |
+| Static literal, `coerceSchema` with primitive type | Respects `coerceSchema` type |
+| Static literal, `coerceSchema` with non-primitive type (object, array) | Falls back to `detectLiteralType` |
+| Static literal, `coerceSchema` with no `type` | Falls back to `detectLiteralType` |
+| Handlebars expression (`{{expr}}`) | Always resolved from `inputSchema` — `coerceSchema` ignored |
+| Mixed template (`text + {{expr}}`) | Always `string` — `coerceSchema` ignored |
+| JS primitive literal (`42`, `true`, `null`) | Always `inferPrimitiveSchema` — `coerceSchema` ignored |
+| Property not in `coerceSchema` | Falls back to `detectLiteralType` |
+
+### With `analyzeAndExecute`
+
+`coerceSchema` also works with `analyzeAndExecute`:
+
+```ts
+const { analysis, value } = engine.analyzeAndExecute(
+  { meetingId: "12345", name: "{{userName}}" },
+  inputSchema,
+  { userName: "Alice" },
+  {
+    coerceSchema: {
+      type: "object",
+      properties: { meetingId: { type: "string" } },
+    },
+  },
+);
+
+analysis.outputSchema;
+// → { type: "object", properties: { meetingId: { type: "string" }, name: { type: "string" } }, ... }
+value;
+// → { meetingId: "12345", name: "Alice" }
+```
+
+### Standalone `analyze()` Function
+
+The standalone `analyze()` function from `src/analyzer.ts` also accepts `coerceSchema`:
+
+```ts
+import { analyze } from "typebars/analyzer";
+
+analyze("123", { type: "string" }, { coerceSchema: { type: "string" } });
+// → outputSchema: { type: "string" }
 ```
 
 ---
@@ -1542,16 +1681,25 @@ type TemplateInput =
 
 | Method | Description |
 |--------|-------------|
-| `analyze(template, inputSchema, identifierSchemas?)` | Validates template + infers output schema. Returns `AnalysisResult` |
-| `validate(template, inputSchema, identifierSchemas?)` | Like `analyze()` but without `outputSchema`. Returns `ValidationResult` |
+| `analyze(template, inputSchema, options?)` | Validates template + infers output schema. Options: `{ identifierSchemas?, coerceSchema? }`. Returns `AnalysisResult` |
+| `validate(template, inputSchema, options?)` | Like `analyze()` but without `outputSchema`. Returns `ValidationResult` |
 | `execute(template, data, options?)` | Renders the template. Options: `{ schema?, identifierData?, identifierSchemas? }` |
-| `analyzeAndExecute(template, inputSchema, data, options?)` | Analyze + execute in one call. Returns `{ analysis, value }` |
+| `analyzeAndExecute(template, inputSchema, data, options?)` | Analyze + execute in one call. Options: `{ identifierSchemas?, identifierData?, coerceSchema? }`. Returns `{ analysis, value }` |
 | `compile(template)` | Returns a `CompiledTemplate` (parse-once, execute-many) |
 | `isValidSyntax(template)` | Syntax check only (no schema needed). Returns `boolean` |
 | `registerHelper(name, definition)` | Register a custom helper. Returns `this` |
 | `unregisterHelper(name)` | Remove a helper. Returns `this` |
 | `hasHelper(name)` | Check if a helper is registered |
 | `clearCaches()` | Clear all internal caches |
+
+### `AnalyzeOptions`
+
+```ts
+interface AnalyzeOptions {
+  identifierSchemas?: Record<number, JSONSchema7>; // schemas by identifier
+  coerceSchema?: JSONSchema7;                      // output type coercion
+}
+```
 
 ### `AnalysisResult`
 
