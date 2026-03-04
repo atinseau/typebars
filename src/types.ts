@@ -138,7 +138,9 @@ export type DiagnosticCode =
 	/** The property does not exist in the identifier's schema */
 	| "IDENTIFIER_PROPERTY_NOT_FOUND"
 	/** Syntax error in the template */
-	| "PARSE_ERROR";
+	| "PARSE_ERROR"
+	/** The $root token is used with path traversal (e.g. $root.name) */
+	| "ROOT_PATH_TRAVERSAL";
 
 // ─── Diagnostic Details ──────────────────────────────────────────────────────
 // Supplementary information to understand the exact cause of the error.

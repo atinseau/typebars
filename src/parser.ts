@@ -1,6 +1,11 @@
 import Handlebars from "handlebars";
 import { TemplateParseError } from "./errors.ts";
 
+// ─── Root Token ──────────────────────────────────────────────────────────────
+// Special token `$root` references the entire input schema / data context.
+// It cannot be followed by property access (e.g. `$root.name` is invalid).
+export const ROOT_TOKEN = "$root";
+
 // ─── Regex for detecting a template identifier (e.g. "meetingId:1") ──────────
 // The identifier is always a positive integer or zero, separated from the
 // variable name by a `:`. The `:` and number are on the **last** segment
@@ -100,6 +105,20 @@ export function isThisExpression(expr: hbs.AST.Expression): boolean {
 	return path.original === "this" || path.original === ".";
 }
 
+/**
+ * Checks whether an AST expression is a `PathExpression` whose first
+ * segment is the `$root` token.
+ *
+ * This covers both the valid `{{$root}}` case (single segment) and the
+ * invalid `{{$root.name}}` case (multiple segments). The caller must
+ * check `parts.length` to distinguish valid from invalid usage.
+ */
+export function isRootExpression(expr: hbs.AST.Expression): boolean {
+	if (expr.type !== "PathExpression") return false;
+	const path = expr as hbs.AST.PathExpression;
+	return path.parts.length > 0 && path.parts[0] === ROOT_TOKEN;
+}
+
 // ─── Filtering Semantically Significant Nodes ───────────────────────────────
 // In a Handlebars AST, formatting (newlines, indentation) produces
 // `ContentStatement` nodes whose value is purely whitespace. These nodes
@@ -184,6 +203,23 @@ export function getEffectivelySingleExpression(
  * @param ast - The parsed AST of the template
  * @returns `true` if the template can use the fast-path
  */
+/**
+ * Determines whether a string contains Handlebars expressions.
+ *
+ * A string contains template expressions if it includes `{{` (opening
+ * delimiter for Handlebars mustache/block statements). This is a fast
+ * regex-based check — no parsing is performed.
+ *
+ * Used by `excludeTemplateExpression` to filter out properties whose
+ * values are dynamic templates.
+ *
+ * @param value - The string to check
+ * @returns `true` if the string contains at least one `{{` sequence
+ */
+export function hasHandlebarsExpression(value: string): boolean {
+	return value.includes("{{");
+}
+
 export function canUseFastPath(ast: hbs.AST.Program): boolean {
 	return ast.body.every(
 		(s) =>

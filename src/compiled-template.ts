@@ -4,6 +4,7 @@ import type { AnalyzeOptions } from "./analyzer.ts";
 import { analyzeFromAst } from "./analyzer.ts";
 import { TemplateAnalysisError } from "./errors.ts";
 import { type ExecutorContext, executeFromAst } from "./executor.ts";
+import { hasHandlebarsExpression } from "./parser.ts";
 import { resolveSchemaPath } from "./schema-resolver.ts";
 import type {
 	AnalysisResult,
@@ -187,10 +188,30 @@ export class CompiledTemplate {
 	 * @param inputSchema - JSON Schema describing the available variables
 	 * @param options     - (optional) Analysis options (identifierSchemas, coerceSchema)
 	 */
-	analyze(inputSchema: JSONSchema7, options?: AnalyzeOptions): AnalysisResult {
+	analyze(
+		inputSchema: JSONSchema7 = {},
+		options?: AnalyzeOptions,
+	): AnalysisResult {
+		const exclude = options?.excludeTemplateExpression === true;
+
 		switch (this.state.kind) {
 			case "array": {
 				const { elements } = this.state;
+
+				if (exclude) {
+					// When excludeTemplateExpression is enabled, filter out elements
+					// that are string templates containing Handlebars expressions.
+					const kept = elements.filter(
+						(el) => !isCompiledTemplateWithExpression(el),
+					);
+					return aggregateArrayAnalysis(kept.length, (index) => {
+						const element = kept[index];
+						if (!element)
+							throw new Error(`unreachable: missing element at index ${index}`);
+						return element.analyze(inputSchema, options);
+					});
+				}
+
 				return aggregateArrayAnalysis(elements.length, (index) => {
 					const element = elements[index];
 					if (!element)
@@ -202,7 +223,17 @@ export class CompiledTemplate {
 			case "object": {
 				const { children } = this.state;
 				const coerceSchema = options?.coerceSchema;
-				return aggregateObjectAnalysis(Object.keys(children), (key) => {
+
+				// When excludeTemplateExpression is enabled, filter out keys whose
+				// compiled children are string templates with Handlebars expressions.
+				const keys = exclude
+					? Object.keys(children).filter((key) => {
+							const child = children[key];
+							return !child || !isCompiledTemplateWithExpression(child);
+						})
+					: Object.keys(children);
+
+				return aggregateObjectAnalysis(keys, (key) => {
 					const child = children[key];
 					if (!child) throw new Error(`unreachable: missing child "${key}"`);
 					const childCoerceSchema = coerceSchema
@@ -211,6 +242,7 @@ export class CompiledTemplate {
 					return child.analyze(inputSchema, {
 						identifierSchemas: options?.identifierSchemas,
 						coerceSchema: childCoerceSchema,
+						excludeTemplateExpression: options?.excludeTemplateExpression,
 					});
 				});
 			}
@@ -245,7 +277,7 @@ export class CompiledTemplate {
 	 * @param options     - (optional) Analysis options (identifierSchemas, coerceSchema)
 	 */
 	validate(
-		inputSchema: JSONSchema7,
+		inputSchema: JSONSchema7 = {},
 		options?: AnalyzeOptions,
 	): ValidationResult {
 		const analysis = this.analyze(inputSchema, options);
@@ -340,7 +372,7 @@ export class CompiledTemplate {
 	 * @returns `{ analysis, value }`
 	 */
 	analyzeAndExecute(
-		inputSchema: JSONSchema7,
+		inputSchema: JSONSchema7 = {},
 		data: Record<string, unknown>,
 		options?: {
 			identifierSchemas?: Record<number, JSONSchema7>;
@@ -450,4 +482,20 @@ export class CompiledTemplate {
 		}
 		return this.hbsCompiled;
 	}
+}
+
+// ─── Internal Helpers ────────────────────────────────────────────────────────
+
+/**
+ * Determines whether a `CompiledTemplate` represents a string template
+ * containing Handlebars expressions (`{{…}}`).
+ *
+ * Used by `excludeTemplateExpression` filtering to skip dynamic entries
+ * in object and array modes.
+ */
+function isCompiledTemplateWithExpression(ct: CompiledTemplate): boolean {
+	// Only "template" kind can contain expressions. Literals, objects,
+	// and arrays are never excluded at the entry level — objects and
+	// arrays are recursively filtered by the analysis method itself.
+	return ct.template !== "" && hasHandlebarsExpression(ct.template);
 }

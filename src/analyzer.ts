@@ -2,6 +2,7 @@ import type { JSONSchema7 } from "json-schema";
 import {
 	createMissingArgumentMessage,
 	createPropertyNotFoundMessage,
+	createRootPathTraversalMessage,
 	createTypeMismatchMessage,
 	createUnanalyzableMessage,
 	createUnknownHelperMessage,
@@ -13,6 +14,8 @@ import {
 	getEffectiveBody,
 	getEffectivelySingleBlock,
 	getEffectivelySingleExpression,
+	hasHandlebarsExpression,
+	isRootExpression,
 	isThisExpression,
 	parse,
 } from "./parser";
@@ -114,6 +117,22 @@ export interface AnalyzeOptions {
 	 * for static content.
 	 */
 	coerceSchema?: JSONSchema7;
+	/**
+	 * When `true`, properties whose values contain Handlebars expressions
+	 * (i.e. any `{{…}}` syntax) are excluded from the output schema.
+	 *
+	 * Only the properties with static values (literals, plain strings
+	 * without expressions) are retained. This is useful when you want
+	 * the output schema to describe only the known, compile-time-constant
+	 * portion of the template.
+	 *
+	 * This option only has an effect on **object** and **array** templates.
+	 * A root-level string template with expressions is analyzed normally
+	 * (there is no parent property to exclude it from).
+	 *
+	 * @default false
+	 */
+	excludeTemplateExpression?: boolean;
 }
 
 /**
@@ -130,7 +149,7 @@ export interface AnalyzeOptions {
  */
 export function analyze(
 	template: TemplateInput,
-	inputSchema: JSONSchema7,
+	inputSchema: JSONSchema7 = {},
 	options?: AnalyzeOptions,
 ): AnalysisResult {
 	if (isArrayInput(template)) {
@@ -163,6 +182,19 @@ function analyzeArrayTemplate(
 	inputSchema: JSONSchema7,
 	options?: AnalyzeOptions,
 ): AnalysisResult {
+	const exclude = options?.excludeTemplateExpression === true;
+
+	if (exclude) {
+		// When excludeTemplateExpression is enabled, filter out elements
+		// that are strings containing Handlebars expressions.
+		const kept = template.filter(
+			(item) => !shouldExcludeEntry(item as TemplateInput),
+		);
+		return aggregateArrayAnalysis(kept.length, (index) =>
+			analyze(kept[index] as TemplateInput, inputSchema, options),
+		);
+	}
+
 	return aggregateArrayAnalysis(template.length, (index) =>
 		analyze(template[index] as TemplateInput, inputSchema, options),
 	);
@@ -179,7 +211,18 @@ function analyzeObjectTemplate(
 	options?: AnalyzeOptions,
 ): AnalysisResult {
 	const coerceSchema = options?.coerceSchema;
-	return aggregateObjectAnalysis(Object.keys(template), (key) => {
+	const exclude = options?.excludeTemplateExpression === true;
+
+	// When excludeTemplateExpression is enabled, filter out keys whose
+	// values contain Handlebars expressions. Only static properties
+	// (literals, plain strings without `{{…}}`) are retained.
+	const keys = exclude
+		? Object.keys(template).filter(
+				(key) => !shouldExcludeEntry(template[key] as TemplateInput),
+			)
+		: Object.keys(template);
+
+	return aggregateObjectAnalysis(keys, (key) => {
 		// When a coerceSchema is provided, resolve the child property schema
 		// from the coercion schema. This allows deeply nested objects to
 		// propagate coercion at every level.
@@ -189,8 +232,23 @@ function analyzeObjectTemplate(
 		return analyze(template[key] as TemplateInput, inputSchema, {
 			identifierSchemas: options?.identifierSchemas,
 			coerceSchema: childCoerceSchema,
+			excludeTemplateExpression: options?.excludeTemplateExpression,
 		});
 	});
+}
+
+/**
+ * Determines whether a `TemplateInput` value should be excluded when
+ * `excludeTemplateExpression` is enabled.
+ *
+ * A value is excluded if it is a string containing at least one Handlebars
+ * expression (`{{…}}`). Literals (number, boolean, null), plain strings
+ * without expressions, objects, and arrays are never excluded at the
+ * entry level — objects and arrays are recursively filtered by the
+ * analysis functions themselves.
+ */
+function shouldExcludeEntry(input: TemplateInput): boolean {
+	return typeof input === "string" && hasHandlebarsExpression(input);
 }
 
 /**
@@ -208,7 +266,7 @@ function analyzeObjectTemplate(
 export function analyzeFromAst(
 	ast: hbs.AST.Program,
 	template: string,
-	inputSchema: JSONSchema7,
+	inputSchema: JSONSchema7 = {},
 	options?: {
 		identifierSchemas?: Record<number, JSONSchema7>;
 		helpers?: Map<string, HelperDefinition>;
@@ -763,6 +821,27 @@ function resolveExpressionWithDiagnostics(
 ): JSONSchema7 | undefined {
 	// Handle `this` / `.` → return the current context
 	if (isThisExpression(expr)) {
+		return ctx.current;
+	}
+
+	// ── $root token → return the entire root schema ──────────────────────
+	// `{{$root}}` references the entire input schema. Path traversal
+	// (e.g. `{{$root.name}}`) is not allowed — use `{{name}}` instead.
+	if (isRootExpression(expr)) {
+		const parts = (expr as hbs.AST.PathExpression).parts;
+		if (parts.length > 1) {
+			const fullPath = parts.join(".");
+			addDiagnostic(
+				ctx,
+				"ROOT_PATH_TRAVERSAL",
+				"error",
+				createRootPathTraversalMessage(fullPath),
+				parentNode ?? expr,
+				{ path: fullPath },
+			);
+			return undefined;
+		}
+		// Single segment `$root` → return the full current context schema
 		return ctx.current;
 	}
 

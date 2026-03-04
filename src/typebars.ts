@@ -9,7 +9,7 @@ import {
 import { TemplateAnalysisError } from "./errors.ts";
 import { executeFromAst } from "./executor.ts";
 import { LogicalHelpers, MathHelpers } from "./helpers/index.ts";
-import { parse } from "./parser.ts";
+import { hasHandlebarsExpression, parse } from "./parser.ts";
 import { resolveSchemaPath } from "./schema-resolver.ts";
 import type {
 	AnalysisResult,
@@ -163,17 +163,41 @@ export class Typebars {
 	 */
 	analyze(
 		template: TemplateInput,
-		inputSchema: JSONSchema7,
+		inputSchema: JSONSchema7 = {},
 		options?: AnalyzeOptions,
 	): AnalysisResult {
 		if (isArrayInput(template)) {
+			const exclude = options?.excludeTemplateExpression === true;
+			if (exclude) {
+				// When excludeTemplateExpression is enabled, filter out elements
+				// that are strings containing Handlebars expressions.
+				const kept = template.filter(
+					(item) =>
+						!(typeof item === "string" && hasHandlebarsExpression(item)),
+				);
+				return aggregateArrayAnalysis(kept.length, (index) =>
+					this.analyze(kept[index] as TemplateInput, inputSchema, options),
+				);
+			}
 			return aggregateArrayAnalysis(template.length, (index) =>
 				this.analyze(template[index] as TemplateInput, inputSchema, options),
 			);
 		}
 		if (isObjectInput(template)) {
 			const coerceSchema = options?.coerceSchema;
-			return aggregateObjectAnalysis(Object.keys(template), (key) => {
+			const exclude = options?.excludeTemplateExpression === true;
+
+			// When excludeTemplateExpression is enabled, filter out keys whose
+			// values contain Handlebars expressions. Only static properties
+			// (literals, plain strings without `{{…}}`) are retained.
+			const keys = exclude
+				? Object.keys(template).filter((key) => {
+						const val = template[key];
+						return !(typeof val === "string" && hasHandlebarsExpression(val));
+					})
+				: Object.keys(template);
+
+			return aggregateObjectAnalysis(keys, (key) => {
 				// When a coerceSchema is provided, resolve the child property
 				// schema from it. This allows deeply nested objects to propagate
 				// coercion at every level.
@@ -183,6 +207,7 @@ export class Typebars {
 				return this.analyze(template[key] as TemplateInput, inputSchema, {
 					identifierSchemas: options?.identifierSchemas,
 					coerceSchema: childCoerceSchema,
+					excludeTemplateExpression: options?.excludeTemplateExpression,
 				});
 			});
 		}
@@ -217,7 +242,7 @@ export class Typebars {
 	 */
 	validate(
 		template: TemplateInput,
-		inputSchema: JSONSchema7,
+		inputSchema: JSONSchema7 = {},
 		options?: AnalyzeOptions,
 	): ValidationResult {
 		const analysis = this.analyze(template, inputSchema, options);
@@ -345,7 +370,7 @@ export class Typebars {
 	 */
 	analyzeAndExecute(
 		template: TemplateInput,
-		inputSchema: JSONSchema7,
+		inputSchema: JSONSchema7 = {},
 		data: Record<string, unknown>,
 		options?: AnalyzeAndExecuteOptions & { coerceSchema?: JSONSchema7 },
 	): { analysis: AnalysisResult; value: unknown } {

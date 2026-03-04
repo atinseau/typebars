@@ -9,9 +9,11 @@ import {
 	getEffectiveBody,
 	getEffectivelySingleBlock,
 	getEffectivelySingleExpression,
+	isRootExpression,
 	isSingleExpression,
 	isThisExpression,
 	parse,
+	ROOT_TOKEN,
 } from "./parser.ts";
 import type {
 	TemplateInput,
@@ -327,6 +329,18 @@ function resolveExpression(
 		return data;
 	}
 
+	// $root → return the entire data context
+	// Path traversal ($root.name) is silently ignored at execution time
+	// (the analyzer already rejects it with a diagnostic).
+	if (isRootExpression(expr)) {
+		const parts = (expr as hbs.AST.PathExpression).parts;
+		if (parts.length === 1) {
+			return data;
+		}
+		// $root.x — not supported, return undefined
+		return undefined;
+	}
+
 	// Literals
 	if (expr.type === "StringLiteral")
 		return (expr as hbs.AST.StringLiteral).value;
@@ -420,9 +434,12 @@ function mergeDataWithIdentifiers(
 	data: Record<string, unknown>,
 	identifierData?: Record<number, Record<string, unknown>>,
 ): Record<string, unknown> {
-	if (!identifierData) return data;
+	// Always include $root so that Handlebars can resolve {{$root}} in
+	// mixed templates and block helpers (where we delegate to Handlebars
+	// instead of resolving expressions ourselves).
+	const merged: Record<string, unknown> = { ...data, [ROOT_TOKEN]: data };
 
-	const merged: Record<string, unknown> = { ...data };
+	if (!identifierData) return merged;
 
 	for (const [id, idData] of Object.entries(identifierData)) {
 		for (const [key, value] of Object.entries(idData)) {
