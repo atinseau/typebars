@@ -9,9 +9,12 @@ import {
 	getEffectiveBody,
 	getEffectivelySingleBlock,
 	getEffectivelySingleExpression,
+	isRootPathTraversal,
+	isRootSegments,
 	isSingleExpression,
 	isThisExpression,
 	parse,
+	ROOT_TOKEN,
 } from "./parser.ts";
 import type {
 	TemplateInput,
@@ -97,7 +100,7 @@ const globalCompilationCache = new LRUCache<string, HandlebarsTemplateDelegate>(
  */
 export function execute(
 	template: TemplateInput,
-	data: Record<string, unknown>,
+	data: unknown,
 	identifierData?: Record<number, Record<string, unknown>>,
 ): unknown {
 	if (isArrayInput(template)) {
@@ -118,7 +121,7 @@ export function execute(
  */
 function executeArrayTemplate(
 	template: TemplateInputArray,
-	data: Record<string, unknown>,
+	data: unknown,
 	identifierData?: Record<number, Record<string, unknown>>,
 ): unknown[] {
 	const result: unknown[] = [];
@@ -135,7 +138,7 @@ function executeArrayTemplate(
  */
 function executeObjectTemplate(
 	template: TemplateInputObject,
-	data: Record<string, unknown>,
+	data: unknown,
 	identifierData?: Record<number, Record<string, unknown>>,
 ): Record<string, unknown> {
 	const result: Record<string, unknown> = {};
@@ -163,7 +166,7 @@ function executeObjectTemplate(
 export function executeFromAst(
 	ast: hbs.AST.Program,
 	template: string,
-	data: Record<string, unknown>,
+	data: unknown,
 	ctx?: ExecutorContext,
 ): unknown {
 	const identifierData = ctx?.identifierData;
@@ -277,7 +280,7 @@ function coerceValue(raw: string, coerceSchema?: JSONSchema7): unknown {
  */
 function executeFastPath(
 	ast: hbs.AST.Program,
-	data: Record<string, unknown>,
+	data: unknown,
 	identifierData?: Record<number, Record<string, unknown>>,
 ): string {
 	let result = "";
@@ -319,7 +322,7 @@ function executeFastPath(
  */
 function resolveExpression(
 	expr: hbs.AST.Expression,
-	data: Record<string, unknown>,
+	data: unknown,
 	identifierData?: Record<number, Record<string, unknown>>,
 ): unknown {
 	// this / . → return the entire context
@@ -345,8 +348,29 @@ function resolveExpression(
 		);
 	}
 
-	// Extract the potential identifier from the last segment
+	// Extract the potential identifier from the last segment BEFORE
+	// checking for $root, so that both {{$root}} and {{$root:N}} are
+	// handled uniformly.
 	const { cleanSegments, identifier } = extractExpressionIdentifier(segments);
+
+	// $root path traversal ($root.name) — not supported, return undefined
+	// (the analyzer already rejects it with a diagnostic).
+	if (isRootPathTraversal(cleanSegments)) {
+		return undefined;
+	}
+
+	// $root → return the entire data context (or identifier data)
+	if (isRootSegments(cleanSegments)) {
+		if (identifier !== null && identifierData) {
+			const source = identifierData[identifier];
+			return source ?? undefined;
+		}
+		if (identifier !== null) {
+			// Template uses an identifier but no identifierData was provided
+			return undefined;
+		}
+		return data;
+	}
 
 	if (identifier !== null && identifierData) {
 		const source = identifierData[identifier];
@@ -417,14 +441,28 @@ export function resolveDataPath(data: unknown, segments: string[]): unknown {
  * ```
  */
 function mergeDataWithIdentifiers(
-	data: Record<string, unknown>,
+	data: unknown,
 	identifierData?: Record<number, Record<string, unknown>>,
 ): Record<string, unknown> {
-	if (!identifierData) return data;
+	// Always include $root so that Handlebars can resolve {{$root}} in
+	// mixed templates and block helpers (where we delegate to Handlebars
+	// instead of resolving expressions ourselves).
+	// When data is a primitive (e.g. number passed with {{$root}}), we
+	// wrap it into an object so Handlebars can still function.
+	const base: Record<string, unknown> =
+		data !== null && typeof data === "object" && !Array.isArray(data)
+			? (data as Record<string, unknown>)
+			: {};
+	const merged: Record<string, unknown> = { ...base, [ROOT_TOKEN]: data };
 
-	const merged: Record<string, unknown> = { ...data };
+	if (!identifierData) return merged;
 
 	for (const [id, idData] of Object.entries(identifierData)) {
+		// Add `$root:N` so Handlebars can resolve {{$root:N}} in mixed/block
+		// templates (where we delegate to Handlebars instead of resolving
+		// expressions ourselves). The value is the entire identifier data object.
+		merged[`${ROOT_TOKEN}:${id}`] = idData;
+
 		for (const [key, value] of Object.entries(idData)) {
 			merged[`${key}:${id}`] = value;
 		}

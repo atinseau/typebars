@@ -236,3 +236,13 @@ export function createUnknownHelperMessage(helperName: string): string {
 export function createUnanalyzableMessage(nodeType: string): string {
 	return `Expression of type "${nodeType}" cannot be statically analyzed`;
 }
+
+/**
+ * Creates a message for an invalid `$root` path traversal attempt.
+ *
+ * `$root` references the entire input schema/data and cannot be followed
+ * by property access (e.g. `$root.name` is invalid — use `{{name}}` instead).
+ */
+export function createRootPathTraversalMessage(fullPath: string): string {
+	return `"$root" references the entire input and cannot be used with property access ("${fullPath}"). Use "{{${fullPath.replace("$root.", "")}}}" instead`;
+}

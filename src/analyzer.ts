@@ -2,6 +2,7 @@ import type { JSONSchema7 } from "json-schema";
 import {
 	createMissingArgumentMessage,
 	createPropertyNotFoundMessage,
+	createRootPathTraversalMessage,
 	createTypeMismatchMessage,
 	createUnanalyzableMessage,
 	createUnknownHelperMessage,
@@ -13,6 +14,9 @@ import {
 	getEffectiveBody,
 	getEffectivelySingleBlock,
 	getEffectivelySingleExpression,
+	hasHandlebarsExpression,
+	isRootPathTraversal,
+	isRootSegments,
 	isThisExpression,
 	parse,
 } from "./parser";
@@ -114,6 +118,22 @@ export interface AnalyzeOptions {
 	 * for static content.
 	 */
 	coerceSchema?: JSONSchema7;
+	/**
+	 * When `true`, properties whose values contain Handlebars expressions
+	 * (i.e. any `{{…}}` syntax) are excluded from the output schema.
+	 *
+	 * Only the properties with static values (literals, plain strings
+	 * without expressions) are retained. This is useful when you want
+	 * the output schema to describe only the known, compile-time-constant
+	 * portion of the template.
+	 *
+	 * This option only has an effect on **object** and **array** templates.
+	 * A root-level string template with expressions is analyzed normally
+	 * (there is no parent property to exclude it from).
+	 *
+	 * @default false
+	 */
+	excludeTemplateExpression?: boolean;
 }
 
 /**
@@ -130,7 +150,7 @@ export interface AnalyzeOptions {
  */
 export function analyze(
 	template: TemplateInput,
-	inputSchema: JSONSchema7,
+	inputSchema: JSONSchema7 = {},
 	options?: AnalyzeOptions,
 ): AnalysisResult {
 	if (isArrayInput(template)) {
@@ -163,6 +183,19 @@ function analyzeArrayTemplate(
 	inputSchema: JSONSchema7,
 	options?: AnalyzeOptions,
 ): AnalysisResult {
+	const exclude = options?.excludeTemplateExpression === true;
+
+	if (exclude) {
+		// When excludeTemplateExpression is enabled, filter out elements
+		// that are strings containing Handlebars expressions.
+		const kept = template.filter(
+			(item) => !shouldExcludeEntry(item as TemplateInput),
+		);
+		return aggregateArrayAnalysis(kept.length, (index) =>
+			analyze(kept[index] as TemplateInput, inputSchema, options),
+		);
+	}
+
 	return aggregateArrayAnalysis(template.length, (index) =>
 		analyze(template[index] as TemplateInput, inputSchema, options),
 	);
@@ -179,7 +212,18 @@ function analyzeObjectTemplate(
 	options?: AnalyzeOptions,
 ): AnalysisResult {
 	const coerceSchema = options?.coerceSchema;
-	return aggregateObjectAnalysis(Object.keys(template), (key) => {
+	const exclude = options?.excludeTemplateExpression === true;
+
+	// When excludeTemplateExpression is enabled, filter out keys whose
+	// values contain Handlebars expressions. Only static properties
+	// (literals, plain strings without `{{…}}`) are retained.
+	const keys = exclude
+		? Object.keys(template).filter(
+				(key) => !shouldExcludeEntry(template[key] as TemplateInput),
+			)
+		: Object.keys(template);
+
+	return aggregateObjectAnalysis(keys, (key) => {
 		// When a coerceSchema is provided, resolve the child property schema
 		// from the coercion schema. This allows deeply nested objects to
 		// propagate coercion at every level.
@@ -189,8 +233,23 @@ function analyzeObjectTemplate(
 		return analyze(template[key] as TemplateInput, inputSchema, {
 			identifierSchemas: options?.identifierSchemas,
 			coerceSchema: childCoerceSchema,
+			excludeTemplateExpression: options?.excludeTemplateExpression,
 		});
 	});
+}
+
+/**
+ * Determines whether a `TemplateInput` value should be excluded when
+ * `excludeTemplateExpression` is enabled.
+ *
+ * A value is excluded if it is a string containing at least one Handlebars
+ * expression (`{{…}}`). Literals (number, boolean, null), plain strings
+ * without expressions, objects, and arrays are never excluded at the
+ * entry level — objects and arrays are recursively filtered by the
+ * analysis functions themselves.
+ */
+function shouldExcludeEntry(input: TemplateInput): boolean {
+	return typeof input === "string" && hasHandlebarsExpression(input);
 }
 
 /**
@@ -208,7 +267,7 @@ function analyzeObjectTemplate(
 export function analyzeFromAst(
 	ast: hbs.AST.Program,
 	template: string,
-	inputSchema: JSONSchema7,
+	inputSchema: JSONSchema7 = {},
 	options?: {
 		identifierSchemas?: Record<number, JSONSchema7>;
 		helpers?: Map<string, HelperDefinition>;
@@ -791,7 +850,34 @@ function resolveExpressionWithDiagnostics(
 	}
 
 	// ── Identifier extraction ──────────────────────────────────────────────
+	// Extract the `:N` suffix BEFORE checking for `$root` so that both
+	// `{{$root}}` and `{{$root:2}}` are handled uniformly.
 	const { cleanSegments, identifier } = extractExpressionIdentifier(segments);
+
+	// ── $root token ──────────────────────────────────────────────────────
+	// Path traversal ($root.name, $root.address.city) is always forbidden,
+	// regardless of whether an identifier is present.
+	if (isRootPathTraversal(cleanSegments)) {
+		const fullPath = cleanSegments.join(".");
+		addDiagnostic(
+			ctx,
+			"ROOT_PATH_TRAVERSAL",
+			"error",
+			createRootPathTraversalMessage(fullPath),
+			parentNode ?? expr,
+			{ path: fullPath },
+		);
+		return undefined;
+	}
+
+	// `{{$root}}` → return the entire current context schema
+	// `{{$root:N}}` → return the entire schema for identifier N
+	if (isRootSegments(cleanSegments)) {
+		if (identifier !== null) {
+			return resolveRootWithIdentifier(identifier, ctx, parentNode ?? expr);
+		}
+		return ctx.current;
+	}
 
 	if (identifier !== null) {
 		// The expression uses the {{key:N}} syntax — resolve from
@@ -821,6 +907,53 @@ function resolveExpressionWithDiagnostics(
 	}
 
 	return resolved;
+}
+
+/**
+ * Resolves `{{$root:N}}` — returns the **entire** schema for identifier N.
+ *
+ * This is the identifier-aware counterpart of returning `ctx.current` for
+ * a plain `{{$root}}`. Instead of navigating into properties, it returns
+ * the identifier's root schema directly.
+ *
+ * Emits an error diagnostic if:
+ * - No `identifierSchemas` were provided
+ * - Identifier N has no associated schema
+ */
+function resolveRootWithIdentifier(
+	identifier: number,
+	ctx: AnalysisContext,
+	node: hbs.AST.Node,
+): JSONSchema7 | undefined {
+	// No identifierSchemas provided at all
+	if (!ctx.identifierSchemas) {
+		addDiagnostic(
+			ctx,
+			"MISSING_IDENTIFIER_SCHEMAS",
+			"error",
+			`Property "$root:${identifier}" uses an identifier but no identifier schemas were provided`,
+			node,
+			{ path: `$root:${identifier}`, identifier },
+		);
+		return undefined;
+	}
+
+	// The identifier does not exist in the provided schemas
+	const idSchema = ctx.identifierSchemas[identifier];
+	if (!idSchema) {
+		addDiagnostic(
+			ctx,
+			"UNKNOWN_IDENTIFIER",
+			"error",
+			`Property "$root:${identifier}" references identifier ${identifier} but no schema exists for this identifier`,
+			node,
+			{ path: `$root:${identifier}`, identifier },
+		);
+		return undefined;
+	}
+
+	// Return the entire schema for identifier N
+	return idSchema;
 }
 
 /**
