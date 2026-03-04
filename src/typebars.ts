@@ -6,11 +6,15 @@ import {
 	CompiledTemplate,
 	type CompiledTemplateOptions,
 } from "./compiled-template.ts";
+import {
+	dispatchAnalyze,
+	dispatchAnalyzeAndExecute,
+	dispatchExecute,
+} from "./dispatch.ts";
 import { TemplateAnalysisError } from "./errors.ts";
 import { executeFromAst } from "./executor.ts";
 import { LogicalHelpers, MathHelpers } from "./helpers/index.ts";
-import { hasHandlebarsExpression, parse } from "./parser.ts";
-import { resolveSchemaPath } from "./schema-resolver.ts";
+import { parse } from "./parser.ts";
 import type {
 	AnalysisResult,
 	AnalyzeAndExecuteOptions,
@@ -21,19 +25,8 @@ import type {
 	TemplateInput,
 	ValidationResult,
 } from "./types.ts";
-import {
-	inferPrimitiveSchema,
-	isArrayInput,
-	isLiteralInput,
-	isObjectInput,
-} from "./types.ts";
-import {
-	aggregateArrayAnalysis,
-	aggregateArrayAnalysisAndExecution,
-	aggregateObjectAnalysis,
-	aggregateObjectAnalysisAndExecution,
-	LRUCache,
-} from "./utils";
+import { isArrayInput, isLiteralInput, isObjectInput } from "./types.ts";
+import { LRUCache } from "./utils";
 
 // ─── Typebars ────────────────────────────────────────────────────────────────
 // Public entry point of the template engine. Orchestrates three phases:
@@ -167,64 +160,21 @@ export class Typebars {
 		inputSchema: JSONSchema7 = {},
 		options?: AnalyzeOptions,
 	): AnalysisResult {
-		if (isArrayInput(template)) {
-			const exclude = options?.excludeTemplateExpression === true;
-			if (exclude) {
-				// When excludeTemplateExpression is enabled, filter out elements
-				// that are strings containing Handlebars expressions.
-				const kept = template.filter(
-					(item) =>
-						!(typeof item === "string" && hasHandlebarsExpression(item)),
-				);
-				return aggregateArrayAnalysis(kept.length, (index) =>
-					this.analyze(kept[index] as TemplateInput, inputSchema, options),
-				);
-			}
-			return aggregateArrayAnalysis(template.length, (index) =>
-				this.analyze(template[index] as TemplateInput, inputSchema, options),
-			);
-		}
-		if (isObjectInput(template)) {
-			const coerceSchema = options?.coerceSchema;
-			const exclude = options?.excludeTemplateExpression === true;
-
-			// When excludeTemplateExpression is enabled, filter out keys whose
-			// values contain Handlebars expressions. Only static properties
-			// (literals, plain strings without `{{…}}`) are retained.
-			const keys = exclude
-				? Object.keys(template).filter((key) => {
-						const val = template[key];
-						return !(typeof val === "string" && hasHandlebarsExpression(val));
-					})
-				: Object.keys(template);
-
-			return aggregateObjectAnalysis(keys, (key) => {
-				// When a coerceSchema is provided, resolve the child property
-				// schema from it. This allows deeply nested objects to propagate
-				// coercion at every level.
-				const childCoerceSchema = coerceSchema
-					? resolveSchemaPath(coerceSchema, [key])
-					: undefined;
-				return this.analyze(template[key] as TemplateInput, inputSchema, {
+		return dispatchAnalyze(
+			template,
+			options,
+			// String handler — parse with cache and analyze the AST
+			(tpl, coerceSchema) => {
+				const ast = this.getCachedAst(tpl);
+				return analyzeFromAst(ast, tpl, inputSchema, {
 					identifierSchemas: options?.identifierSchemas,
-					coerceSchema: childCoerceSchema,
-					excludeTemplateExpression: options?.excludeTemplateExpression,
+					helpers: this.helpers,
+					coerceSchema,
 				});
-			});
-		}
-		if (isLiteralInput(template)) {
-			return {
-				valid: true,
-				diagnostics: [],
-				outputSchema: inferPrimitiveSchema(template),
-			};
-		}
-		const ast = this.getCachedAst(template);
-		return analyzeFromAst(ast, template, inputSchema, {
-			identifierSchemas: options?.identifierSchemas,
-			helpers: this.helpers,
-			coerceSchema: options?.coerceSchema,
-		});
+			},
+			// Recursive handler — re-enter analyze() for child elements
+			(child, childOptions) => this.analyze(child, inputSchema, childOptions),
+		);
 	}
 
 	// ─── Validation ──────────────────────────────────────────────────────────
@@ -302,55 +252,35 @@ export class Typebars {
 		data?: TemplateData,
 		options?: ExecuteOptions,
 	): unknown {
-		// ── Array template → recursive execution ─────────────────────────────
-		if (isArrayInput(template)) {
-			const result: unknown[] = [];
-			for (const element of template) {
-				result.push(this.execute(element, data, options));
-			}
-			return result;
-		}
+		return dispatchExecute(
+			template,
+			options,
+			// String handler — parse, optionally validate, then execute
+			(tpl, coerceSchema) => {
+				const ast = this.getCachedAst(tpl);
 
-		// ── Object template → recursive execution ────────────────────────────
-		if (isObjectInput(template)) {
-			const coerceSchema = options?.coerceSchema;
-			const result: Record<string, unknown> = {};
-			for (const [key, value] of Object.entries(template)) {
-				const childCoerceSchema = coerceSchema
-					? resolveSchemaPath(coerceSchema, [key])
-					: undefined;
-				result[key] = this.execute(value, data, {
-					...options,
-					coerceSchema: childCoerceSchema,
+				// Pre-execution static validation if a schema is provided
+				if (options?.schema) {
+					const analysis = analyzeFromAst(ast, tpl, options.schema, {
+						identifierSchemas: options?.identifierSchemas,
+						helpers: this.helpers,
+					});
+					if (!analysis.valid) {
+						throw new TemplateAnalysisError(analysis.diagnostics);
+					}
+				}
+
+				return executeFromAst(ast, tpl, data, {
+					identifierData: options?.identifierData,
+					hbs: this.hbs,
+					compilationCache: this.compilationCache,
+					coerceSchema,
 				});
-			}
-			return result;
-		}
-
-		// ── Passthrough for literal values ────────────────────────────────────
-		if (isLiteralInput(template)) return template;
-
-		// ── Parse once ───────────────────────────────────────────────────────
-		const ast = this.getCachedAst(template);
-
-		// ── Pre-execution static validation ──────────────────────────────────
-		if (options?.schema) {
-			const analysis = analyzeFromAst(ast, template, options.schema, {
-				identifierSchemas: options?.identifierSchemas,
-				helpers: this.helpers,
-			});
-			if (!analysis.valid) {
-				throw new TemplateAnalysisError(analysis.diagnostics);
-			}
-		}
-
-		// ── Execution ────────────────────────────────────────────────────────
-		return executeFromAst(ast, template, data, {
-			identifierData: options?.identifierData,
-			hbs: this.hbs,
-			compilationCache: this.compilationCache,
-			coerceSchema: options?.coerceSchema,
-		});
+			},
+			// Recursive handler — re-enter execute() for child elements
+			(child, childOptions) =>
+				this.execute(child, data, { ...options, ...childOptions }),
+		);
 	}
 
 	// ─── Combined Shortcuts ──────────────────────────────────────────────────
@@ -375,69 +305,34 @@ export class Typebars {
 		data: TemplateData,
 		options?: AnalyzeAndExecuteOptions & { coerceSchema?: JSONSchema7 },
 	): { analysis: AnalysisResult; value: unknown } {
-		if (isArrayInput(template)) {
-			return aggregateArrayAnalysisAndExecution(template.length, (index) =>
-				this.analyzeAndExecute(
-					template[index] as TemplateInput,
-					inputSchema,
-					data,
-					options,
-				),
-			);
-		}
-		if (isObjectInput(template)) {
-			const coerceSchema = options?.coerceSchema;
-			return aggregateObjectAnalysisAndExecution(
-				Object.keys(template),
-				(key) => {
-					// When a coerceSchema is provided, resolve the child property
-					// schema from it for deeply nested coercion propagation.
-					const childCoerceSchema = coerceSchema
-						? resolveSchemaPath(coerceSchema, [key])
-						: undefined;
-					return this.analyzeAndExecute(
-						template[key] as TemplateInput,
-						inputSchema,
-						data,
-						{
-							identifierSchemas: options?.identifierSchemas,
-							identifierData: options?.identifierData,
-							coerceSchema: childCoerceSchema,
-						},
-					);
-				},
-			);
-		}
+		return dispatchAnalyzeAndExecute(
+			template,
+			options,
+			// String handler — analyze then execute if valid
+			(tpl, coerceSchema) => {
+				const ast = this.getCachedAst(tpl);
+				const analysis = analyzeFromAst(ast, tpl, inputSchema, {
+					identifierSchemas: options?.identifierSchemas,
+					helpers: this.helpers,
+					coerceSchema,
+				});
 
-		if (isLiteralInput(template)) {
-			return {
-				analysis: {
-					valid: true,
-					diagnostics: [],
-					outputSchema: inferPrimitiveSchema(template),
-				},
-				value: template,
-			};
-		}
+				if (!analysis.valid) {
+					return { analysis, value: undefined };
+				}
 
-		const ast = this.getCachedAst(template);
-		const analysis = analyzeFromAst(ast, template, inputSchema, {
-			identifierSchemas: options?.identifierSchemas,
-			helpers: this.helpers,
-			coerceSchema: options?.coerceSchema,
-		});
-
-		if (!analysis.valid) {
-			return { analysis, value: undefined };
-		}
-
-		const value = executeFromAst(ast, template, data, {
-			identifierData: options?.identifierData,
-			hbs: this.hbs,
-			compilationCache: this.compilationCache,
-			coerceSchema: options?.coerceSchema,
-		});
-		return { analysis, value };
+				const value = executeFromAst(ast, tpl, data, {
+					identifierData: options?.identifierData,
+					hbs: this.hbs,
+					compilationCache: this.compilationCache,
+					coerceSchema,
+				});
+				return { analysis, value };
+			},
+			// Recursive handler — re-enter analyzeAndExecute() for child elements
+			(child, childOptions) =>
+				this.analyzeAndExecute(child, inputSchema, data, childOptions),
+		);
 	}
 
 	// ─── Custom Helper Management ──────────────────────────────────────────

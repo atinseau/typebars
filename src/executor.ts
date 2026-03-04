@@ -1,5 +1,6 @@
 import Handlebars from "handlebars";
 import type { JSONSchema7 } from "json-schema";
+import { dispatchExecute } from "./dispatch.ts";
 import { TemplateRuntimeError } from "./errors.ts";
 import {
 	canUseFastPath,
@@ -16,12 +17,7 @@ import {
 	parse,
 	ROOT_TOKEN,
 } from "./parser.ts";
-import type {
-	TemplateInput,
-	TemplateInputArray,
-	TemplateInputObject,
-} from "./types.ts";
-import { isArrayInput, isLiteralInput, isObjectInput } from "./types.ts";
+import type { TemplateInput } from "./types.ts";
 import { LRUCache } from "./utils.ts";
 
 // ─── Template Executor ───────────────────────────────────────────────────────
@@ -103,49 +99,17 @@ export function execute(
 	data: unknown,
 	identifierData?: Record<number, Record<string, unknown>>,
 ): unknown {
-	if (isArrayInput(template)) {
-		return executeArrayTemplate(template, data, identifierData);
-	}
-	if (isObjectInput(template)) {
-		return executeObjectTemplate(template, data, identifierData);
-	}
-	if (isLiteralInput(template)) return template;
-	const ast = parse(template);
-	return executeFromAst(ast, template, data, { identifierData });
-}
-
-/**
- * Executes an array template recursively (standalone version).
- * Each element is executed individually and the result is an array
- * with resolved values.
- */
-function executeArrayTemplate(
-	template: TemplateInputArray,
-	data: unknown,
-	identifierData?: Record<number, Record<string, unknown>>,
-): unknown[] {
-	const result: unknown[] = [];
-	for (const element of template) {
-		result.push(execute(element, data, identifierData));
-	}
-	return result;
-}
-
-/**
- * Executes an object template recursively (standalone version).
- * Each property is executed individually and the result is an object
- * with the same structure but resolved values.
- */
-function executeObjectTemplate(
-	template: TemplateInputObject,
-	data: unknown,
-	identifierData?: Record<number, Record<string, unknown>>,
-): Record<string, unknown> {
-	const result: Record<string, unknown> = {};
-	for (const [key, value] of Object.entries(template)) {
-		result[key] = execute(value, data, identifierData);
-	}
-	return result;
+	return dispatchExecute(
+		template,
+		undefined,
+		// String handler — parse and execute the AST
+		(tpl) => {
+			const ast = parse(tpl);
+			return executeFromAst(ast, tpl, data, { identifierData });
+		},
+		// Recursive handler — re-enter execute() for child elements
+		(child) => execute(child, data, identifierData),
+	);
 }
 
 // ─── Internal API (for Typebars / CompiledTemplate) ──────────────────────

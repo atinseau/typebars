@@ -2,10 +2,9 @@ import type Handlebars from "handlebars";
 import type { JSONSchema7 } from "json-schema";
 import type { AnalyzeOptions } from "./analyzer.ts";
 import { analyzeFromAst } from "./analyzer.ts";
+import { resolveChildCoerceSchema, shouldExcludeEntry } from "./dispatch.ts";
 import { TemplateAnalysisError } from "./errors.ts";
 import { type ExecutorContext, executeFromAst } from "./executor.ts";
-import { hasHandlebarsExpression } from "./parser.ts";
-import { resolveSchemaPath } from "./schema-resolver.ts";
 import type {
 	AnalysisResult,
 	ExecuteOptions,
@@ -237,9 +236,7 @@ export class CompiledTemplate {
 				return aggregateObjectAnalysis(keys, (key) => {
 					const child = children[key];
 					if (!child) throw new Error(`unreachable: missing child "${key}"`);
-					const childCoerceSchema = coerceSchema
-						? resolveSchemaPath(coerceSchema, [key])
-						: undefined;
+					const childCoerceSchema = resolveChildCoerceSchema(coerceSchema, key);
 					return child.analyze(inputSchema, {
 						identifierSchemas: options?.identifierSchemas,
 						coerceSchema: childCoerceSchema,
@@ -323,9 +320,7 @@ export class CompiledTemplate {
 				const coerceSchema = options?.coerceSchema;
 				const result: Record<string, unknown> = {};
 				for (const [key, child] of Object.entries(children)) {
-					const childCoerceSchema = coerceSchema
-						? resolveSchemaPath(coerceSchema, [key])
-						: undefined;
+					const childCoerceSchema = resolveChildCoerceSchema(coerceSchema, key);
 					result[key] = child.execute(data, {
 						...options,
 						coerceSchema: childCoerceSchema,
@@ -400,9 +395,10 @@ export class CompiledTemplate {
 					(key) => {
 						const child = children[key];
 						if (!child) throw new Error(`unreachable: missing child "${key}"`);
-						const childCoerceSchema = coerceSchema
-							? resolveSchemaPath(coerceSchema, [key])
-							: undefined;
+						const childCoerceSchema = resolveChildCoerceSchema(
+							coerceSchema,
+							key,
+						);
 						return child.analyzeAndExecute(inputSchema, data, {
 							identifierSchemas: options?.identifierSchemas,
 							identifierData: options?.identifierData,
@@ -498,5 +494,5 @@ function isCompiledTemplateWithExpression(ct: CompiledTemplate): boolean {
 	// Only "template" kind can contain expressions. Literals, objects,
 	// and arrays are never excluded at the entry level — objects and
 	// arrays are recursively filtered by the analysis method itself.
-	return ct.template !== "" && hasHandlebarsExpression(ct.template);
+	return ct.template !== "" && shouldExcludeEntry(ct.template);
 }
