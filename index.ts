@@ -4,20 +4,8 @@ import { Typebars } from "./src";
 const tp = new Typebars();
 
 const template = `
-  {{
-
-  collect users 'cartItems'
-
-  }}
+  {{ collect (collect users 'names') 'name' }}
 `;
-
-const data = {
-	users: [
-		{ name: "Alice", cartItems: [{ productId: "p1", quantity: 2 }] },
-		{ name: "Bob", cartItems: [{ productId: "p2", quantity: 1 }] },
-		{ name: "Charlie", cartItems: [{ productId: "p3", quantity: 5 }] },
-	],
-};
 
 const schema: JSONSchema7 = {
 	type: "object",
@@ -27,23 +15,31 @@ const schema: JSONSchema7 = {
 			items: {
 				type: "object",
 				properties: {
-					cartItems: {
+					names: {
 						type: "array",
 						items: {
 							type: "object",
 							properties: {
-								productId: { type: "string" },
-								quantity: { type: "number" },
+								name: { type: "string" },
 							},
-							required: ["productId", "quantity"],
 						},
 					},
 				},
 			},
-			required: ["name"],
 		},
 	},
 	required: ["users"],
+};
+
+const data = {
+	users: [
+		{
+			names: [{ name: "Alice" }, { name: "Bob" }],
+		},
+		{
+			names: [{ name: "Charlie" }, { name: "David" }],
+		},
+	],
 };
 
 const result = tp.analyzeAndExecute(template, schema, data);
