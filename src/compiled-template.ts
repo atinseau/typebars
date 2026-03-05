@@ -458,6 +458,7 @@ export class CompiledTemplate {
 			hbs: this.options.hbs,
 			compilationCache: this.options.compilationCache,
 			coerceSchema: options?.coerceSchema,
+			helpers: this.options.helpers,
 		};
 	}
 

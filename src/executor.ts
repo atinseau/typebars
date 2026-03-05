@@ -2,6 +2,7 @@ import Handlebars from "handlebars";
 import type { JSONSchema7 } from "json-schema";
 import { dispatchExecute } from "./dispatch.ts";
 import { TemplateRuntimeError } from "./errors.ts";
+import { CollectionHelpers } from "./helpers/collection-helpers.ts";
 import {
 	canUseFastPath,
 	coerceLiteral,
@@ -17,7 +18,7 @@ import {
 	parse,
 	ROOT_TOKEN,
 } from "./parser.ts";
-import type { TemplateInput } from "./types.ts";
+import type { HelperDefinition, TemplateInput } from "./types.ts";
 import { LRUCache } from "./utils.ts";
 
 // ─── Template Executor ───────────────────────────────────────────────────────
@@ -71,6 +72,8 @@ export interface ExecutorContext {
 	 * to match the declared type instead of using auto-detection.
 	 */
 	coerceSchema?: JSONSchema7;
+	/** Registered helpers (for direct execution of special helpers like `collect`) */
+	helpers?: Map<string, HelperDefinition>;
 }
 
 // ─── Global Compilation Cache ────────────────────────────────────────────────
@@ -141,14 +144,19 @@ export function executeFromAst(
 	if (isSingleExpression(ast)) {
 		const stmt = ast.body[0] as hbs.AST.MustacheStatement;
 		if (stmt.params.length === 0 && !stmt.hash) {
-			return resolveExpression(stmt.path, data, identifierData);
+			return resolveExpression(stmt.path, data, identifierData, ctx?.helpers);
 		}
 	}
 
 	// ── Case 1b: single expression with surrounding whitespace `  {{expr}}  `
 	const singleExpr = getEffectivelySingleExpression(ast);
 	if (singleExpr && singleExpr.params.length === 0 && !singleExpr.hash) {
-		return resolveExpression(singleExpr.path, data, identifierData);
+		return resolveExpression(
+			singleExpr.path,
+			data,
+			identifierData,
+			ctx?.helpers,
+		);
 	}
 
 	// ── Case 1c: single expression with helper (params > 0) ──────────────
@@ -157,6 +165,15 @@ export function executeFromAst(
 	// string. We render via Handlebars then coerce the result to recover
 	// the original type (number, boolean, null).
 	if (singleExpr && (singleExpr.params.length > 0 || singleExpr.hash)) {
+		// ── Special case: helpers that return non-primitive values ────────
+		// Some helpers (e.g. `collect`) return arrays or objects. Handlebars
+		// would stringify these, so we resolve their arguments directly and
+		// call the helper's fn to preserve the raw return value.
+		const directResult = tryDirectHelperExecution(singleExpr, data, ctx);
+		if (directResult !== undefined) {
+			return directResult.value;
+		}
+
 		const merged = mergeDataWithIdentifiers(data, identifierData);
 		const raw = renderWithHandlebars(template, merged, ctx);
 		return coerceValue(raw, ctx?.coerceSchema);
@@ -288,6 +305,7 @@ function resolveExpression(
 	expr: hbs.AST.Expression,
 	data: unknown,
 	identifierData?: Record<number, Record<string, unknown>>,
+	helpers?: Map<string, HelperDefinition>,
 ): unknown {
 	// this / . → return the entire context
 	if (isThisExpression(expr)) {
@@ -303,6 +321,35 @@ function resolveExpression(
 		return (expr as hbs.AST.BooleanLiteral).value;
 	if (expr.type === "NullLiteral") return null;
 	if (expr.type === "UndefinedLiteral") return undefined;
+
+	// ── SubExpression (nested helper call) ────────────────────────────────
+	// E.g. `(collect users 'cartItems')` used as an argument to another helper.
+	// Resolve all arguments recursively and call the helper's fn directly.
+	if (expr.type === "SubExpression") {
+		const subExpr = expr as hbs.AST.SubExpression;
+		if (subExpr.path.type === "PathExpression") {
+			const helperName = (subExpr.path as hbs.AST.PathExpression).original;
+			const helper = helpers?.get(helperName);
+			if (helper) {
+				const isCollect = helperName === CollectionHelpers.COLLECT_HELPER_NAME;
+				const resolvedArgs: unknown[] = [];
+				for (let i = 0; i < subExpr.params.length; i++) {
+					const param = subExpr.params[i] as hbs.AST.Expression;
+					// For `collect`, the second argument is a property name literal
+					if (isCollect && i === 1 && param.type === "StringLiteral") {
+						resolvedArgs.push((param as hbs.AST.StringLiteral).value);
+					} else {
+						resolvedArgs.push(
+							resolveExpression(param, data, identifierData, helpers),
+						);
+					}
+				}
+				return helper.fn(...resolvedArgs);
+			}
+		}
+		// Unknown sub-expression helper — return undefined
+		return undefined;
+	}
 
 	// PathExpression — navigate through segments in the data object
 	const segments = extractPathSegments(expr);
@@ -492,4 +539,76 @@ function renderWithHandlebars(
  */
 export function clearCompilationCache(): void {
 	globalCompilationCache.clear();
+}
+
+// ─── Direct Helper Execution ─────────────────────────────────────────────────
+// Some helpers (e.g. `collect`) return non-primitive values (arrays, objects)
+// that Handlebars would stringify. For these helpers, we resolve their
+// arguments directly and call the helper's `fn` to preserve the raw value.
+
+/** Set of helper names that must be executed directly (bypass Handlebars) */
+const DIRECT_EXECUTION_HELPERS = new Set<string>([
+	CollectionHelpers.COLLECT_HELPER_NAME,
+]);
+
+/**
+ * Attempts to execute a helper directly (without Handlebars rendering).
+ *
+ * Returns `{ value }` if the helper was executed directly, or `undefined`
+ * if the helper should go through the normal Handlebars rendering path.
+ *
+ * @param stmt - The MustacheStatement containing the helper call
+ * @param data - The context data
+ * @param ctx  - Optional execution context (with helpers and identifierData)
+ */
+function tryDirectHelperExecution(
+	stmt: hbs.AST.MustacheStatement,
+	data: unknown,
+	ctx?: ExecutorContext,
+): { value: unknown } | undefined {
+	// Get the helper name from the path
+	if (stmt.path.type !== "PathExpression") return undefined;
+	const helperName = (stmt.path as hbs.AST.PathExpression).original;
+
+	// Only intercept known direct-execution helpers
+	if (!DIRECT_EXECUTION_HELPERS.has(helperName)) return undefined;
+
+	// Look up the helper definition
+	const helper = ctx?.helpers?.get(helperName);
+	if (!helper) return undefined;
+
+	// Resolve each argument from the data context.
+	// For the `collect` helper, the resolution strategy is:
+	//   - Arg 0 (collection): resolve as a data path (e.g. `users` → array)
+	//   - Arg 1 (property):   must be a StringLiteral (e.g. `"name"`)
+	//     The analyzer enforces this — bare identifiers like `name` are
+	//     rejected at analysis time because Handlebars would resolve them
+	//     as a data path instead of a literal property name.
+	const isCollect = helperName === CollectionHelpers.COLLECT_HELPER_NAME;
+
+	const resolvedArgs: unknown[] = [];
+	for (let i = 0; i < stmt.params.length; i++) {
+		const param = stmt.params[i] as hbs.AST.Expression;
+
+		// For `collect`, the second argument (index 1) is a property name —
+		// it must be a StringLiteral (enforced by the analyzer).
+		if (isCollect && i === 1) {
+			if (param.type === "StringLiteral") {
+				resolvedArgs.push((param as hbs.AST.StringLiteral).value);
+			} else {
+				// Fallback: resolve normally (will likely be undefined at runtime)
+				resolvedArgs.push(
+					resolveExpression(param, data, ctx?.identifierData, ctx?.helpers),
+				);
+			}
+		} else {
+			resolvedArgs.push(
+				resolveExpression(param, data, ctx?.identifierData, ctx?.helpers),
+			);
+		}
+	}
+
+	// Call the helper's fn directly with the resolved arguments
+	const value = helper.fn(...resolvedArgs);
+	return { value };
 }

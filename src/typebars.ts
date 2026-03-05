@@ -13,7 +13,11 @@ import {
 } from "./dispatch.ts";
 import { TemplateAnalysisError } from "./errors.ts";
 import { executeFromAst } from "./executor.ts";
-import { LogicalHelpers, MathHelpers } from "./helpers/index.ts";
+import {
+	CollectionHelpers,
+	LogicalHelpers,
+	MathHelpers,
+} from "./helpers/index.ts";
 import { parse } from "./parser.ts";
 import type {
 	AnalysisResult,
@@ -54,6 +58,38 @@ import { LRUCache } from "./utils";
 //   engine.execute("{{meetingId:1}}", data, { identifierData: { 1: node1Data } });
 //   engine.analyze("{{meetingId:1}}", schema, { identifierSchemas: { 1: node1Schema } });
 
+// ─── Direct Execution Helper Names ───────────────────────────────────────────
+// Helpers whose return values are non-primitive (arrays, objects) and must be
+// wrapped when registered with Handlebars so that mixed/block templates get a
+// human-readable string (e.g. `", "` joined) instead of JS default toString().
+// In single-expression mode the executor bypasses Handlebars entirely, so the
+// raw value is preserved.
+const DIRECT_EXECUTION_HELPER_NAMES = new Set<string>([
+	CollectionHelpers.COLLECT_HELPER_NAME,
+]);
+
+/**
+ * Converts a value to a string suitable for embedding in a Handlebars template.
+ *
+ * - Arrays of primitives are joined with `", "`
+ * - Arrays of objects are JSON-stringified per element, then joined
+ * - Primitives use `String(value)`
+ * - null/undefined become `""`
+ */
+function stringifyForTemplate(value: unknown): string {
+	if (value === null || value === undefined) return "";
+	if (Array.isArray(value)) {
+		return value
+			.map((item) => {
+				if (item === null || item === undefined) return "";
+				if (typeof item === "object") return JSON.stringify(item);
+				return String(item);
+			})
+			.join(", ");
+	}
+	return String(value);
+}
+
 // ─── Main Class ──────────────────────────────────────────────────────────────
 
 export class Typebars {
@@ -80,6 +116,7 @@ export class Typebars {
 		// ── Built-in helpers ─────────────────────────────────────────────
 		new MathHelpers().register(this);
 		new LogicalHelpers().register(this);
+		new CollectionHelpers().register(this);
 
 		// ── Custom helpers via options ───────────────────────────────────
 		if (options.helpers) {
@@ -275,6 +312,7 @@ export class Typebars {
 					hbs: this.hbs,
 					compilationCache: this.compilationCache,
 					coerceSchema,
+					helpers: this.helpers,
 				});
 			},
 			// Recursive handler — re-enter execute() for child elements
@@ -326,6 +364,7 @@ export class Typebars {
 					hbs: this.hbs,
 					compilationCache: this.compilationCache,
 					coerceSchema,
+					helpers: this.helpers,
 				});
 				return { analysis, value };
 			},
@@ -349,7 +388,24 @@ export class Typebars {
 	 */
 	registerHelper(name: string, definition: HelperDefinition): this {
 		this.helpers.set(name, definition);
-		this.hbs.registerHelper(name, definition.fn);
+
+		// For helpers that return non-primitive values (arrays, objects),
+		// register a Handlebars-friendly wrapper that converts the result
+		// to a string. In single-expression mode the executor bypasses
+		// Handlebars entirely (via tryDirectHelperExecution) and returns
+		// the raw value, so this wrapper only affects mixed/block templates
+		// where Handlebars renders the result into a larger string.
+		if (DIRECT_EXECUTION_HELPER_NAMES.has(name)) {
+			this.hbs.registerHelper(name, (...args: unknown[]) => {
+				// Handlebars appends an `options` object as the last argument.
+				// Strip it before calling the real fn.
+				const hbsArgs = args.slice(0, -1);
+				const raw = definition.fn(...hbsArgs);
+				return stringifyForTemplate(raw);
+			});
+		} else {
+			this.hbs.registerHelper(name, definition.fn);
+		}
 
 		// Invalidate the compilation cache because helpers have changed
 		this.compilationCache.clear();
