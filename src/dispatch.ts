@@ -46,6 +46,8 @@ export interface DispatchAnalyzeOptions {
 export interface DispatchExecuteOptions {
 	/** Explicit coercion schema for output type coercion */
 	coerceSchema?: JSONSchema7;
+	/** When true, exclude entries containing Handlebars expressions */
+	excludeTemplateExpression?: boolean;
 }
 
 // ─── Analysis Dispatching ────────────────────────────────────────────────────
@@ -164,11 +166,16 @@ export function dispatchExecute(
 	executeString: (template: string, coerceSchema?: JSONSchema7) => unknown,
 	recurse: (child: TemplateInput, options?: DispatchExecuteOptions) => unknown,
 ): unknown {
+	const exclude = options?.excludeTemplateExpression === true;
+
 	// ── Array ─────────────────────────────────────────────────────────────
 	if (isArrayInput(template)) {
+		const elements = exclude
+			? template.filter((item) => !shouldExcludeEntry(item as TemplateInput))
+			: template;
 		const result: unknown[] = [];
-		for (const element of template) {
-			result.push(recurse(element, options));
+		for (const element of elements) {
+			result.push(recurse(element as TemplateInput, options));
 		}
 		return result;
 	}
@@ -177,9 +184,14 @@ export function dispatchExecute(
 	if (isObjectInput(template)) {
 		const coerceSchema = options?.coerceSchema;
 		const result: Record<string, unknown> = {};
-		for (const [key, value] of Object.entries(template)) {
+		const keys = exclude
+			? Object.keys(template).filter(
+					(key) => !shouldExcludeEntry(template[key] as TemplateInput),
+				)
+			: Object.keys(template);
+		for (const key of keys) {
 			const childCoerceSchema = resolveChildCoerceSchema(coerceSchema, key);
-			result[key] = recurse(value, {
+			result[key] = recurse(template[key] as TemplateInput, {
 				...options,
 				coerceSchema: childCoerceSchema,
 			});
@@ -191,6 +203,12 @@ export function dispatchExecute(
 	if (isLiteralInput(template)) return template;
 
 	// ── String template ──────────────────────────────────────────────────
+	// At root level, if the string contains expressions and exclude is on,
+	// return null (there is no parent to remove it from).
+	if (exclude && shouldExcludeEntry(template)) {
+		return null;
+	}
+
 	return executeString(template, options?.coerceSchema);
 }
 
@@ -201,6 +219,8 @@ export interface DispatchAnalyzeAndExecuteOptions {
 	identifierSchemas?: Record<number, JSONSchema7>;
 	identifierData?: Record<number, Record<string, unknown>>;
 	coerceSchema?: JSONSchema7;
+	/** When true, exclude entries containing Handlebars expressions */
+	excludeTemplateExpression?: boolean;
 }
 
 /**
@@ -228,22 +248,33 @@ export function dispatchAnalyzeAndExecute(
 		options?: DispatchAnalyzeAndExecuteOptions,
 	) => { analysis: AnalysisResult; value: unknown },
 ): { analysis: AnalysisResult; value: unknown } {
+	const exclude = options?.excludeTemplateExpression === true;
+
 	// ── Array ─────────────────────────────────────────────────────────────
 	if (isArrayInput(template)) {
-		return aggregateArrayAnalysisAndExecution(template.length, (index) =>
-			recurse(template[index] as TemplateInput, options),
+		const elements = exclude
+			? template.filter((item) => !shouldExcludeEntry(item as TemplateInput))
+			: template;
+		return aggregateArrayAnalysisAndExecution(elements.length, (index) =>
+			recurse(elements[index] as TemplateInput, options),
 		);
 	}
 
 	// ── Object ────────────────────────────────────────────────────────────
 	if (isObjectInput(template)) {
 		const coerceSchema = options?.coerceSchema;
-		return aggregateObjectAnalysisAndExecution(Object.keys(template), (key) => {
+		const keys = exclude
+			? Object.keys(template).filter(
+					(key) => !shouldExcludeEntry(template[key] as TemplateInput),
+				)
+			: Object.keys(template);
+		return aggregateObjectAnalysisAndExecution(keys, (key) => {
 			const childCoerceSchema = resolveChildCoerceSchema(coerceSchema, key);
 			return recurse(template[key] as TemplateInput, {
 				identifierSchemas: options?.identifierSchemas,
 				identifierData: options?.identifierData,
 				coerceSchema: childCoerceSchema,
+				excludeTemplateExpression: options?.excludeTemplateExpression,
 			});
 		});
 	}
@@ -261,6 +292,19 @@ export function dispatchAnalyzeAndExecute(
 	}
 
 	// ── String template ──────────────────────────────────────────────────
+	// At root level, if the string contains expressions and exclude is on,
+	// return null with a valid analysis (no parent to remove from).
+	if (exclude && shouldExcludeEntry(template)) {
+		return {
+			analysis: {
+				valid: true,
+				diagnostics: [],
+				outputSchema: { type: "null" },
+			},
+			value: null,
+		};
+	}
+
 	return processString(template, options?.coerceSchema);
 }
 
