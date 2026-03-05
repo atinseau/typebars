@@ -239,6 +239,45 @@ function resolveSegment(
 		return { type: "integer" };
 	}
 
+	// 3b. Numeric index access on arrays (e.g. `users.[0]` → items schema)
+	if (isArray && /^\d+$/.test(segment)) {
+		if (resolved.items === undefined) {
+			// array without items → element type is unknown
+			return {};
+		}
+		if (typeof resolved.items === "boolean") {
+			return {};
+		}
+		// Tuple: items is an array of schemas — resolve by index if possible
+		if (Array.isArray(resolved.items)) {
+			const idx = Number.parseInt(segment, 10);
+			const item = resolved.items[idx];
+			if (item !== undefined && typeof item !== "boolean") {
+				return resolveRef(item, root);
+			}
+			if (item !== undefined && typeof item === "boolean") {
+				return {};
+			}
+			// Index out of bounds for tuple → check additionalItems (Draft 7)
+			// additionalItems: false → no additional elements allowed
+			if (resolved.additionalItems === false) {
+				return undefined;
+			}
+			// additionalItems: schema → additional elements have this type
+			if (
+				resolved.additionalItems !== undefined &&
+				resolved.additionalItems !== true &&
+				typeof resolved.additionalItems === "object"
+			) {
+				return resolveRef(resolved.additionalItems, root);
+			}
+			// additionalItems absent or true → type is unknown
+			return {};
+		}
+		// Single items schema — all elements share the same type
+		return resolveRef(resolved.items, root);
+	}
+
 	// 4. Combinators — search within each branch
 	const combinatorResult = resolveInCombinators(resolved, segment, root);
 	if (combinatorResult) return combinatorResult;
