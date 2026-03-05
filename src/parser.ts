@@ -7,10 +7,10 @@ import { TemplateParseError } from "./errors.ts";
 export const ROOT_TOKEN = "$root";
 
 // ─── Regex for detecting a template identifier (e.g. "meetingId:1") ──────────
-// The identifier is always a positive integer or zero, separated from the
-// variable name by a `:`. The `:` and number are on the **last** segment
-// of the path (Handlebars splits on `.`).
-const IDENTIFIER_RE = /^(.+):(\d+)$/;
+// The identifier is always an integer (positive, zero, or negative),
+// separated from the variable name by a `:`. The `:` and number are on
+// the **last** segment of the path (Handlebars splits on `.`).
+const IDENTIFIER_RE = /^(.+):(-?\d+)$/;
 
 // ─── Template Parser ─────────────────────────────────────────────────────────
 // Thin wrapper around the Handlebars parser. Centralizing the parser call
@@ -316,7 +316,7 @@ export function coerceLiteral(raw: string): unknown {
 }
 
 // ─── Template Identifier Parsing ─────────────────────────────────────────────
-// Syntax `{{key:N}}` where N is a positive integer or zero.
+// Syntax `{{key:N}}` where N is an integer (positive, zero, or negative).
 // The identifier allows resolving a variable from a specific data source
 // (e.g. a workflow node identified by its number).
 

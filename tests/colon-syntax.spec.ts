@@ -377,4 +377,186 @@ describe("Colon syntax — identifier extraction from path segments", () => {
 			[{ key: "leadName", identifier: 2 }],
 		]);
 	});
+
+	test("extracts key and negative identifier from 'meetingId:-1'", () => {
+		const { key, identifier } = parseIdentifier("meetingId:-1");
+		expect(key).toBe("meetingId");
+		expect(identifier).toBe(-1);
+	});
+
+	test("works on path segments from Handlebars AST with negative identifier", () => {
+		const ast = parse("{{meetingId:-1}}");
+		const stmt = ast.body[0] as hbs.AST.MustacheStatement;
+		const segments = extractPathSegments(stmt.path);
+
+		const parsed = segments.map(parseIdentifier);
+		expect(parsed).toEqual([{ key: "meetingId", identifier: -1 }]);
+	});
+
+	test("works on multi-segment path with negative identifier on last segment", () => {
+		const ast = parse("{{user.name:-1}}");
+		const stmt = ast.body[0] as hbs.AST.MustacheStatement;
+		const segments = extractPathSegments(stmt.path);
+
+		const parsed = segments.map(parseIdentifier);
+		expect(parsed).toEqual([
+			{ key: "user", identifier: null },
+			{ key: "name", identifier: -1 },
+		]);
+	});
+
+	test("mixed template — positive, negative, and no identifier", () => {
+		const ast = parse("{{name}} {{meetingId:1}} {{leadName:-2}}");
+		const mustaches = ast.body.filter((s) => s.type === "MustacheStatement");
+
+		const results = mustaches.map((m) => {
+			const segments = extractPathSegments(
+				(m as hbs.AST.MustacheStatement).path,
+			);
+			return segments.map(parseIdentifier);
+		});
+
+		expect(results).toEqual([
+			[{ key: "name", identifier: null }],
+			[{ key: "meetingId", identifier: 1 }],
+			[{ key: "leadName", identifier: -2 }],
+		]);
+	});
+});
+
+// ─── Negative Identifier — Handlebars Parsing ────────────────────────────────
+
+describe("Handlebars colon syntax — negative identifiers — parsing", () => {
+	test("parses {{key:-N}} as a valid MustacheStatement", () => {
+		const ast = parse("{{meetingId:-1}}");
+		expect(ast.body).toHaveLength(1);
+		expect(ast.body[0]?.type).toBe("MustacheStatement");
+	});
+
+	test("path parts contain the full key:-N as a single segment", () => {
+		const ast = parse("{{meetingId:-1}}");
+		const stmt = ast.body[0] as hbs.AST.MustacheStatement;
+		const segments = extractPathSegments(stmt.path);
+		expect(segments).toEqual(["meetingId:-1"]);
+	});
+
+	test("path.original preserves the negative colon syntax", () => {
+		const ast = parse("{{meetingId:-1}}");
+		const stmt = ast.body[0] as hbs.AST.MustacheStatement;
+		const path = stmt.path as hbs.AST.PathExpression;
+		expect(path.original).toBe("meetingId:-1");
+	});
+
+	test("parses mix of positive and negative identifiers", () => {
+		const ast = parse("{{meetingId:1}} {{leadName:-2}}");
+		const mustaches = ast.body.filter((s) => s.type === "MustacheStatement");
+		expect(mustaches).toHaveLength(2);
+
+		const paths = mustaches.map((m) => {
+			const path = (m as hbs.AST.MustacheStatement)
+				.path as hbs.AST.PathExpression;
+			return path.original;
+		});
+		expect(paths).toEqual(["meetingId:1", "leadName:-2"]);
+	});
+
+	test("isSingleExpression works with negative colon syntax", () => {
+		expect(isSingleExpression(parse("{{meetingId:-1}}"))).toBe(true);
+		expect(isSingleExpression(parse("hello {{meetingId:-1}}"))).toBe(false);
+	});
+
+	test("dot notation with negative identifier — identifier is on the last segment", () => {
+		const ast = parse("{{user.name:-1}}");
+		const stmt = ast.body[0] as hbs.AST.MustacheStatement;
+		const segments = extractPathSegments(stmt.path);
+		expect(segments).toEqual(["user", "name:-1"]);
+	});
+});
+
+// ─── Negative Identifier — Raw Handlebars Execution ──────────────────────────
+
+describe("Handlebars colon syntax — negative identifiers — raw execution", () => {
+	test("renders a single negative-keyed value", () => {
+		const compiled = Handlebars.compile("{{meetingId:-1}}", { noEscape: true });
+		const result = compiled({ "meetingId:-1": "hello" });
+		expect(result).toBe("hello");
+	});
+
+	test("renders mix of positive and negative keyed values", () => {
+		const compiled = Handlebars.compile("{{meetingId:1}} {{leadName:-2}}", {
+			noEscape: true,
+		});
+		const result = compiled({ "meetingId:1": "val1", "leadName:-2": "val2" });
+		expect(result).toBe("val1 val2");
+	});
+
+	test("renders empty string for missing negative colon key", () => {
+		const compiled = Handlebars.compile("{{meetingId:-1}}", {
+			noEscape: true,
+			strict: false,
+		});
+		const result = compiled({});
+		expect(result).toBe("");
+	});
+});
+
+// ─── Negative Identifier — execute() Type Preservation ───────────────────────
+
+describe("Handlebars colon syntax — negative identifiers — execute() type preservation", () => {
+	test("single expression with negative colon — preserves string type", () => {
+		const result = execute(
+			"{{meetingId:-1}}",
+			{},
+			{ [-1]: { meetingId: "hello" } },
+		);
+		expect(result).toBe("hello");
+		expect(typeof result).toBe("string");
+	});
+
+	test("single expression with negative colon — preserves number type", () => {
+		const result = execute(
+			"{{meetingId:-1}}",
+			{},
+			{ [-1]: { meetingId: 123 } },
+		);
+		expect(result).toBe(123);
+		expect(typeof result).toBe("number");
+	});
+
+	test("single expression with negative colon — preserves boolean type", () => {
+		expect(execute("{{active:-1}}", {}, { [-1]: { active: true } })).toBe(true);
+		expect(execute("{{active:-1}}", {}, { [-1]: { active: false } })).toBe(
+			false,
+		);
+	});
+
+	test("single expression with negative colon — preserves null", () => {
+		const result = execute("{{val:-1}}", {}, { [-1]: { val: null } });
+		expect(result).toBeNull();
+	});
+
+	test("multi expression with negative colon — always string", () => {
+		const result = execute(
+			"{{meetingId:-1}} {{meetingId:-2}}",
+			{},
+			{
+				[-1]: { meetingId: "first" },
+				[-2]: { meetingId: "second" },
+			},
+		);
+		expect(result).toBe("first second");
+		expect(typeof result).toBe("string");
+	});
+
+	test("mixed positive, negative, and non-keyed — string concatenation", () => {
+		const result = execute(
+			"{{name}} {{meetingId:1}} {{leadName:-1}}",
+			{ name: "Alice" },
+			{
+				1: { meetingId: "test1" },
+				[-1]: { leadName: "test2" },
+			},
+		);
+		expect(result).toBe("Alice test1 test2");
+	});
 });

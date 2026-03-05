@@ -582,6 +582,30 @@ describe("parseIdentifier", () => {
 		expect(result.key).toBe("$root");
 		expect(result.identifier).toBe(2);
 	});
+
+	test("extracts negative identifier from 'meetingId:-1'", () => {
+		const result = parseIdentifier("meetingId:-1");
+		expect(result.key).toBe("meetingId");
+		expect(result.identifier).toBe(-1);
+	});
+
+	test("extracts large negative identifier", () => {
+		const result = parseIdentifier("key:-999");
+		expect(result.key).toBe("key");
+		expect(result.identifier).toBe(-999);
+	});
+
+	test("handles $root:-1 as key with negative identifier", () => {
+		const result = parseIdentifier("$root:-1");
+		expect(result.key).toBe("$root");
+		expect(result.identifier).toBe(-1);
+	});
+
+	test("handles key with multiple colons and negative identifier", () => {
+		const result = parseIdentifier("some:key:-3");
+		expect(result.key).toBe("some:key");
+		expect(result.identifier).toBe(-3);
+	});
 });
 
 // ─── extractExpressionIdentifier() ──────────────────────────────────────────
@@ -634,5 +658,23 @@ describe("extractExpressionIdentifier", () => {
 		const result = extractExpressionIdentifier(["$root:2"]);
 		expect(result.cleanSegments).toEqual(["$root"]);
 		expect(result.identifier).toBe(2);
+	});
+
+	test("extracts negative identifier from single segment", () => {
+		const result = extractExpressionIdentifier(["meetingId:-1"]);
+		expect(result.cleanSegments).toEqual(["meetingId"]);
+		expect(result.identifier).toBe(-1);
+	});
+
+	test("extracts negative identifier from multi-segment path", () => {
+		const result = extractExpressionIdentifier(["user", "name:-1"]);
+		expect(result.cleanSegments).toEqual(["user", "name"]);
+		expect(result.identifier).toBe(-1);
+	});
+
+	test("$root:-1 is correctly extracted", () => {
+		const result = extractExpressionIdentifier(["$root:-1"]);
+		expect(result.cleanSegments).toEqual(["$root"]);
+		expect(result.identifier).toBe(-1);
 	});
 });

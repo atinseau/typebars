@@ -13,7 +13,7 @@ import { Typebars } from "../src/typebars.ts";
 // all three engine layers: parsing, static analysis, and execution.
 //
 // The {{key:N}} syntax resolves a variable from a specific data source
-// identified by a non-negative integer N.
+// identified by an integer N (positive, zero, or negative).
 //
 // Mapping to the legacy system (SchemaIOService):
 //   - `identifierData`    ↔ legacy `outputNodeById` (3rd arg of interpolateTemplateValues)
@@ -85,6 +85,26 @@ describe("parseIdentifier", () => {
 		const result = parseIdentifier("some:key:3");
 		expect(result).toEqual({ key: "some:key", identifier: 3 });
 	});
+
+	test("extracts negative identifier from 'meetingId:-1'", () => {
+		const result = parseIdentifier("meetingId:-1");
+		expect(result).toEqual({ key: "meetingId", identifier: -1 });
+	});
+
+	test("extracts large negative identifier", () => {
+		const result = parseIdentifier("key:-999");
+		expect(result).toEqual({ key: "key", identifier: -999 });
+	});
+
+	test("handles $root:-1 as key with negative identifier", () => {
+		const result = parseIdentifier("$root:-1");
+		expect(result).toEqual({ key: "$root", identifier: -1 });
+	});
+
+	test("handles key with multiple colons and negative identifier", () => {
+		const result = parseIdentifier("some:key:-3");
+		expect(result).toEqual({ key: "some:key", identifier: -3 });
+	});
 });
 
 describe("extractExpressionIdentifier", () => {
@@ -119,6 +139,24 @@ describe("extractExpressionIdentifier", () => {
 	test("handles identifier 0", () => {
 		const result = extractExpressionIdentifier(["val:0"]);
 		expect(result).toEqual({ cleanSegments: ["val"], identifier: 0 });
+	});
+
+	test("extracts negative identifier from single segment", () => {
+		const result = extractExpressionIdentifier(["meetingId:-1"]);
+		expect(result).toEqual({ cleanSegments: ["meetingId"], identifier: -1 });
+	});
+
+	test("extracts negative identifier from multi-segment path", () => {
+		const result = extractExpressionIdentifier(["user", "name:-1"]);
+		expect(result).toEqual({
+			cleanSegments: ["user", "name"],
+			identifier: -1,
+		});
+	});
+
+	test("$root:-1 is correctly extracted", () => {
+		const result = extractExpressionIdentifier(["$root:-1"]);
+		expect(result).toEqual({ cleanSegments: ["$root"], identifier: -1 });
 	});
 });
 
@@ -1395,5 +1433,317 @@ describe("Template identifier edge cases", () => {
 			{ 1: { name: "from-id" } },
 		);
 		expect(result).toBe("from-data");
+	});
+});
+
+// ═════════════════════════════════════════════════════════════════════════════
+// SECTION 7 : Negative Identifiers ({{key:-N}})
+// ═════════════════════════════════════════════════════════════════════════════
+
+describe("Negative identifiers — execute()", () => {
+	beforeEach(() => {
+		clearCompilationCache();
+	});
+
+	test("single expression with negative identifier — preserves string type", () => {
+		const result = execute(
+			"{{meetingId:-1}}",
+			{},
+			{ [-1]: { meetingId: "hello" } },
+		);
+		expect(result).toBe("hello");
+		expect(typeof result).toBe("string");
+	});
+
+	test("single expression with negative identifier — preserves number type", () => {
+		const result = execute("{{count:-1}}", {}, { [-1]: { count: 42 } });
+		expect(result).toBe(42);
+		expect(typeof result).toBe("number");
+	});
+
+	test("single expression with negative identifier — preserves boolean type", () => {
+		expect(execute("{{active:-1}}", {}, { [-1]: { active: true } })).toBe(true);
+		expect(execute("{{active:-1}}", {}, { [-1]: { active: false } })).toBe(
+			false,
+		);
+	});
+
+	test("single expression with negative identifier — preserves null", () => {
+		const result = execute("{{val:-1}}", {}, { [-1]: { val: null } });
+		expect(result).toBeNull();
+	});
+
+	test("single expression with negative identifier — preserves array type", () => {
+		const arr = [1, 2, 3];
+		const result = execute("{{ids:-1}}", {}, { [-1]: { ids: arr } });
+		expect(result).toEqual(arr);
+		expect(Array.isArray(result)).toBe(true);
+	});
+
+	test("single expression with negative identifier — preserves object type", () => {
+		const obj = { a: 1, b: "two" };
+		const result = execute("{{data:-1}}", {}, { [-1]: { data: obj } });
+		expect(result).toEqual(obj);
+	});
+
+	test("returns undefined when negative identifier source missing", () => {
+		const result = execute(
+			"{{meetingId:-1}}",
+			{},
+			{ [-2]: { meetingId: "wrong" } },
+		);
+		expect(result).toBeUndefined();
+	});
+
+	test("returns undefined when no identifierData provided for negative identifier", () => {
+		const result = execute("{{meetingId:-1}}", {});
+		expect(result).toBeUndefined();
+	});
+
+	test("mixed positive and negative identifiers", () => {
+		const result = execute(
+			"{{a:1}} {{b:-1}}",
+			{},
+			{
+				1: { a: "pos" },
+				[-1]: { b: "neg" },
+			},
+		);
+		expect(result).toBe("pos neg");
+	});
+
+	test("mixing negative identifier and non-identifier", () => {
+		const result = execute(
+			"{{name}} {{meetingId:-1}}",
+			{ name: "Alice" },
+			{ [-1]: { meetingId: "test" } },
+		);
+		expect(result).toBe("Alice test");
+	});
+
+	test("text + negative identifier expression", () => {
+		const result = execute(
+			"salut {{meetingId:-1}} ok",
+			{},
+			{ [-1]: { meetingId: "test" } },
+		);
+		expect(result).toBe("salut test ok");
+	});
+
+	test("large negative identifier works", () => {
+		const result = execute("{{val:-999}}", {}, { [-999]: { val: "ok" } });
+		expect(result).toBe("ok");
+	});
+
+	test("dot notation with negative identifier", () => {
+		const result = execute(
+			"{{user.name:-1}}",
+			{},
+			{ [-1]: { user: { name: "Alice" } } },
+		);
+		expect(result).toBe("Alice");
+	});
+});
+
+describe("Negative identifiers — analyze()", () => {
+	test("valid: identifier key exists in identifierSchemas with negative id", () => {
+		const schema: JSONSchema7 = { type: "object", properties: {} };
+		const idSchemas: Record<number, JSONSchema7> = {
+			[-1]: {
+				type: "object",
+				properties: {
+					meetingId: { type: "string" },
+				},
+			},
+		};
+		const result = analyze("{{meetingId:-1}}", schema, {
+			identifierSchemas: idSchemas,
+		});
+		expect(result.valid).toBe(true);
+		expect(result.diagnostics).toHaveLength(0);
+	});
+
+	test("infers type from negative identifier schema (string)", () => {
+		const schema: JSONSchema7 = { type: "object", properties: {} };
+		const idSchemas: Record<number, JSONSchema7> = {
+			[-1]: {
+				type: "object",
+				properties: {
+					meetingId: { type: "string" },
+				},
+			},
+		};
+		const result = analyze("{{meetingId:-1}}", schema, {
+			identifierSchemas: idSchemas,
+		});
+		expect(result.valid).toBe(true);
+		expect((result.outputSchema as JSONSchema7).type).toBe("string");
+	});
+
+	test("infers type from negative identifier schema (number)", () => {
+		const schema: JSONSchema7 = { type: "object", properties: {} };
+		const idSchemas: Record<number, JSONSchema7> = {
+			[-1]: {
+				type: "object",
+				properties: {
+					count: { type: "number" },
+				},
+			},
+		};
+		const result = analyze("{{count:-1}}", schema, {
+			identifierSchemas: idSchemas,
+		});
+		expect(result.valid).toBe(true);
+		expect((result.outputSchema as JSONSchema7).type).toBe("number");
+	});
+
+	test("invalid: negative identifier used but no identifierSchemas provided", () => {
+		const schema: JSONSchema7 = {
+			type: "object",
+			properties: { meetingId: { type: "string" } },
+		};
+		const result = analyze("{{meetingId:-1}}", schema);
+		expect(result.valid).toBe(false);
+		expect(result.diagnostics.length).toBeGreaterThan(0);
+	});
+
+	test("invalid: negative identifier N not found in identifierSchemas", () => {
+		const schema: JSONSchema7 = { type: "object", properties: {} };
+		const idSchemas: Record<number, JSONSchema7> = {
+			[-2]: {
+				type: "object",
+				properties: {
+					meetingId: { type: "string" },
+				},
+			},
+		};
+		const result = analyze("{{meetingId:-1}}", schema, {
+			identifierSchemas: idSchemas,
+		});
+		expect(result.valid).toBe(false);
+	});
+
+	test("invalid: key does not exist in negative identifier schema", () => {
+		const schema: JSONSchema7 = { type: "object", properties: {} };
+		const idSchemas: Record<number, JSONSchema7> = {
+			[-1]: {
+				type: "object",
+				properties: {
+					otherKey: { type: "string" },
+				},
+			},
+		};
+		const result = analyze("{{meetingId:-1}}", schema, {
+			identifierSchemas: idSchemas,
+		});
+		expect(result.valid).toBe(false);
+	});
+
+	test("mixed positive and negative identifiers in analysis", () => {
+		const schema: JSONSchema7 = { type: "object", properties: {} };
+		const idSchemas: Record<number, JSONSchema7> = {
+			1: {
+				type: "object",
+				properties: {
+					a: { type: "string" },
+				},
+			},
+			[-1]: {
+				type: "object",
+				properties: {
+					b: { type: "string" },
+				},
+			},
+		};
+		const result = analyze("{{a:1}} {{b:-1}}", schema, {
+			identifierSchemas: idSchemas,
+		});
+		expect(result.valid).toBe(true);
+	});
+
+	test("$root:-1 returns entire schema for negative identifier", () => {
+		const schema: JSONSchema7 = { type: "object", properties: {} };
+		const idSchemas: Record<number, JSONSchema7> = {
+			[-1]: {
+				type: "object",
+				properties: {
+					meetingId: { type: "string" },
+				},
+			},
+		};
+		const result = analyze("{{$root:-1}}", schema, {
+			identifierSchemas: idSchemas,
+		});
+		expect(result.valid).toBe(true);
+		expect((result.outputSchema as JSONSchema7).type).toBe("object");
+	});
+});
+
+describe("Negative identifiers — Typebars engine", () => {
+	test("execute resolves negative identifier from identifierData", () => {
+		const engine = new Typebars();
+		const result = engine.execute(
+			"{{meetingId:-1}}",
+			{},
+			{
+				identifierData: { [-1]: { meetingId: "hello" } },
+			},
+		);
+		expect(result).toBe("hello");
+	});
+
+	test("execute preserves type for single negative identifier expression", () => {
+		const engine = new Typebars();
+		const result = engine.execute(
+			"{{count:-1}}",
+			{},
+			{
+				identifierData: { [-1]: { count: 42 } },
+			},
+		);
+		expect(result).toBe(42);
+		expect(typeof result).toBe("number");
+	});
+
+	test("analyze passes with negative identifierSchemas", () => {
+		const engine = new Typebars();
+		const schema: JSONSchema7 = { type: "object", properties: {} };
+		const idSchemas: Record<number, JSONSchema7> = {
+			[-1]: {
+				type: "object",
+				properties: {
+					meetingId: { type: "string" },
+				},
+			},
+		};
+		const result = engine.analyze("{{meetingId:-1}}", schema, {
+			identifierSchemas: idSchemas,
+		});
+		expect(result.valid).toBe(true);
+		expect((result.outputSchema as JSONSchema7).type).toBe("string");
+	});
+
+	test("analyzeAndExecute with negative identifier", () => {
+		const engine = new Typebars();
+		const schema: JSONSchema7 = { type: "object", properties: {} };
+		const idSchemas: Record<number, JSONSchema7> = {
+			[-1]: {
+				type: "object",
+				properties: {
+					meetingId: { type: "string" },
+				},
+			},
+		};
+		const { analysis, value } = engine.analyzeAndExecute(
+			"{{meetingId:-1}}",
+			schema,
+			{},
+			{
+				identifierSchemas: idSchemas,
+				identifierData: { [-1]: { meetingId: "hello" } },
+			},
+		);
+		expect(analysis.valid).toBe(true);
+		expect(value).toBe("hello");
 	});
 });
