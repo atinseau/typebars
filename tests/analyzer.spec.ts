@@ -525,6 +525,121 @@ describe("analyzer", () => {
 		});
 	});
 
+	describe("validation — numeric array index access", () => {
+		test("[0] on a string array is valid → { type: 'string' }", () => {
+			const result = analyze("{{tags.[0]}}", userSchema);
+			expect(result.valid).toBe(true);
+			expect(result.diagnostics).toHaveLength(0);
+			expect(result.outputSchema).toEqual({ type: "string" });
+		});
+
+		test("[1] on a string array is valid → { type: 'string' }", () => {
+			const result = analyze("{{tags.[1]}}", userSchema);
+			expect(result.valid).toBe(true);
+			expect(result.diagnostics).toHaveLength(0);
+			expect(result.outputSchema).toEqual({ type: "string" });
+		});
+
+		test("[0] on an array of objects → object schema", () => {
+			const result = analyze("{{orders.[0]}}", userSchema);
+			expect(result.valid).toBe(true);
+			expect(result.diagnostics).toHaveLength(0);
+			expect(result.outputSchema).toEqual({
+				type: "object",
+				properties: {
+					id: { type: "number" },
+					product: { type: "string" },
+					quantity: { type: "integer" },
+				},
+			});
+		});
+
+		test("nested property after index: orders.[0].product → { type: 'string' }", () => {
+			const result = analyze("{{orders.[0].product}}", userSchema);
+			expect(result.valid).toBe(true);
+			expect(result.diagnostics).toHaveLength(0);
+			expect(result.outputSchema).toEqual({ type: "string" });
+		});
+
+		test("nested property after index: orders.[0].quantity → { type: 'integer' }", () => {
+			const result = analyze("{{orders.[0].quantity}}", userSchema);
+			expect(result.valid).toBe(true);
+			expect(result.diagnostics).toHaveLength(0);
+			expect(result.outputSchema).toEqual({ type: "integer" });
+		});
+
+		test("[0] in mixed template → string output", () => {
+			const result = analyze("First tag: {{tags.[0]}}", userSchema);
+			expect(result.valid).toBe(true);
+			expect(result.diagnostics).toHaveLength(0);
+			expect(result.outputSchema).toEqual({ type: "string" });
+		});
+
+		test("[0] inside a #if block is valid", () => {
+			const result = analyze(
+				"{{#if tags}}{{tags.[0]}}{{else}}none{{/if}}",
+				userSchema,
+			);
+			expect(result.valid).toBe(true);
+			expect(result.diagnostics).toHaveLength(0);
+		});
+
+		test("[0] on a non-array property → error", () => {
+			const result = analyze("{{name.[0]}}", userSchema);
+			expect(result.valid).toBe(false);
+			expect(result.diagnostics).toHaveLength(1);
+			expect(result.diagnostics[0]?.code).toBe("UNKNOWN_PROPERTY");
+		});
+
+		test("nested [0] via #with on metadata.permissions", () => {
+			const result = analyze(
+				"{{#with metadata}}{{permissions.[0]}}{{/with}}",
+				userSchema,
+			);
+			expect(result.valid).toBe(true);
+			expect(result.diagnostics).toHaveLength(0);
+			expect(result.outputSchema).toEqual({ type: "string" });
+		});
+
+		test("[0] with custom schema — array with $ref items", () => {
+			const schema: JSONSchema7 = {
+				type: "object",
+				definitions: {
+					Tag: { type: "string" },
+				},
+				properties: {
+					tags: {
+						type: "array",
+						items: { $ref: "#/definitions/Tag" },
+					},
+				},
+			};
+			const result = analyze("{{tags.[0]}}", schema);
+			expect(result.valid).toBe(true);
+			expect(result.diagnostics).toHaveLength(0);
+			expect(result.outputSchema).toEqual({ type: "string" });
+		});
+
+		test("[0] with tuple items schema — resolves correct index type", () => {
+			const schema: JSONSchema7 = {
+				type: "object",
+				properties: {
+					pair: {
+						type: "array",
+						items: [{ type: "string" }, { type: "number" }],
+					},
+				},
+			};
+			const r0 = analyze("{{pair.[0]}}", schema);
+			expect(r0.valid).toBe(true);
+			expect(r0.outputSchema).toEqual({ type: "string" });
+
+			const r1 = analyze("{{pair.[1]}}", schema);
+			expect(r1.valid).toBe(true);
+			expect(r1.outputSchema).toEqual({ type: "number" });
+		});
+	});
+
 	describe("output type inference — multiple blocks", () => {
 		test("two #if blocks with different types → oneOf", () => {
 			const result = analyze(

@@ -204,6 +204,482 @@ describe("schema-resolver", () => {
 		});
 	});
 
+	describe("numeric index access on arrays", () => {
+		test("resolves [0] on an array with items schema → items type", () => {
+			const schema: JSONSchema7 = {
+				type: "object",
+				properties: {
+					users: { type: "array", items: { type: "string" } },
+				},
+			};
+			const result = resolveSchemaPath(schema, ["users", "0"]);
+			expect(result).toEqual({ type: "string" });
+		});
+
+		test("resolves [2] on an array of objects → object item schema", () => {
+			const schema: JSONSchema7 = {
+				type: "object",
+				properties: {
+					orders: {
+						type: "array",
+						items: {
+							type: "object",
+							properties: {
+								id: { type: "number" },
+								label: { type: "string" },
+							},
+						},
+					},
+				},
+			};
+			const result = resolveSchemaPath(schema, ["orders", "2"]);
+			expect(result).toEqual({
+				type: "object",
+				properties: {
+					id: { type: "number" },
+					label: { type: "string" },
+				},
+			});
+		});
+
+		test("resolves nested property after numeric index (e.g. orders.[0].label)", () => {
+			const schema: JSONSchema7 = {
+				type: "object",
+				properties: {
+					orders: {
+						type: "array",
+						items: {
+							type: "object",
+							properties: {
+								id: { type: "number" },
+								label: { type: "string" },
+							},
+						},
+					},
+				},
+			};
+			const result = resolveSchemaPath(schema, ["orders", "0", "label"]);
+			expect(result).toEqual({ type: "string" });
+		});
+
+		test("resolves [0] on an array without items → empty schema (unknown)", () => {
+			const schema: JSONSchema7 = {
+				type: "object",
+				properties: {
+					data: { type: "array" },
+				},
+			};
+			const result = resolveSchemaPath(schema, ["data", "0"]);
+			expect(result).toEqual({});
+		});
+
+		test("resolves [0] on a tuple schema → first item type", () => {
+			const schema: JSONSchema7 = {
+				type: "object",
+				properties: {
+					pair: {
+						type: "array",
+						items: [{ type: "string" }, { type: "number" }],
+					},
+				},
+			};
+			expect(resolveSchemaPath(schema, ["pair", "0"])).toEqual({
+				type: "string",
+			});
+			expect(resolveSchemaPath(schema, ["pair", "1"])).toEqual({
+				type: "number",
+			});
+		});
+
+		test("resolves out-of-bounds index on a tuple → empty schema (unknown)", () => {
+			const schema: JSONSchema7 = {
+				type: "object",
+				properties: {
+					pair: {
+						type: "array",
+						items: [{ type: "string" }, { type: "number" }],
+					},
+				},
+			};
+			const result = resolveSchemaPath(schema, ["pair", "5"]);
+			expect(result).toEqual({});
+		});
+
+		test("resolves [0] on a multi-type array (includes 'array')", () => {
+			const schema: JSONSchema7 = {
+				type: "object",
+				properties: {
+					flexible: {
+						type: ["array", "null"],
+						items: { type: "number" },
+					},
+				},
+			};
+			const result = resolveSchemaPath(schema, ["flexible", "0"]);
+			expect(result).toEqual({ type: "number" });
+		});
+
+		test("does not resolve numeric index on a non-array (object)", () => {
+			const schema: JSONSchema7 = {
+				type: "object",
+				properties: {
+					user: {
+						type: "object",
+						properties: { name: { type: "string" } },
+					},
+				},
+			};
+			expect(resolveSchemaPath(schema, ["user", "0"])).toBeUndefined();
+		});
+
+		test("resolves [0] on an array with boolean items → empty schema", () => {
+			const schema: JSONSchema7 = {
+				type: "object",
+				properties: {
+					data: { type: "array", items: true as unknown as JSONSchema7 },
+				},
+			};
+			const result = resolveSchemaPath(schema, ["data", "0"]);
+			expect(result).toEqual({});
+		});
+
+		test("resolves [0] on an array with $ref items", () => {
+			const schema: JSONSchema7 = {
+				type: "object",
+				definitions: {
+					Tag: { type: "string" },
+				},
+				properties: {
+					tags: {
+						type: "array",
+						items: { $ref: "#/definitions/Tag" },
+					},
+				},
+			};
+			const result = resolveSchemaPath(schema, ["tags", "0"]);
+			expect(result).toEqual({ type: "string" });
+		});
+
+		// ── additionalItems (Draft 7) ────────────────────────────────────
+
+		test("tuple with additionalItems: schema → out-of-bounds index resolves to additionalItems type", () => {
+			const schema: JSONSchema7 = {
+				type: "object",
+				properties: {
+					tuple: {
+						type: "array",
+						items: [{ type: "string" }],
+						additionalItems: { type: "number" },
+					},
+				},
+			};
+			// In-range → tuple item type
+			expect(resolveSchemaPath(schema, ["tuple", "0"])).toEqual({
+				type: "string",
+			});
+			// Out-of-range → additionalItems type
+			expect(resolveSchemaPath(schema, ["tuple", "1"])).toEqual({
+				type: "number",
+			});
+			expect(resolveSchemaPath(schema, ["tuple", "99"])).toEqual({
+				type: "number",
+			});
+		});
+
+		test("tuple with additionalItems: false → out-of-bounds index returns undefined", () => {
+			const schema: JSONSchema7 = {
+				type: "object",
+				properties: {
+					tuple: {
+						type: "array",
+						items: [{ type: "string" }],
+						additionalItems: false,
+					},
+				},
+			};
+			// In-range → still resolves
+			expect(resolveSchemaPath(schema, ["tuple", "0"])).toEqual({
+				type: "string",
+			});
+			// Out-of-range → forbidden
+			expect(resolveSchemaPath(schema, ["tuple", "1"])).toBeUndefined();
+			expect(resolveSchemaPath(schema, ["tuple", "5"])).toBeUndefined();
+		});
+
+		test("tuple with additionalItems: true → out-of-bounds index returns empty schema", () => {
+			const schema: JSONSchema7 = {
+				type: "object",
+				properties: {
+					tuple: {
+						type: "array",
+						items: [{ type: "string" }],
+						additionalItems: true,
+					},
+				},
+			};
+			expect(resolveSchemaPath(schema, ["tuple", "0"])).toEqual({
+				type: "string",
+			});
+			expect(resolveSchemaPath(schema, ["tuple", "5"])).toEqual({});
+		});
+
+		test("tuple without additionalItems → out-of-bounds index returns empty schema (permissive default)", () => {
+			const schema: JSONSchema7 = {
+				type: "object",
+				properties: {
+					tuple: {
+						type: "array",
+						items: [{ type: "string" }, { type: "number" }],
+					},
+				},
+			};
+			expect(resolveSchemaPath(schema, ["tuple", "10"])).toEqual({});
+		});
+
+		test("tuple with additionalItems: $ref schema → out-of-bounds resolves through $ref", () => {
+			const schema: JSONSchema7 = {
+				type: "object",
+				definitions: {
+					Extra: { type: "boolean" },
+				},
+				properties: {
+					tuple: {
+						type: "array",
+						items: [{ type: "string" }],
+						additionalItems: { $ref: "#/definitions/Extra" },
+					},
+				},
+			};
+			expect(resolveSchemaPath(schema, ["tuple", "0"])).toEqual({
+				type: "string",
+			});
+			expect(resolveSchemaPath(schema, ["tuple", "1"])).toEqual({
+				type: "boolean",
+			});
+		});
+
+		// ── $ref in tuple items ──────────────────────────────────────────
+
+		test("tuple items with $ref → resolves correct type per index", () => {
+			const schema: JSONSchema7 = {
+				type: "object",
+				definitions: {
+					Name: { type: "string" },
+					Age: { type: "integer" },
+				},
+				properties: {
+					record: {
+						type: "array",
+						items: [
+							{ $ref: "#/definitions/Name" },
+							{ $ref: "#/definitions/Age" },
+						],
+					},
+				},
+			};
+			expect(resolveSchemaPath(schema, ["record", "0"])).toEqual({
+				type: "string",
+			});
+			expect(resolveSchemaPath(schema, ["record", "1"])).toEqual({
+				type: "integer",
+			});
+		});
+
+		// ── Combinators with array index ─────────────────────────────────
+
+		test("array inside oneOf → [0] resolves to oneOf of item types", () => {
+			const schema: JSONSchema7 = {
+				type: "object",
+				properties: {
+					data: {
+						oneOf: [
+							{ type: "array", items: { type: "string" } },
+							{ type: "array", items: { type: "number" } },
+						],
+					},
+				},
+			};
+			const result = resolveSchemaPath(schema, ["data", "0"]);
+			expect(result).toEqual({
+				oneOf: [{ type: "string" }, { type: "number" }],
+			});
+		});
+
+		test("array inside anyOf → [0] resolves to anyOf of item types", () => {
+			const schema: JSONSchema7 = {
+				type: "object",
+				properties: {
+					data: {
+						anyOf: [
+							{ type: "array", items: { type: "string" } },
+							{ type: "array", items: { type: "boolean" } },
+						],
+					},
+				},
+			};
+			const result = resolveSchemaPath(schema, ["data", "0"]);
+			expect(result).toEqual({
+				anyOf: [{ type: "string" }, { type: "boolean" }],
+			});
+		});
+
+		test("array inside allOf → [0] resolves through allOf", () => {
+			const schema: JSONSchema7 = {
+				type: "object",
+				properties: {
+					data: {
+						allOf: [{ type: "array", items: { type: "string" } }],
+					},
+				},
+			};
+			const result = resolveSchemaPath(schema, ["data", "0"]);
+			expect(result).toEqual({ type: "string" });
+		});
+
+		// ── Nested arrays (matrix) ───────────────────────────────────────
+
+		test("nested arrays: matrix.[0] → inner array schema", () => {
+			const schema: JSONSchema7 = {
+				type: "object",
+				properties: {
+					matrix: {
+						type: "array",
+						items: {
+							type: "array",
+							items: { type: "number" },
+						},
+					},
+				},
+			};
+			const result = resolveSchemaPath(schema, ["matrix", "0"]);
+			expect(result).toEqual({
+				type: "array",
+				items: { type: "number" },
+			});
+		});
+
+		test("nested arrays: matrix.[0].[0] → leaf type", () => {
+			const schema: JSONSchema7 = {
+				type: "object",
+				properties: {
+					matrix: {
+						type: "array",
+						items: {
+							type: "array",
+							items: { type: "number" },
+						},
+					},
+				},
+			};
+			const result = resolveSchemaPath(schema, ["matrix", "0", "0"]);
+			expect(result).toEqual({ type: "number" });
+		});
+
+		// ── Deeply nested: array → object → array → property ────────────
+
+		test("deeply nested path: arr.[0].nested.[0].id", () => {
+			const schema: JSONSchema7 = {
+				type: "object",
+				properties: {
+					arr: {
+						type: "array",
+						items: {
+							type: "object",
+							properties: {
+								nested: {
+									type: "array",
+									items: {
+										type: "object",
+										properties: {
+											id: { type: "number" },
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			};
+			expect(
+				resolveSchemaPath(schema, ["arr", "0", "nested", "0", "id"]),
+			).toEqual({
+				type: "number",
+			});
+		});
+
+		// ── Array items with oneOf (polymorphic items) ───────────────────
+
+		test("[0] on array with oneOf items → returns the oneOf items schema", () => {
+			const schema: JSONSchema7 = {
+				type: "object",
+				properties: {
+					events: {
+						type: "array",
+						items: {
+							oneOf: [
+								{
+									type: "object",
+									properties: { kind: { type: "string", const: "click" } },
+								},
+								{
+									type: "object",
+									properties: { kind: { type: "string", const: "scroll" } },
+								},
+							],
+						},
+					},
+				},
+			};
+			const result = resolveSchemaPath(schema, ["events", "0"]);
+			expect(result).toEqual({
+				oneOf: [
+					{
+						type: "object",
+						properties: { kind: { type: "string", const: "click" } },
+					},
+					{
+						type: "object",
+						properties: { kind: { type: "string", const: "scroll" } },
+					},
+				],
+			});
+		});
+
+		test("[0].kind on array with oneOf items → resolves through item combinator", () => {
+			const schema: JSONSchema7 = {
+				type: "object",
+				properties: {
+					events: {
+						type: "array",
+						items: {
+							oneOf: [
+								{
+									type: "object",
+									properties: { kind: { type: "string" } },
+								},
+								{
+									type: "object",
+									properties: { kind: { type: "string" } },
+								},
+							],
+						},
+					},
+				},
+			};
+			const result = resolveSchemaPath(schema, ["events", "0", "kind"]);
+			// resolveSchemaPath does NOT deduplicate — that's simplifySchema's job.
+			// Both oneOf branches resolve "kind" → { type: "string" }, so we get
+			// a oneOf with two identical entries.
+			expect(result).toEqual({
+				oneOf: [{ type: "string" }, { type: "string" }],
+			});
+			// After simplification, it collapses to a single type:
+			if (result === undefined)
+				throw new Error("Expected result to be defined");
+			expect(simplifySchema(result)).toEqual({ type: "string" });
+		});
+	});
+
 	describe("resolveArrayItems", () => {
 		test("resolves items of a simple array", () => {
 			const schema: JSONSchema7 = { type: "array", items: { type: "string" } };
