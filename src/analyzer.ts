@@ -8,6 +8,7 @@ import {
 	createUnanalyzableMessage,
 	createUnknownHelperMessage,
 } from "./errors";
+import { CollectionHelpers } from "./helpers/collection-helpers.ts";
 import {
 	detectLiteralType,
 	extractExpressionIdentifier,
@@ -304,6 +305,16 @@ function processMustache(
 	if (stmt.params.length > 0 || stmt.hash) {
 		const helperName = getExpressionName(stmt.path);
 
+		// ── Special-case: collect helper ─────────────────────────────────
+		// The `collect` helper requires deep static analysis that the generic
+		// helper path cannot perform: it must resolve the first argument as
+		// an array-of-objects schema, then resolve the second argument (a
+		// property name) within the item schema to infer the output type
+		// `{ type: "array", items: <property schema> }`.
+		if (helperName === CollectionHelpers.COLLECT_HELPER_NAME) {
+			return processCollectHelper(stmt, ctx);
+		}
+
 		// Check if the helper is registered
 		const helper = ctx.helpers?.get(helperName);
 		if (helper) {
@@ -376,6 +387,181 @@ function processMustache(
 
 	// ── Simple expression ────────────────────────────────────────────────────
 	return resolveExpressionWithDiagnostics(stmt.path, ctx, stmt) ?? {};
+}
+
+// ─── collect helper — special-case analysis ──────────────────────────────────
+// Validates the arguments and infers the precise return type:
+//   {{ collect <arrayPath> <propertyName> }}
+//   → { type: "array", items: <schema of the property in the item> }
+//
+// Validation rules:
+// 1. Exactly 2 arguments are required
+// 2. The first argument must resolve to an array schema
+// 3. The array items must be an object schema
+// 4. The second argument must be a string literal (property name)
+// 5. The property must exist in the item schema
+
+function processCollectHelper(
+	stmt: hbs.AST.MustacheStatement,
+	ctx: AnalysisContext,
+): JSONSchema7 {
+	const helperName = CollectionHelpers.COLLECT_HELPER_NAME;
+
+	// ── 1. Check argument count ──────────────────────────────────────────
+	if (stmt.params.length < 2) {
+		addDiagnostic(
+			ctx,
+			"MISSING_ARGUMENT",
+			"error",
+			`Helper "${helperName}" expects at least 2 argument(s), but got ${stmt.params.length}`,
+			stmt,
+			{
+				helperName,
+				expected: "2 argument(s)",
+				actual: `${stmt.params.length} argument(s)`,
+			},
+		);
+		return { type: "array" };
+	}
+
+	// ── 2. Resolve the first argument (collection path) ──────────────────
+	const collectionExpr = stmt.params[0] as hbs.AST.Expression;
+	const collectionSchema = resolveExpressionWithDiagnostics(
+		collectionExpr,
+		ctx,
+		stmt,
+	);
+
+	if (!collectionSchema) {
+		// Path resolution failed — diagnostic already emitted
+		return { type: "array" };
+	}
+
+	// ── 3. Validate that the collection is an array ──────────────────────
+	const itemSchema = resolveArrayItems(collectionSchema, ctx.root);
+	if (!itemSchema) {
+		addDiagnostic(
+			ctx,
+			"TYPE_MISMATCH",
+			"error",
+			`Helper "${helperName}" parameter "collection" expects an array, but got ${schemaTypeLabel(collectionSchema)}`,
+			stmt,
+			{
+				helperName,
+				expected: "array",
+				actual: schemaTypeLabel(collectionSchema),
+			},
+		);
+		return { type: "array" };
+	}
+
+	// ── 4. Validate that the items are objects ───────────────────────────
+	// If the items are arrays (e.g. from a nested collect), flatten one level
+	// to match the runtime `flat(1)` behavior and use the inner items instead.
+	let effectiveItemSchema = itemSchema;
+	const itemType = effectiveItemSchema.type;
+	if (
+		itemType === "array" ||
+		(Array.isArray(itemType) && itemType.includes("array"))
+	) {
+		const innerItems = resolveArrayItems(effectiveItemSchema, ctx.root);
+		if (innerItems) {
+			effectiveItemSchema = innerItems;
+		}
+	}
+
+	const effectiveItemType = effectiveItemSchema.type;
+	const isObject =
+		effectiveItemType === "object" ||
+		(Array.isArray(effectiveItemType) &&
+			effectiveItemType.includes("object")) ||
+		// If no type but has properties, treat as object
+		(!effectiveItemType && effectiveItemSchema.properties !== undefined);
+
+	if (!isObject && effectiveItemType !== undefined) {
+		addDiagnostic(
+			ctx,
+			"TYPE_MISMATCH",
+			"error",
+			`Helper "${helperName}" expects an array of objects, but the array items have type "${schemaTypeLabel(effectiveItemSchema)}"`,
+			stmt,
+			{
+				helperName,
+				expected: "object",
+				actual: schemaTypeLabel(effectiveItemSchema),
+			},
+		);
+		return { type: "array" };
+	}
+
+	// ── 5. Validate the second argument (property name) ──────────────────
+	const propertyExpr = stmt.params[1] as hbs.AST.Expression;
+
+	// The property name MUST be a StringLiteral (quoted string like `"name"`).
+	// A bare identifier like `name` is parsed by Handlebars as a PathExpression,
+	// which would be resolved as a data path at runtime — yielding `undefined`
+	// when the identifier doesn't exist in the top-level context. This is a
+	// common mistake, so we provide a clear error message guiding the user.
+	let propertyName: string | undefined;
+
+	if (propertyExpr.type === "PathExpression") {
+		const bare = (propertyExpr as hbs.AST.PathExpression).original;
+		addDiagnostic(
+			ctx,
+			"TYPE_MISMATCH",
+			"error",
+			`Helper "${helperName}" parameter "property" must be a quoted string. ` +
+				`Use {{ ${helperName} … "${bare}" }} instead of {{ ${helperName} … ${bare} }}`,
+			stmt,
+			{
+				helperName,
+				expected: 'StringLiteral (e.g. "property")',
+				actual: `PathExpression (${bare})`,
+			},
+		);
+		return { type: "array" };
+	}
+
+	if (propertyExpr.type === "StringLiteral") {
+		propertyName = (propertyExpr as hbs.AST.StringLiteral).value;
+	}
+
+	if (!propertyName) {
+		addDiagnostic(
+			ctx,
+			"TYPE_MISMATCH",
+			"error",
+			`Helper "${helperName}" parameter "property" expects a quoted string literal, but got ${propertyExpr.type}`,
+			stmt,
+			{
+				helperName,
+				expected: 'StringLiteral (e.g. "property")',
+				actual: propertyExpr.type,
+			},
+		);
+		return { type: "array" };
+	}
+
+	// ── 6. Resolve the property within the item schema ───────────────────
+	const propertySchema = resolveSchemaPath(effectiveItemSchema, [propertyName]);
+	if (!propertySchema) {
+		const availableProperties = getSchemaPropertyNames(effectiveItemSchema);
+		addDiagnostic(
+			ctx,
+			"UNKNOWN_PROPERTY",
+			"error",
+			createPropertyNotFoundMessage(propertyName, availableProperties),
+			stmt,
+			{
+				path: propertyName,
+				availableProperties,
+			},
+		);
+		return { type: "array" };
+	}
+
+	// ── 7. Return the inferred output schema ─────────────────────────────
+	return { type: "array", items: propertySchema };
 }
 
 /**
@@ -963,6 +1149,15 @@ function resolveSubExpression(
 ): JSONSchema7 | undefined {
 	const helperName = getExpressionName(expr.path);
 
+	// ── Special-case: collect helper ─────────────────────────────────
+	// The `collect` helper requires deep static analysis to infer the
+	// precise return type `{ type: "array", items: <property schema> }`.
+	// The generic path would only return `{ type: "array" }` (the static
+	// returnType), losing the item schema needed by nested collect calls.
+	if (helperName === CollectionHelpers.COLLECT_HELPER_NAME) {
+		return processCollectSubExpression(expr, ctx, parentNode);
+	}
+
 	const helper = ctx.helpers?.get(helperName);
 	if (!helper) {
 		addDiagnostic(
@@ -1027,6 +1222,168 @@ function resolveSubExpression(
 	}
 
 	return helper.returnType ?? { type: "string" };
+}
+
+// ─── collect helper — sub-expression analysis ────────────────────────────────
+// Mirrors processCollectHelper but for SubExpression nodes (e.g.
+// `(collect users 'cartItems')` used as an argument to another helper).
+// This enables nested collect: `{{ collect (collect users 'cartItems') 'productId' }}`
+
+function processCollectSubExpression(
+	expr: hbs.AST.SubExpression,
+	ctx: AnalysisContext,
+	parentNode?: hbs.AST.Node,
+): JSONSchema7 {
+	const helperName = CollectionHelpers.COLLECT_HELPER_NAME;
+	const node = parentNode ?? expr;
+
+	// ── 1. Check argument count ──────────────────────────────────────────
+	if (expr.params.length < 2) {
+		addDiagnostic(
+			ctx,
+			"MISSING_ARGUMENT",
+			"error",
+			`Helper "${helperName}" expects at least 2 argument(s), but got ${expr.params.length}`,
+			node,
+			{
+				helperName,
+				expected: "2 argument(s)",
+				actual: `${expr.params.length} argument(s)`,
+			},
+		);
+		return { type: "array" };
+	}
+
+	// ── 2. Resolve the first argument (collection path) ──────────────────
+	const collectionExpr = expr.params[0] as hbs.AST.Expression;
+	const collectionSchema = resolveExpressionWithDiagnostics(
+		collectionExpr,
+		ctx,
+		node,
+	);
+
+	if (!collectionSchema) {
+		return { type: "array" };
+	}
+
+	// ── 3. Validate that the collection is an array ──────────────────────
+	const itemSchema = resolveArrayItems(collectionSchema, ctx.root);
+	if (!itemSchema) {
+		addDiagnostic(
+			ctx,
+			"TYPE_MISMATCH",
+			"error",
+			`Helper "${helperName}" parameter "collection" expects an array, but got ${schemaTypeLabel(collectionSchema)}`,
+			node,
+			{
+				helperName,
+				expected: "array",
+				actual: schemaTypeLabel(collectionSchema),
+			},
+		);
+		return { type: "array" };
+	}
+
+	// ── 4. Validate that the items are objects ───────────────────────────
+	// If the items are arrays (e.g. from a nested collect), flatten one level
+	// to match the runtime `flat(1)` behavior and use the inner items instead.
+	let effectiveItemSchema = itemSchema;
+	const itemType = effectiveItemSchema.type;
+	if (
+		itemType === "array" ||
+		(Array.isArray(itemType) && itemType.includes("array"))
+	) {
+		const innerItems = resolveArrayItems(effectiveItemSchema, ctx.root);
+		if (innerItems) {
+			effectiveItemSchema = innerItems;
+		}
+	}
+
+	const effectiveItemType = effectiveItemSchema.type;
+	const isObject =
+		effectiveItemType === "object" ||
+		(Array.isArray(effectiveItemType) &&
+			effectiveItemType.includes("object")) ||
+		(!effectiveItemType && effectiveItemSchema.properties !== undefined);
+
+	if (!isObject && effectiveItemType !== undefined) {
+		addDiagnostic(
+			ctx,
+			"TYPE_MISMATCH",
+			"error",
+			`Helper "${helperName}" expects an array of objects, but the array items have type "${schemaTypeLabel(effectiveItemSchema)}"`,
+			node,
+			{
+				helperName,
+				expected: "object",
+				actual: schemaTypeLabel(effectiveItemSchema),
+			},
+		);
+		return { type: "array" };
+	}
+
+	// ── 5. Validate the second argument (property name) ──────────────────
+	const propertyExpr = expr.params[1] as hbs.AST.Expression;
+	let propertyName: string | undefined;
+
+	if (propertyExpr.type === "PathExpression") {
+		const bare = (propertyExpr as hbs.AST.PathExpression).original;
+		addDiagnostic(
+			ctx,
+			"TYPE_MISMATCH",
+			"error",
+			`Helper "${helperName}" parameter "property" must be a quoted string. ` +
+				`Use (${helperName} … "${bare}") instead of (${helperName} … ${bare})`,
+			node,
+			{
+				helperName,
+				expected: 'StringLiteral (e.g. "property")',
+				actual: `PathExpression (${bare})`,
+			},
+		);
+		return { type: "array" };
+	}
+
+	if (propertyExpr.type === "StringLiteral") {
+		propertyName = (propertyExpr as hbs.AST.StringLiteral).value;
+	}
+
+	if (!propertyName) {
+		addDiagnostic(
+			ctx,
+			"TYPE_MISMATCH",
+			"error",
+			`Helper "${helperName}" parameter "property" expects a quoted string literal, but got ${propertyExpr.type}`,
+			node,
+			{
+				helperName,
+				expected: 'StringLiteral (e.g. "property")',
+				actual: propertyExpr.type,
+			},
+		);
+		return { type: "array" };
+	}
+
+	// ── 6. Resolve the property within the item schema ───────────────────
+	const propertySchema = resolveSchemaPath(effectiveItemSchema, [propertyName]);
+	if (!propertySchema) {
+		const availableProperties = getSchemaPropertyNames(effectiveItemSchema);
+		addDiagnostic(
+			ctx,
+			"UNKNOWN_PROPERTY",
+			"error",
+			createPropertyNotFoundMessage(propertyName, availableProperties),
+			node,
+			{
+				path: propertyName,
+				availableProperties,
+			},
+		);
+		return { type: "array" };
+	}
+
+	// ── 7. Return the inferred output schema ─────────────────────────────
+	return { type: "array", items: propertySchema };
 }
 
 function getBlockArgument(
