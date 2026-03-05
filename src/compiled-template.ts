@@ -305,11 +305,16 @@ export class CompiledTemplate {
 	 * @returns The execution result
 	 */
 	execute(data: TemplateData, options?: ExecuteOptions): unknown {
+		const exclude = options?.excludeTemplateExpression === true;
+
 		switch (this.state.kind) {
 			case "array": {
 				const { elements } = this.state;
+				const effective = exclude
+					? elements.filter((el) => !isCompiledTemplateWithExpression(el))
+					: elements;
 				const result: unknown[] = [];
-				for (const element of elements) {
+				for (const element of effective) {
 					result.push(element.execute(data, options));
 				}
 				return result;
@@ -318,8 +323,16 @@ export class CompiledTemplate {
 			case "object": {
 				const { children } = this.state;
 				const coerceSchema = options?.coerceSchema;
+				const keys = exclude
+					? Object.keys(children).filter((key) => {
+							const child = children[key];
+							return !child || !isCompiledTemplateWithExpression(child);
+						})
+					: Object.keys(children);
 				const result: Record<string, unknown> = {};
-				for (const [key, child] of Object.entries(children)) {
+				for (const key of keys) {
+					const child = children[key];
+					if (!child) continue;
 					const childCoerceSchema = resolveChildCoerceSchema(coerceSchema, key);
 					result[key] = child.execute(data, {
 						...options,
@@ -333,6 +346,13 @@ export class CompiledTemplate {
 				return this.state.value;
 
 			case "template": {
+				// When excludeTemplateExpression is enabled at root level,
+				// return null if the template contains Handlebars expressions
+				// (there is no parent to remove it from).
+				if (exclude && isCompiledTemplateWithExpression(this)) {
+					return null;
+				}
+
 				// Pre-execution static validation if a schema is provided
 				if (options?.schema) {
 					const analysis = this.analyze(options.schema, {

@@ -288,6 +288,24 @@ export interface ExecuteOptions {
 	 * coerced to match the declared type instead of using auto-detection.
 	 */
 	coerceSchema?: JSONSchema7;
+	/**
+	 * When `true`, properties whose values contain Handlebars expressions
+	 * (i.e. any `{{…}}` syntax) are excluded from the execution result.
+	 *
+	 * - **Object**: properties with template expressions are omitted from
+	 *   the resulting object.
+	 * - **Array**: elements with template expressions are omitted from
+	 *   the resulting array.
+	 * - **Root string** with expressions: returns `null` (there is no
+	 *   parent to exclude from).
+	 * - **Literals** (number, boolean, null): unaffected.
+	 *
+	 * This mirrors the analysis-side `excludeTemplateExpression` option
+	 * but applied at runtime.
+	 *
+	 * @default false
+	 */
+	excludeTemplateExpression?: boolean;
 }
 
 // ─── Combined Analyze-and-Execute Options ────────────────────────────────────
