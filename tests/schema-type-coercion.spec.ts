@@ -1686,4 +1686,276 @@ describe("schema-driven type coercion via coerceSchema", () => {
 			expect(props?.name).toEqual({ type: "string" });
 		});
 	});
+
+	// ─── Array coerceSchema propagation ───────────────────────────────────────
+	describe("coerceSchema with array templates", () => {
+		test("flat array of numeric strings with coerceSchema items string → all string", () => {
+			const result = engine.analyze(["1", "2", "3"], undefined, {
+				coerceSchema: { type: "array", items: { type: "string" } },
+			});
+			expect(result.valid).toBe(true);
+			expect(result.outputSchema).toEqual({
+				type: "array",
+				items: { type: "string" },
+			});
+		});
+
+		test("flat array of numeric strings without coerceSchema → detectLiteralType → number", () => {
+			const result = engine.analyze(["1", "2", "3"]);
+			expect(result.valid).toBe(true);
+			expect(result.outputSchema).toEqual({
+				type: "array",
+				items: { type: "number" },
+			});
+		});
+
+		test("flat array of boolean strings with coerceSchema items string → all string", () => {
+			const result = engine.analyze(["true", "false"], undefined, {
+				coerceSchema: { type: "array", items: { type: "string" } },
+			});
+			expect(result.valid).toBe(true);
+			expect(result.outputSchema).toEqual({
+				type: "array",
+				items: { type: "string" },
+			});
+		});
+
+		test("flat array of 'null' strings with coerceSchema items string → all string", () => {
+			const result = engine.analyze(["null", "null"], undefined, {
+				coerceSchema: { type: "array", items: { type: "string" } },
+			});
+			expect(result.valid).toBe(true);
+			expect(result.outputSchema).toEqual({
+				type: "array",
+				items: { type: "string" },
+			});
+		});
+
+		test("flat array with coerceSchema items integer → all integer", () => {
+			const result = engine.analyze(["1", "2", "3"], undefined, {
+				coerceSchema: { type: "array", items: { type: "integer" } },
+			});
+			expect(result.valid).toBe(true);
+			expect(result.outputSchema).toEqual({
+				type: "array",
+				items: { type: "integer" },
+			});
+		});
+
+		test("array with mixed literal types + coerceSchema items string → all string", () => {
+			const result = engine.analyze(
+				["42", "true", "null", "hello"],
+				undefined,
+				{
+					coerceSchema: { type: "array", items: { type: "string" } },
+				},
+			);
+			expect(result.valid).toBe(true);
+			expect(result.outputSchema).toEqual({
+				type: "array",
+				items: { type: "string" },
+			});
+		});
+
+		test("array with JS primitive literals → not affected by coerceSchema", () => {
+			const result = engine.analyze([42, true, null], undefined, {
+				coerceSchema: { type: "array", items: { type: "string" } },
+			});
+			expect(result.valid).toBe(true);
+			// JS primitives are never coerced — they keep their inferred types
+			const schema = result.outputSchema as JSONSchema7;
+			expect(schema.type).toBe("array");
+			const items = schema.items as JSONSchema7;
+			expect(items.oneOf).toBeDefined();
+		});
+
+		test("array containing objects — coerceSchema.items propagates into object properties", () => {
+			const result = engine.analyze(
+				[
+					{ id: "1", name: "Alice" },
+					{ id: "2", name: "Bob" },
+				],
+				undefined,
+				{
+					coerceSchema: {
+						type: "array",
+						items: {
+							type: "object",
+							properties: {
+								id: { type: "string" },
+								name: { type: "string" },
+							},
+						},
+					},
+				},
+			);
+			expect(result.valid).toBe(true);
+			const schema = result.outputSchema as JSONSchema7;
+			expect(schema.type).toBe("array");
+			const itemSchema = schema.items as JSONSchema7;
+			expect(itemSchema.type).toBe("object");
+			const props = getProps(itemSchema);
+			// "1" would be number without coerceSchema, but string with it
+			expect(props?.id).toEqual({ type: "string" });
+			expect(props?.name).toEqual({ type: "string" });
+		});
+
+		test("nested array in object — coerceSchema propagates through object then into array items", () => {
+			const result = engine.analyze({ ids: ["1", "2"] }, undefined, {
+				coerceSchema: {
+					type: "object",
+					properties: {
+						ids: { type: "array", items: { type: "string" } },
+					},
+				},
+			});
+			expect(result.valid).toBe(true);
+			const schema = result.outputSchema as JSONSchema7;
+			expect(schema.type).toBe("object");
+			const props = getProps(schema);
+			const idsSchema = props?.ids as JSONSchema7;
+			expect(idsSchema).toEqual({
+				type: "array",
+				items: { type: "string" },
+			});
+		});
+
+		test("nested array in object without coerceSchema → detectLiteralType → number", () => {
+			const result = engine.analyze({ ids: ["1", "2"] });
+			expect(result.valid).toBe(true);
+			const schema = result.outputSchema as JSONSchema7;
+			const props = getProps(schema);
+			const idsSchema = props?.ids as JSONSchema7;
+			expect(idsSchema).toEqual({
+				type: "array",
+				items: { type: "number" },
+			});
+		});
+
+		test("deeply nested: object → array → object → array → string coercion", () => {
+			const result = engine.analyze(
+				{
+					data: [
+						{
+							tags: ["100", "200"],
+						},
+					],
+				},
+				undefined,
+				{
+					coerceSchema: {
+						type: "object",
+						properties: {
+							data: {
+								type: "array",
+								items: {
+									type: "object",
+									properties: {
+										tags: {
+											type: "array",
+											items: { type: "string" },
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			);
+			expect(result.valid).toBe(true);
+			const schema = result.outputSchema as JSONSchema7;
+			const dataSchema = getProps(schema)?.data as JSONSchema7;
+			expect(dataSchema.type).toBe("array");
+			const dataItemSchema = dataSchema.items as JSONSchema7;
+			const tagsSchema = getProps(dataItemSchema)?.tags as JSONSchema7;
+			expect(tagsSchema).toEqual({
+				type: "array",
+				items: { type: "string" },
+			});
+		});
+
+		test("array coerceSchema without items property → falls back to detectLiteralType", () => {
+			const result = engine.analyze(["1", "2"], undefined, {
+				coerceSchema: { type: "array" },
+			});
+			expect(result.valid).toBe(true);
+			expect(result.outputSchema).toEqual({
+				type: "array",
+				items: { type: "number" },
+			});
+		});
+
+		test("standalone analyze() with array template + coerceSchema", () => {
+			const result = analyze(["42", "true", "null"], undefined, {
+				coerceSchema: { type: "array", items: { type: "string" } },
+			});
+			expect(result.valid).toBe(true);
+			expect(result.outputSchema).toEqual({
+				type: "array",
+				items: { type: "string" },
+			});
+		});
+
+		test("standalone analyze() with nested object+array + coerceSchema", () => {
+			const result = analyze({ codes: ["404", "500"] }, undefined, {
+				coerceSchema: {
+					type: "object",
+					properties: {
+						codes: { type: "array", items: { type: "string" } },
+					},
+				},
+			});
+			expect(result.valid).toBe(true);
+			const schema = result.outputSchema as JSONSchema7;
+			const props = getProps(schema);
+			expect(props?.codes).toEqual({
+				type: "array",
+				items: { type: "string" },
+			});
+		});
+	});
+
+	// ─── Array coerceSchema with analyzeAndExecute ───────────────────────────
+	describe("coerceSchema array propagation with analyzeAndExecute", () => {
+		test("array of numeric strings — analysis types string, execution values string", () => {
+			const { analysis, value } = engine.analyzeAndExecute(
+				["1", "2", "3"],
+				{},
+				{},
+				{
+					coerceSchema: { type: "array", items: { type: "string" } },
+				},
+			);
+			expect(analysis.valid).toBe(true);
+			expect(analysis.outputSchema).toEqual({
+				type: "array",
+				items: { type: "string" },
+			});
+			expect(value).toEqual(["1", "2", "3"]);
+		});
+
+		test("nested object with array — analysis and execution both propagate coerceSchema", () => {
+			const { analysis, value } = engine.analyzeAndExecute(
+				{ ids: ["1", "2"] },
+				{},
+				{},
+				{
+					coerceSchema: {
+						type: "object",
+						properties: {
+							ids: { type: "array", items: { type: "string" } },
+						},
+					},
+				},
+			);
+			expect(analysis.valid).toBe(true);
+			const schema = analysis.outputSchema as JSONSchema7;
+			const props = getProps(schema);
+			expect(props?.ids).toEqual({
+				type: "array",
+				items: { type: "string" },
+			});
+			expect(value).toEqual({ ids: ["1", "2"] });
+		});
+	});
 });
