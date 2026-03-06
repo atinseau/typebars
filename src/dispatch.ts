@@ -81,16 +81,17 @@ export function dispatchAnalyze(
 	// ── Array ─────────────────────────────────────────────────────────────
 	if (isArrayInput(template)) {
 		const exclude = options?.excludeTemplateExpression === true;
+		const childOptions = resolveArrayChildOptions(options);
 		if (exclude) {
 			const kept = template.filter(
 				(item) => !shouldExcludeEntry(item as TemplateInput),
 			);
 			return aggregateArrayAnalysis(kept.length, (index) =>
-				recurse(kept[index] as TemplateInput, options),
+				recurse(kept[index] as TemplateInput, childOptions),
 			);
 		}
 		return aggregateArrayAnalysis(template.length, (index) =>
-			recurse(template[index] as TemplateInput, options),
+			recurse(template[index] as TemplateInput, childOptions),
 		);
 	}
 
@@ -170,12 +171,13 @@ export function dispatchExecute(
 
 	// ── Array ─────────────────────────────────────────────────────────────
 	if (isArrayInput(template)) {
+		const childOptions = resolveArrayChildOptions(options);
 		const elements = exclude
 			? template.filter((item) => !shouldExcludeEntry(item as TemplateInput))
 			: template;
 		const result: unknown[] = [];
 		for (const element of elements) {
-			result.push(recurse(element as TemplateInput, options));
+			result.push(recurse(element as TemplateInput, childOptions));
 		}
 		return result;
 	}
@@ -252,11 +254,12 @@ export function dispatchAnalyzeAndExecute(
 
 	// ── Array ─────────────────────────────────────────────────────────────
 	if (isArrayInput(template)) {
+		const childOptions = resolveArrayChildOptions(options);
 		const elements = exclude
 			? template.filter((item) => !shouldExcludeEntry(item as TemplateInput))
 			: template;
 		return aggregateArrayAnalysisAndExecution(elements.length, (index) =>
-			recurse(elements[index] as TemplateInput, options),
+			recurse(elements[index] as TemplateInput, childOptions),
 		);
 	}
 
@@ -309,6 +312,50 @@ export function dispatchAnalyzeAndExecute(
 }
 
 // ─── Internal Utilities ──────────────────────────────────────────────────────
+
+/**
+ * Resolves the child options for array element recursion.
+ *
+ * When a `coerceSchema` with `items` is provided, the child options
+ * will use `coerceSchema.items` as the element-level coercion schema.
+ * All other options are passed through unchanged.
+ *
+ * @param options - The parent dispatching options (may be `undefined`)
+ * @returns New options with `coerceSchema` resolved to the items schema, or
+ *          the original options if no items schema is available.
+ */
+function resolveArrayChildOptions<
+	T extends { coerceSchema?: JSONSchema7 } | undefined,
+>(options: T): T {
+	if (!options?.coerceSchema) return options;
+
+	const itemsSchema = resolveItemsCoerceSchema(options.coerceSchema);
+	if (itemsSchema === options.coerceSchema) return options;
+
+	return { ...options, coerceSchema: itemsSchema };
+}
+
+/**
+ * Extracts the `items` schema from an array-typed `coerceSchema`.
+ *
+ * If the schema declares `items` as a single schema (not a tuple),
+ * returns that schema. Otherwise returns `undefined`.
+ *
+ * @param coerceSchema - The parent coercion schema
+ * @returns The items coercion schema, or `undefined`
+ */
+function resolveItemsCoerceSchema(
+	coerceSchema: JSONSchema7,
+): JSONSchema7 | undefined {
+	if (typeof coerceSchema === "boolean") return undefined;
+
+	const items = coerceSchema.items;
+	if (items != null && typeof items === "object" && !Array.isArray(items)) {
+		return items as JSONSchema7;
+	}
+
+	return undefined;
+}
 
 /**
  * Resolves the child `coerceSchema` for a given object key.
