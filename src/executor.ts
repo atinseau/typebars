@@ -2,7 +2,7 @@ import Handlebars from "handlebars";
 import type { JSONSchema7 } from "json-schema";
 import { dispatchExecute } from "./dispatch.ts";
 import { TemplateRuntimeError } from "./errors.ts";
-import { CollectionHelpers } from "./helpers/collection-helpers.ts";
+import { MapHelpers } from "./helpers/map-helpers.ts";
 import {
 	canUseFastPath,
 	coerceLiteral,
@@ -72,7 +72,7 @@ export interface ExecutorContext {
 	 * to match the declared type instead of using auto-detection.
 	 */
 	coerceSchema?: JSONSchema7;
-	/** Registered helpers (for direct execution of special helpers like `collect`) */
+	/** Registered helpers (for direct execution of special helpers like `map`) */
 	helpers?: Map<string, HelperDefinition>;
 }
 
@@ -166,7 +166,7 @@ export function executeFromAst(
 	// the original type (number, boolean, null).
 	if (singleExpr && (singleExpr.params.length > 0 || singleExpr.hash)) {
 		// ── Special case: helpers that return non-primitive values ────────
-		// Some helpers (e.g. `collect`) return arrays or objects. Handlebars
+		// Some helpers (e.g. `map`) return arrays or objects. Handlebars
 		// would stringify these, so we resolve their arguments directly and
 		// call the helper's fn to preserve the raw return value.
 		const directResult = tryDirectHelperExecution(singleExpr, data, ctx);
@@ -323,7 +323,7 @@ function resolveExpression(
 	if (expr.type === "UndefinedLiteral") return undefined;
 
 	// ── SubExpression (nested helper call) ────────────────────────────────
-	// E.g. `(collect users 'cartItems')` used as an argument to another helper.
+	// E.g. `(map users 'cartItems')` used as an argument to another helper.
 	// Resolve all arguments recursively and call the helper's fn directly.
 	if (expr.type === "SubExpression") {
 		const subExpr = expr as hbs.AST.SubExpression;
@@ -331,12 +331,12 @@ function resolveExpression(
 			const helperName = (subExpr.path as hbs.AST.PathExpression).original;
 			const helper = helpers?.get(helperName);
 			if (helper) {
-				const isCollect = helperName === CollectionHelpers.COLLECT_HELPER_NAME;
+				const isMap = helperName === MapHelpers.MAP_HELPER_NAME;
 				const resolvedArgs: unknown[] = [];
 				for (let i = 0; i < subExpr.params.length; i++) {
 					const param = subExpr.params[i] as hbs.AST.Expression;
-					// For `collect`, the second argument is a property name literal
-					if (isCollect && i === 1 && param.type === "StringLiteral") {
+					// For `map`, the second argument is a property name literal
+					if (isMap && i === 1 && param.type === "StringLiteral") {
 						resolvedArgs.push((param as hbs.AST.StringLiteral).value);
 					} else {
 						resolvedArgs.push(
@@ -542,14 +542,12 @@ export function clearCompilationCache(): void {
 }
 
 // ─── Direct Helper Execution ─────────────────────────────────────────────────
-// Some helpers (e.g. `collect`) return non-primitive values (arrays, objects)
+// Some helpers (e.g. `map`) return non-primitive values (arrays, objects)
 // that Handlebars would stringify. For these helpers, we resolve their
 // arguments directly and call the helper's `fn` to preserve the raw value.
 
 /** Set of helper names that must be executed directly (bypass Handlebars) */
-const DIRECT_EXECUTION_HELPERS = new Set<string>([
-	CollectionHelpers.COLLECT_HELPER_NAME,
-]);
+const DIRECT_EXECUTION_HELPERS = new Set<string>([MapHelpers.MAP_HELPER_NAME]);
 
 /**
  * Attempts to execute a helper directly (without Handlebars rendering).
@@ -578,21 +576,21 @@ function tryDirectHelperExecution(
 	if (!helper) return undefined;
 
 	// Resolve each argument from the data context.
-	// For the `collect` helper, the resolution strategy is:
-	//   - Arg 0 (collection): resolve as a data path (e.g. `users` → array)
+	// For the `map` helper, the resolution strategy is:
+	//   - Arg 0 (array): resolve as a data path (e.g. `users` → array)
 	//   - Arg 1 (property):   must be a StringLiteral (e.g. `"name"`)
 	//     The analyzer enforces this — bare identifiers like `name` are
 	//     rejected at analysis time because Handlebars would resolve them
 	//     as a data path instead of a literal property name.
-	const isCollect = helperName === CollectionHelpers.COLLECT_HELPER_NAME;
+	const isMap = helperName === MapHelpers.MAP_HELPER_NAME;
 
 	const resolvedArgs: unknown[] = [];
 	for (let i = 0; i < stmt.params.length; i++) {
 		const param = stmt.params[i] as hbs.AST.Expression;
 
-		// For `collect`, the second argument (index 1) is a property name —
+		// For `map`, the second argument (index 1) is a property name —
 		// it must be a StringLiteral (enforced by the analyzer).
-		if (isCollect && i === 1) {
+		if (isMap && i === 1) {
 			if (param.type === "StringLiteral") {
 				resolvedArgs.push((param as hbs.AST.StringLiteral).value);
 			} else {

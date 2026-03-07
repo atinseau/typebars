@@ -8,7 +8,7 @@ import {
 	createUnanalyzableMessage,
 	createUnknownHelperMessage,
 } from "./errors";
-import { CollectionHelpers } from "./helpers/collection-helpers.ts";
+import { MapHelpers } from "./helpers/map-helpers.ts";
 import {
 	detectLiteralType,
 	extractExpressionIdentifier,
@@ -305,14 +305,14 @@ function processMustache(
 	if (stmt.params.length > 0 || stmt.hash) {
 		const helperName = getExpressionName(stmt.path);
 
-		// ── Special-case: collect helper ─────────────────────────────────
-		// The `collect` helper requires deep static analysis that the generic
+		// ── Special-case: map helper ─────────────────────────────────────
+		// The `map` helper requires deep static analysis that the generic
 		// helper path cannot perform: it must resolve the first argument as
 		// an array-of-objects schema, then resolve the second argument (a
 		// property name) within the item schema to infer the output type
 		// `{ type: "array", items: <property schema> }`.
-		if (helperName === CollectionHelpers.COLLECT_HELPER_NAME) {
-			return processCollectHelper(stmt, ctx);
+		if (helperName === MapHelpers.MAP_HELPER_NAME) {
+			return processMapHelper(stmt, ctx);
 		}
 
 		// Check if the helper is registered
@@ -389,9 +389,9 @@ function processMustache(
 	return resolveExpressionWithDiagnostics(stmt.path, ctx, stmt) ?? {};
 }
 
-// ─── collect helper — special-case analysis ──────────────────────────────────
+// ─── map helper — special-case analysis ──────────────────────────────────────
 // Validates the arguments and infers the precise return type:
-//   {{ collect <arrayPath> <propertyName> }}
+//   {{ map <arrayPath> <propertyName> }}
 //   → { type: "array", items: <schema of the property in the item> }
 //
 // Validation rules:
@@ -401,11 +401,11 @@ function processMustache(
 // 4. The second argument must be a string literal (property name)
 // 5. The property must exist in the item schema
 
-function processCollectHelper(
+function processMapHelper(
 	stmt: hbs.AST.MustacheStatement,
 	ctx: AnalysisContext,
 ): JSONSchema7 {
-	const helperName = CollectionHelpers.COLLECT_HELPER_NAME;
+	const helperName = MapHelpers.MAP_HELPER_NAME;
 
 	// ── 1. Check argument count ──────────────────────────────────────────
 	if (stmt.params.length < 2) {
@@ -456,7 +456,7 @@ function processCollectHelper(
 	}
 
 	// ── 4. Validate that the items are objects ───────────────────────────
-	// If the items are arrays (e.g. from a nested collect), flatten one level
+	// If the items are arrays (e.g. from a nested map), flatten one level
 	// to match the runtime `flat(1)` behavior and use the inner items instead.
 	let effectiveItemSchema = itemSchema;
 	const itemType = effectiveItemSchema.type;
@@ -670,7 +670,7 @@ function inferProgramType(
 	}
 
 	// ── Case 4: multiple blocks only (no significant text between them) ────
-	// When the effective body consists entirely of BlockStatements, collect
+	// When the effective body consists entirely of BlockStatements, gather
 	// each block's inferred type and combine them via oneOf. This handles
 	// templates like:
 	//   {{#if showName}}{{name}}{{/if}}
@@ -1149,13 +1149,13 @@ function resolveSubExpression(
 ): JSONSchema7 | undefined {
 	const helperName = getExpressionName(expr.path);
 
-	// ── Special-case: collect helper ─────────────────────────────────
-	// The `collect` helper requires deep static analysis to infer the
+	// ── Special-case: map helper ─────────────────────────────────────
+	// The `map` helper requires deep static analysis to infer the
 	// precise return type `{ type: "array", items: <property schema> }`.
 	// The generic path would only return `{ type: "array" }` (the static
-	// returnType), losing the item schema needed by nested collect calls.
-	if (helperName === CollectionHelpers.COLLECT_HELPER_NAME) {
-		return processCollectSubExpression(expr, ctx, parentNode);
+	// returnType), losing the item schema needed by nested map calls.
+	if (helperName === MapHelpers.MAP_HELPER_NAME) {
+		return processMapSubExpression(expr, ctx, parentNode);
 	}
 
 	const helper = ctx.helpers?.get(helperName);
@@ -1224,17 +1224,17 @@ function resolveSubExpression(
 	return helper.returnType ?? { type: "string" };
 }
 
-// ─── collect helper — sub-expression analysis ────────────────────────────────
-// Mirrors processCollectHelper but for SubExpression nodes (e.g.
-// `(collect users 'cartItems')` used as an argument to another helper).
-// This enables nested collect: `{{ collect (collect users 'cartItems') 'productId' }}`
+// ─── map helper — sub-expression analysis ────────────────────────────────────
+// Mirrors processMapHelper but for SubExpression nodes (e.g.
+// `(map users 'cartItems')` used as an argument to another helper).
+// This enables nested map: `{{ map (map users 'cartItems') 'productId' }}`
 
-function processCollectSubExpression(
+function processMapSubExpression(
 	expr: hbs.AST.SubExpression,
 	ctx: AnalysisContext,
 	parentNode?: hbs.AST.Node,
 ): JSONSchema7 {
-	const helperName = CollectionHelpers.COLLECT_HELPER_NAME;
+	const helperName = MapHelpers.MAP_HELPER_NAME;
 	const node = parentNode ?? expr;
 
 	// ── 1. Check argument count ──────────────────────────────────────────
@@ -1285,7 +1285,7 @@ function processCollectSubExpression(
 	}
 
 	// ── 4. Validate that the items are objects ───────────────────────────
-	// If the items are arrays (e.g. from a nested collect), flatten one level
+	// If the items are arrays (e.g. from a nested map), flatten one level
 	// to match the runtime `flat(1)` behavior and use the inner items instead.
 	let effectiveItemSchema = itemSchema;
 	const itemType = effectiveItemSchema.type;

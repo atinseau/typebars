@@ -13,11 +13,7 @@ import {
 } from "./dispatch.ts";
 import { TemplateAnalysisError } from "./errors.ts";
 import { executeFromAst } from "./executor.ts";
-import {
-	CollectionHelpers,
-	LogicalHelpers,
-	MathHelpers,
-} from "./helpers/index.ts";
+import { LogicalHelpers, MapHelpers, MathHelpers } from "./helpers/index.ts";
 import { parse } from "./parser.ts";
 import type {
 	AnalysisResult,
@@ -65,7 +61,7 @@ import { LRUCache } from "./utils";
 // In single-expression mode the executor bypasses Handlebars entirely, so the
 // raw value is preserved.
 const DIRECT_EXECUTION_HELPER_NAMES = new Set<string>([
-	CollectionHelpers.COLLECT_HELPER_NAME,
+	MapHelpers.MAP_HELPER_NAME,
 ]);
 
 /**
@@ -116,7 +112,7 @@ export class Typebars {
 		// ── Built-in helpers ─────────────────────────────────────────────
 		new MathHelpers().register(this);
 		new LogicalHelpers().register(this);
-		new CollectionHelpers().register(this);
+		new MapHelpers().register(this);
 
 		// ── Custom helpers via options ───────────────────────────────────
 		if (options.helpers) {
