@@ -71,7 +71,6 @@ The output schema is inferred **statically** from the template structure and the
   - [Comparison Helpers](#comparison-helpers)
   - [Equality Helpers](#equality-helpers)
   - [Logical Operators](#logical-operators)
-  - [Collection Helpers](#collection-helpers)
   - [Generic `compare` Helper](#generic-compare-helper)
   - [Nested Sub-Expressions](#nested-sub-expressions)
   - [Static Analysis of Sub-Expressions](#static-analysis-of-sub-expressions)

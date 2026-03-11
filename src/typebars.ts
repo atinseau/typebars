@@ -337,7 +337,7 @@ export class Typebars {
 		template: TemplateInput,
 		inputSchema: JSONSchema7 = {},
 		data: TemplateData,
-		options?: AnalyzeAndExecuteOptions & { coerceSchema?: JSONSchema7 },
+		options?: AnalyzeAndExecuteOptions,
 	): { analysis: AnalysisResult; value: unknown } {
 		return dispatchAnalyzeAndExecute(
 			template,
