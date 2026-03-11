@@ -271,17 +271,7 @@ export interface TemplateEngineOptions {
 	helpers?: HelperConfig[];
 }
 
-// ─── Execution Options ───────────────────────────────────────────────────────
-// Optional options object for `execute()`, replacing multiple positional
-// parameters for better ergonomics.
-
-export interface ExecuteOptions {
-	/** JSON Schema for pre-execution static validation */
-	schema?: JSONSchema7;
-	/** Data by identifier `{ [id]: { key: value } }` */
-	identifierData?: Record<number, Record<string, unknown>>;
-	/** Schemas by identifier (for static validation with identifiers) */
-	identifierSchemas?: Record<number, JSONSchema7>;
+export interface CommonTypebarsOptions {
 	/**
 	 * Explicit coercion schema for the output value.
 	 * When provided with a primitive type, the execution result will be
@@ -308,21 +298,28 @@ export interface ExecuteOptions {
 	excludeTemplateExpression?: boolean;
 }
 
+// ─── Execution Options ───────────────────────────────────────────────────────
+// Optional options object for `execute()`, replacing multiple positional
+// parameters for better ergonomics.
+
+export interface ExecuteOptions extends CommonTypebarsOptions {
+	/** JSON Schema for pre-execution static validation */
+	schema?: JSONSchema7;
+	/** Data by identifier `{ [id]: { key: value } }` */
+	identifierData?: Record<number, Record<string, unknown>>;
+	/** Schemas by identifier (for static validation with identifiers) */
+	identifierSchemas?: Record<number, JSONSchema7>;
+}
+
 // ─── Combined Analyze-and-Execute Options ────────────────────────────────────
 // Optional options object for `analyzeAndExecute()`, grouping parameters
 // related to template identifiers.
 
-export interface AnalyzeAndExecuteOptions {
+export interface AnalyzeAndExecuteOptions extends CommonTypebarsOptions {
 	/** Schemas by identifier `{ [id]: JSONSchema7 }` for static analysis */
 	identifierSchemas?: Record<number, JSONSchema7>;
 	/** Data by identifier `{ [id]: { key: value } }` for execution */
 	identifierData?: Record<number, Record<string, unknown>>;
-	/**
-	 * Explicit coercion schema for the output value.
-	 * When provided with a primitive type, the execution result will be
-	 * coerced to match the declared type instead of using auto-detection.
-	 */
-	coerceSchema?: JSONSchema7;
 }
 
 // ─── Custom Helpers ──────────────────────────────────────────────────────────
