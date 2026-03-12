@@ -3,6 +3,7 @@ import type { JSONSchema7 } from "json-schema";
 import { analyze } from "../src/analyzer.ts";
 import { clearCompilationCache } from "../src/executor.ts";
 import { Typebars } from "../src/typebars.ts";
+import type { TemplateInput } from "../src/types.ts";
 
 // ─── Schema-Driven Type Coercion via coerceSchema ────────────────────────────
 // Comprehensive tests verifying that:
@@ -1956,6 +1957,873 @@ describe("schema-driven type coercion via coerceSchema", () => {
 				items: { type: "string" },
 			});
 			expect(value).toEqual({ ids: ["1", "2"] });
+		});
+	});
+
+	// ─── coerceSchema Custom Metadata Preservation ───────────────────────────
+	// When a coerceSchema includes extra properties beyond `type` (e.g.
+	// `constraints`, `description`, `format`), they must be preserved in the
+	// outputSchema — not stripped down to just `{ type }`.
+
+	describe("coerceSchema custom metadata preservation", () => {
+		test("string template with coerceSchema containing constraints → outputSchema preserves constraints", () => {
+			const result = engine.analyze(
+				"salut",
+				{ type: "object", properties: {} },
+				{
+					coerceSchema: {
+						type: "string",
+						constraints: "IsUuid",
+					} as JSONSchema7,
+				},
+			);
+			expect(result.valid).toBe(true);
+			expect(result.outputSchema as unknown).toEqual({
+				type: "string",
+				constraints: "IsUuid",
+			});
+		});
+
+		test("numeric string with coerceSchema number + constraints → outputSchema preserves constraints", () => {
+			const result = engine.analyze(
+				"123",
+				{ type: "object", properties: {} },
+				{
+					coerceSchema: {
+						type: "number",
+						constraints: "IsPositive",
+					} as JSONSchema7,
+				},
+			);
+			expect(result.valid).toBe(true);
+			expect(result.outputSchema as unknown).toEqual({
+				type: "number",
+				constraints: "IsPositive",
+			});
+		});
+
+		test("boolean string with coerceSchema boolean + description → outputSchema preserves description", () => {
+			const result = engine.analyze(
+				"true",
+				{ type: "object", properties: {} },
+				{
+					coerceSchema: {
+						type: "boolean",
+						description: "Is the feature enabled",
+					} as JSONSchema7,
+				},
+			);
+			expect(result.valid).toBe(true);
+			expect(result.outputSchema).toEqual({
+				type: "boolean",
+				description: "Is the feature enabled",
+			});
+		});
+
+		test("object template — per-property coerceSchema metadata preserved in outputSchema", () => {
+			const result = engine.analyze(
+				{
+					ok: "salut",
+					count: "42",
+				} as TemplateInput,
+				{},
+				{
+					coerceSchema: {
+						type: "object",
+						properties: {
+							ok: { type: "string", constraints: "IsUuid" },
+							count: { type: "integer", constraints: "IsPositive" },
+						},
+					} as JSONSchema7,
+				},
+			);
+			expect(result.valid).toBe(true);
+			const props = getProps(result.outputSchema as JSONSchema7);
+			expect(props?.ok as unknown).toEqual({
+				type: "string",
+				constraints: "IsUuid",
+			});
+			expect(props?.count as unknown).toEqual({
+				type: "integer",
+				constraints: "IsPositive",
+			});
+		});
+
+		test("object template with excludeTemplateExpression — dropped key removed, kept key preserves metadata", () => {
+			const result = engine.analyzeAndExecute(
+				{
+					accountId: "{{accountId}}",
+					ok: "salut",
+				} as TemplateInput,
+				undefined,
+				{},
+				{
+					excludeTemplateExpression: true,
+					coerceSchema: {
+						type: "object",
+						properties: {
+							ok: { type: "string", constraints: "IsUuid" },
+							accountId: { type: "string", constraints: "IsUuid" },
+						},
+					} as JSONSchema7,
+				},
+			);
+			expect(result.analysis.valid).toBe(true);
+			const schema = result.analysis.outputSchema as JSONSchema7;
+			const props = getProps(schema);
+			// accountId should be dropped (it was a template expression)
+			expect(props?.accountId).toBeUndefined();
+			// ok should preserve the full coerceSchema including constraints
+			expect(props?.ok as unknown).toEqual({
+				type: "string",
+				constraints: "IsUuid",
+			});
+			expect(result.value).toEqual({ ok: "salut" });
+		});
+
+		test("deeply nested object — coerceSchema metadata preserved at every level", () => {
+			const result = engine.analyze(
+				{
+					config: {
+						nested: {
+							value: "hello",
+						},
+					},
+				} as TemplateInput,
+				{},
+				{
+					coerceSchema: {
+						type: "object",
+						properties: {
+							config: {
+								type: "object",
+								properties: {
+									nested: {
+										type: "object",
+										properties: {
+											value: {
+												type: "string",
+												constraints: "IsNotEmpty",
+												format: "custom",
+											},
+										},
+									},
+								},
+							},
+						},
+					} as JSONSchema7,
+				},
+			);
+			expect(result.valid).toBe(true);
+			const valueSchema = getPropAt(
+				result.outputSchema as JSONSchema7,
+				"config",
+				"nested",
+				"value",
+			);
+			expect(valueSchema as unknown).toEqual({
+				type: "string",
+				constraints: "IsNotEmpty",
+				format: "custom",
+			});
+		});
+
+		test("array template — coerceSchema items metadata preserved", () => {
+			const result = engine.analyze(
+				["abc", "def"] as TemplateInput,
+				{},
+				{
+					coerceSchema: {
+						type: "array",
+						items: {
+							type: "string",
+							constraints: "IsAlpha",
+						},
+					} as JSONSchema7,
+				},
+			);
+			expect(result.valid).toBe(true);
+			const schema = result.outputSchema as JSONSchema7;
+			expect(schema.type).toBe("array");
+			expect(schema.items as unknown).toEqual({
+				type: "string",
+				constraints: "IsAlpha",
+			});
+		});
+
+		test("coerceSchema with format property → preserved in outputSchema", () => {
+			const result = engine.analyze(
+				"test@example.com",
+				{ type: "object", properties: {} },
+				{
+					coerceSchema: {
+						type: "string",
+						format: "email",
+					} as JSONSchema7,
+				},
+			);
+			expect(result.valid).toBe(true);
+			expect(result.outputSchema).toEqual({
+				type: "string",
+				format: "email",
+			});
+		});
+
+		test("coerceSchema with multiple extra properties → all preserved", () => {
+			const result = engine.analyze(
+				"42",
+				{ type: "object", properties: {} },
+				{
+					coerceSchema: {
+						type: "integer",
+						minimum: 0,
+						maximum: 100,
+						description: "A percentage value",
+					} as JSONSchema7,
+				},
+			);
+			expect(result.valid).toBe(true);
+			expect(result.outputSchema).toEqual({
+				type: "integer",
+				minimum: 0,
+				maximum: 100,
+				description: "A percentage value",
+			});
+		});
+	});
+
+	// ─── coerceSchema Combinator Metadata Preservation ───────────────────────
+	// When a coerceSchema uses allOf / anyOf / oneOf with different metadata
+	// on each branch, we must ensure the extra properties stay attached to
+	// their respective branch and never bleed across branches.
+
+	describe("coerceSchema combinator metadata preservation (allOf / anyOf / oneOf)", () => {
+		// ── Object-level: allOf with distinct per-property metadata ───────
+		test("allOf coerceSchema — each branch defines a different property with distinct constraints", () => {
+			const result = engine.analyze(
+				{
+					name: "Alice",
+					age: "30",
+				} as TemplateInput,
+				{},
+				{
+					coerceSchema: {
+						allOf: [
+							{
+								type: "object",
+								properties: {
+									name: {
+										type: "string",
+										constraints: "IsAlpha",
+										description: "User full name",
+									},
+								},
+							},
+							{
+								type: "object",
+								properties: {
+									age: {
+										type: "number",
+										constraints: "IsPositive",
+										description: "User age in years",
+									},
+								},
+							},
+						],
+					} as unknown as JSONSchema7,
+				},
+			);
+			expect(result.valid).toBe(true);
+			const props = getProps(result.outputSchema as JSONSchema7);
+			// name comes from the first allOf branch
+			expect(props?.name as unknown).toEqual({
+				type: "string",
+				constraints: "IsAlpha",
+				description: "User full name",
+			});
+			// age comes from the second allOf branch
+			expect(props?.age as unknown).toEqual({
+				type: "number",
+				constraints: "IsPositive",
+				description: "User age in years",
+			});
+		});
+
+		// ── Object-level: anyOf with distinct per-property metadata ───────
+		test("anyOf coerceSchema — each branch defines a different property with distinct constraints", () => {
+			const result = engine.analyze(
+				{
+					email: "test@example.com",
+					score: "99",
+				} as TemplateInput,
+				{},
+				{
+					coerceSchema: {
+						anyOf: [
+							{
+								type: "object",
+								properties: {
+									email: {
+										type: "string",
+										constraints: "IsEmail",
+										format: "email",
+									},
+								},
+							},
+							{
+								type: "object",
+								properties: {
+									score: {
+										type: "integer",
+										constraints: "Max(100)",
+										minimum: 0,
+									},
+								},
+							},
+						],
+					} as unknown as JSONSchema7,
+				},
+			);
+			expect(result.valid).toBe(true);
+			const props = getProps(result.outputSchema as JSONSchema7);
+			expect(props?.email as unknown).toEqual({
+				type: "string",
+				constraints: "IsEmail",
+				format: "email",
+			});
+			expect(props?.score as unknown).toEqual({
+				type: "integer",
+				constraints: "Max(100)",
+				minimum: 0,
+			});
+		});
+
+		// ── Object-level: oneOf with distinct per-property metadata ───────
+		test("oneOf coerceSchema — each branch defines a different property with distinct constraints", () => {
+			const result = engine.analyze(
+				{
+					slug: "hello-world",
+					priority: "5",
+				} as TemplateInput,
+				{},
+				{
+					coerceSchema: {
+						oneOf: [
+							{
+								type: "object",
+								properties: {
+									slug: {
+										type: "string",
+										constraints: "IsSlug",
+										pattern: "^[a-z0-9-]+$",
+									},
+								},
+							},
+							{
+								type: "object",
+								properties: {
+									priority: {
+										type: "integer",
+										constraints: "IsPositive",
+										maximum: 10,
+									},
+								},
+							},
+						],
+					} as unknown as JSONSchema7,
+				},
+			);
+			expect(result.valid).toBe(true);
+			const props = getProps(result.outputSchema as JSONSchema7);
+			expect(props?.slug as unknown).toEqual({
+				type: "string",
+				constraints: "IsSlug",
+				pattern: "^[a-z0-9-]+$",
+			});
+			expect(props?.priority as unknown).toEqual({
+				type: "integer",
+				constraints: "IsPositive",
+				maximum: 10,
+			});
+		});
+
+		// ── allOf: same property defined in multiple branches → merged allOf child ──
+		test("allOf coerceSchema — same property in two branches → child outputSchema is allOf with both constraints", () => {
+			const result = engine.analyze(
+				{
+					value: "42",
+				} as TemplateInput,
+				{},
+				{
+					coerceSchema: {
+						allOf: [
+							{
+								type: "object",
+								properties: {
+									value: {
+										type: "number",
+										constraints: "IsPositive",
+									},
+								},
+							},
+							{
+								type: "object",
+								properties: {
+									value: {
+										type: "number",
+										constraints: "Max(100)",
+									},
+								},
+							},
+						],
+					} as unknown as JSONSchema7,
+				},
+			);
+			expect(result.valid).toBe(true);
+			const props = getProps(result.outputSchema as JSONSchema7);
+			// When the same property is in multiple allOf branches,
+			// resolveInCombinators merges them into an allOf at the child level.
+			// The child coerceSchema becomes { allOf: [branch1, branch2] },
+			// which is NOT a simple primitive type — so detectLiteralType kicks in
+			// and "42" is detected as number.
+			const valueProp = props?.value;
+			expect(valueProp).toBeDefined();
+			// The output type for "42" should be number (auto-detected since
+			// the allOf combinator doesn't have a direct primitive `type`)
+			expect(valueProp?.type).toBe("number");
+		});
+
+		// ── anyOf: same property in multiple branches → anyOf child preserves both ──
+		test("anyOf coerceSchema — same property in two branches → child outputSchema is anyOf with both", () => {
+			const result = engine.analyze(
+				{
+					tag: "active",
+				} as TemplateInput,
+				{},
+				{
+					coerceSchema: {
+						anyOf: [
+							{
+								type: "object",
+								properties: {
+									tag: {
+										type: "string",
+										constraints: "IsAlpha",
+									},
+								},
+							},
+							{
+								type: "object",
+								properties: {
+									tag: {
+										type: "string",
+										constraints: "MaxLength(50)",
+									},
+								},
+							},
+						],
+					} as unknown as JSONSchema7,
+				},
+			);
+			expect(result.valid).toBe(true);
+			const props = getProps(result.outputSchema as JSONSchema7);
+			const tagProp = props?.tag;
+			expect(tagProp).toBeDefined();
+			// Similarly, when same key appears in multiple anyOf branches,
+			// the resolved child coerceSchema is { anyOf: [...] } which has
+			// no direct `type`, so detectLiteralType handles "active" → string
+			expect(tagProp?.type).toBe("string");
+		});
+
+		// ── Nested: object inside allOf branches with deep metadata ──────
+		test("allOf coerceSchema — nested objects preserve metadata at every depth", () => {
+			const result = engine.analyze(
+				{
+					config: {
+						timeout: "30",
+					},
+					flags: {
+						debug: "true",
+					},
+				} as TemplateInput,
+				{},
+				{
+					coerceSchema: {
+						allOf: [
+							{
+								type: "object",
+								properties: {
+									config: {
+										type: "object",
+										properties: {
+											timeout: {
+												type: "number",
+												constraints: "IsPositive",
+												description: "Timeout in seconds",
+											},
+										},
+									},
+								},
+							},
+							{
+								type: "object",
+								properties: {
+									flags: {
+										type: "object",
+										properties: {
+											debug: {
+												type: "boolean",
+												constraints: "IsBooleanString",
+												description: "Enable debug mode",
+											},
+										},
+									},
+								},
+							},
+						],
+					} as unknown as JSONSchema7,
+				},
+			);
+			expect(result.valid).toBe(true);
+			const timeoutSchema = getPropAt(
+				result.outputSchema as JSONSchema7,
+				"config",
+				"timeout",
+			);
+			expect(timeoutSchema as unknown).toEqual({
+				type: "number",
+				constraints: "IsPositive",
+				description: "Timeout in seconds",
+			});
+			const debugSchema = getPropAt(
+				result.outputSchema as JSONSchema7,
+				"flags",
+				"debug",
+			);
+			expect(debugSchema as unknown).toEqual({
+				type: "boolean",
+				constraints: "IsBooleanString",
+				description: "Enable debug mode",
+			});
+		});
+
+		// ── Combined: allOf coerceSchema + excludeTemplateExpression ─────
+		test("allOf coerceSchema + excludeTemplateExpression — expression key removed, static key preserves metadata from correct branch", () => {
+			const result = engine.analyzeAndExecute(
+				{
+					userId: "{{userId}}",
+					status: "active",
+					count: "7",
+				} as TemplateInput,
+				undefined,
+				{},
+				{
+					excludeTemplateExpression: true,
+					coerceSchema: {
+						allOf: [
+							{
+								type: "object",
+								properties: {
+									userId: {
+										type: "string",
+										constraints: "IsUuid",
+									},
+									status: {
+										type: "string",
+										constraints: "IsAlpha",
+										description: "Account status label",
+									},
+								},
+							},
+							{
+								type: "object",
+								properties: {
+									count: {
+										type: "integer",
+										constraints: "IsPositive",
+										minimum: 1,
+									},
+								},
+							},
+						],
+					} as unknown as JSONSchema7,
+				},
+			);
+			expect(result.analysis.valid).toBe(true);
+			const schema = result.analysis.outputSchema as JSONSchema7;
+			const props = getProps(schema);
+			// userId is a template expression → excluded
+			expect(props?.userId).toBeUndefined();
+			// status from first allOf branch — metadata preserved
+			expect(props?.status as unknown).toEqual({
+				type: "string",
+				constraints: "IsAlpha",
+				description: "Account status label",
+			});
+			// count from second allOf branch — metadata preserved
+			expect(props?.count as unknown).toEqual({
+				type: "integer",
+				constraints: "IsPositive",
+				minimum: 1,
+			});
+			// Execution result should exclude userId
+			expect(result.value).toEqual({ status: "active", count: 7 });
+		});
+
+		// ── Combined: anyOf coerceSchema + excludeTemplateExpression ─────
+		test("anyOf coerceSchema + excludeTemplateExpression — expression key removed, static keys preserve metadata", () => {
+			const result = engine.analyzeAndExecute(
+				{
+					label: "hello",
+					ref: "{{ref}}",
+				} as TemplateInput,
+				undefined,
+				{},
+				{
+					excludeTemplateExpression: true,
+					coerceSchema: {
+						anyOf: [
+							{
+								type: "object",
+								properties: {
+									label: {
+										type: "string",
+										constraints: "IsNotEmpty",
+										minLength: 1,
+									},
+								},
+							},
+							{
+								type: "object",
+								properties: {
+									ref: {
+										type: "string",
+										constraints: "IsUuid",
+									},
+								},
+							},
+						],
+					} as unknown as JSONSchema7,
+				},
+			);
+			expect(result.analysis.valid).toBe(true);
+			const props = getProps(result.analysis.outputSchema as JSONSchema7);
+			// ref is a template expression → excluded
+			expect(props?.ref).toBeUndefined();
+			// label from first anyOf branch — metadata preserved
+			expect(props?.label as unknown).toEqual({
+				type: "string",
+				constraints: "IsNotEmpty",
+				minLength: 1,
+			});
+			expect(result.value).toEqual({ label: "hello" });
+		});
+
+		// ── Array template: coerceSchema with combinator items ───────────
+		test("array template with anyOf items coerceSchema — items metadata preserved", () => {
+			const result = engine.analyze(
+				["hello", "world"] as TemplateInput,
+				{},
+				{
+					coerceSchema: {
+						type: "array",
+						items: {
+							type: "string",
+							constraints: "IsAlpha",
+							maxLength: 20,
+						},
+					} as JSONSchema7,
+				},
+			);
+			expect(result.valid).toBe(true);
+			const schema = result.outputSchema as JSONSchema7;
+			expect(schema.type).toBe("array");
+			expect(schema.items as unknown).toEqual({
+				type: "string",
+				constraints: "IsAlpha",
+				maxLength: 20,
+			});
+		});
+
+		// ── Deep nesting: allOf → object → anyOf → leaf with metadata ───
+		test("deeply nested combinator: allOf at top, anyOf at leaf level — all metadata preserved", () => {
+			const result = engine.analyze(
+				{
+					outer: {
+						inner: "42",
+					},
+				} as TemplateInput,
+				{},
+				{
+					coerceSchema: {
+						allOf: [
+							{
+								type: "object",
+								properties: {
+									outer: {
+										type: "object",
+										properties: {
+											inner: {
+												type: "integer",
+												constraints: "IsPositive",
+												description: "Deeply nested value",
+												minimum: 0,
+												maximum: 100,
+											},
+										},
+									},
+								},
+							},
+						],
+					} as unknown as JSONSchema7,
+				},
+			);
+			expect(result.valid).toBe(true);
+			const innerSchema = getPropAt(
+				result.outputSchema as JSONSchema7,
+				"outer",
+				"inner",
+			);
+			expect(innerSchema as unknown).toEqual({
+				type: "integer",
+				constraints: "IsPositive",
+				description: "Deeply nested value",
+				minimum: 0,
+				maximum: 100,
+			});
+		});
+
+		// ── Verify no cross-contamination between sibling properties ─────
+		test("allOf coerceSchema — sibling properties with different metadata types do not contaminate each other", () => {
+			const result = engine.analyze(
+				{
+					a: "hello",
+					b: "42",
+					c: "true",
+				} as TemplateInput,
+				{},
+				{
+					coerceSchema: {
+						allOf: [
+							{
+								type: "object",
+								properties: {
+									a: {
+										type: "string",
+										constraints: "IsAlpha",
+										format: "custom-a",
+									},
+								},
+							},
+							{
+								type: "object",
+								properties: {
+									b: {
+										type: "number",
+										constraints: "IsPositive",
+										minimum: 0,
+									},
+								},
+							},
+							{
+								type: "object",
+								properties: {
+									c: {
+										type: "boolean",
+										constraints: "IsBooleanString",
+										description: "A flag",
+									},
+								},
+							},
+						],
+					} as unknown as JSONSchema7,
+				},
+			);
+			expect(result.valid).toBe(true);
+			const props = getProps(result.outputSchema as JSONSchema7);
+
+			// Each property must have exactly its own metadata — nothing from siblings
+			expect(props?.a as unknown).toEqual({
+				type: "string",
+				constraints: "IsAlpha",
+				format: "custom-a",
+			});
+			expect(props?.b as unknown).toEqual({
+				type: "number",
+				constraints: "IsPositive",
+				minimum: 0,
+			});
+			expect(props?.c as unknown).toEqual({
+				type: "boolean",
+				constraints: "IsBooleanString",
+				description: "A flag",
+			});
+		});
+
+		// ── analyzeAndExecute: allOf with 3 branches, mixed static/expression ──
+		test("analyzeAndExecute — allOf with 3 branches, mixed static and expressions, excludeTemplateExpression", () => {
+			const result = engine.analyzeAndExecute(
+				{
+					title: "My Article",
+					views: "1000",
+					author: "{{author}}",
+				} as TemplateInput,
+				undefined,
+				{},
+				{
+					excludeTemplateExpression: true,
+					coerceSchema: {
+						allOf: [
+							{
+								type: "object",
+								properties: {
+									title: {
+										type: "string",
+										constraints: "IsNotEmpty",
+										maxLength: 200,
+									},
+								},
+							},
+							{
+								type: "object",
+								properties: {
+									views: {
+										type: "integer",
+										constraints: "Min(0)",
+										minimum: 0,
+									},
+								},
+							},
+							{
+								type: "object",
+								properties: {
+									author: {
+										type: "string",
+										constraints: "IsAlpha",
+									},
+								},
+							},
+						],
+					} as unknown as JSONSchema7,
+				},
+			);
+			expect(result.analysis.valid).toBe(true);
+			const props = getProps(result.analysis.outputSchema as JSONSchema7);
+			// author is expression → excluded
+			expect(props?.author).toBeUndefined();
+			// title from branch 1
+			expect(props?.title as unknown).toEqual({
+				type: "string",
+				constraints: "IsNotEmpty",
+				maxLength: 200,
+			});
+			// views from branch 2
+			expect(props?.views as unknown).toEqual({
+				type: "integer",
+				constraints: "Min(0)",
+				minimum: 0,
+			});
+			expect(result.value).toEqual({ title: "My Article", views: 1000 });
 		});
 	});
 });

@@ -8,7 +8,7 @@ const params = { accountId: "{{accountId}}", ok: "salut" };
 const coerceSchema = {
 	type: "object",
 	properties: {
-		ok: { type: "string" },
+		ok: { type: "string", constraints: "IsUuid" },
 		accountId: { type: "string", constraints: "IsUuid" },
 	},
 } as JSONSchema7;
