@@ -662,7 +662,9 @@ function inferProgramType(
 				coercedType === "boolean" ||
 				coercedType === "null")
 		) {
-			return { type: coercedType };
+			// Return the full coerceSchema (not just { type }) to preserve
+			// any additional metadata (e.g. `constraints`) the caller attached.
+			return ctx.coerceSchema as JSONSchema7;
 		}
 
 		const literalType = detectLiteralType(text);
