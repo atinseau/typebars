@@ -637,7 +637,7 @@ describe("object template input (TemplateInputObject)", () => {
 					},
 				);
 				expect(result.valid).toBe(true);
-				expect(result.outputSchema).toEqual({ type: "string" });
+				expect(result.outputSchema).toEqual({ type: "string", const: "123" });
 			});
 
 			test("string template '123' with coerceSchema number → outputSchema number", () => {
@@ -649,7 +649,7 @@ describe("object template input (TemplateInputObject)", () => {
 					},
 				);
 				expect(result.valid).toBe(true);
-				expect(result.outputSchema).toEqual({ type: "number" });
+				expect(result.outputSchema).toEqual({ type: "number", const: 123 });
 			});
 
 			test("string template 'true' with coerceSchema string → outputSchema string", () => {
@@ -661,7 +661,7 @@ describe("object template input (TemplateInputObject)", () => {
 					},
 				);
 				expect(result.valid).toBe(true);
-				expect(result.outputSchema).toEqual({ type: "string" });
+				expect(result.outputSchema).toEqual({ type: "string", const: "true" });
 			});
 
 			test("string template '123' with coerceSchema integer → outputSchema integer", () => {
@@ -673,7 +673,7 @@ describe("object template input (TemplateInputObject)", () => {
 					},
 				);
 				expect(result.valid).toBe(true);
-				expect(result.outputSchema).toEqual({ type: "integer" });
+				expect(result.outputSchema).toEqual({ type: "integer", const: 123 });
 			});
 
 			test("string template 'null' with coerceSchema string → outputSchema string", () => {
@@ -685,7 +685,7 @@ describe("object template input (TemplateInputObject)", () => {
 					},
 				);
 				expect(result.valid).toBe(true);
-				expect(result.outputSchema).toEqual({ type: "string" });
+				expect(result.outputSchema).toEqual({ type: "string", const: "null" });
 			});
 
 			test("object template with coerceSchema — property respects coercion", () => {
@@ -706,7 +706,7 @@ describe("object template input (TemplateInputObject)", () => {
 				expect(result.outputSchema).toEqual({
 					type: "object",
 					properties: {
-						meetingId: { type: "string" },
+						meetingId: { type: "string", const: "123" },
 					},
 					required: ["meetingId"],
 				});
@@ -765,7 +765,7 @@ describe("object template input (TemplateInputObject)", () => {
 						outer: {
 							type: "object",
 							properties: {
-								count: { type: "string" },
+								count: { type: "string", const: "42" },
 							},
 							required: ["count"],
 						},

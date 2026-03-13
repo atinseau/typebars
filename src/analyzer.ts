@@ -127,6 +127,30 @@ export interface AnalyzeOptions {
 	excludeTemplateExpression?: boolean;
 }
 
+// ─── Coerce Text Value ──────────────────────────────────────────────────────
+
+/**
+ * Parses a raw text string into the appropriate JS primitive according to the
+ * target JSON Schema type.  Used when `coerceSchema` overrides the default
+ * `detectLiteralType` inference for static literal values.
+ */
+function coerceTextValue(
+	text: string,
+	targetType: "string" | "number" | "integer" | "boolean" | "null",
+): string | number | boolean | null {
+	switch (targetType) {
+		case "number":
+		case "integer":
+			return Number(text);
+		case "boolean":
+			return text === "true";
+		case "null":
+			return null;
+		default:
+			return text;
+	}
+}
+
 /**
  * Statically analyzes a template against a JSON Schema v7 describing the
  * available context.
@@ -653,6 +677,12 @@ function inferProgramType(
 		// "123" with coerceSchema `{ type: "string" }` should stay "string".
 		// This only applies when coerceSchema is explicitly set — the
 		// inputSchema is NEVER used for coercion.
+		//
+		// Only the **type** is extracted from coerceSchema. Value-level
+		// constraints (enum, const, format, pattern, minLength, …) are NOT
+		// propagated because they describe what the *consumer* accepts, not
+		// what the literal *produces*. The actual literal value is set as
+		// `const` so downstream compatibility checkers can detect mismatches.
 		const coercedType = ctx.coerceSchema?.type;
 		if (
 			typeof coercedType === "string" &&
@@ -662,9 +692,8 @@ function inferProgramType(
 				coercedType === "boolean" ||
 				coercedType === "null")
 		) {
-			// Return the full coerceSchema (not just { type }) to preserve
-			// any additional metadata (e.g. `constraints`) the caller attached.
-			return ctx.coerceSchema as JSONSchema7;
+			const coercedValue = coerceTextValue(text, coercedType);
+			return { type: coercedType, const: coercedValue } as JSONSchema7;
 		}
 
 		const literalType = detectLiteralType(text);

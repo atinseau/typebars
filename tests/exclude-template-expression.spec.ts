@@ -551,7 +551,8 @@ describe("excludeTemplateExpression", () => {
 			expect(props).not.toHaveProperty("name");
 			expect(props).toHaveProperty("amount");
 			// coerceSchema says amount is "string", so it should stay string
-			expect(props?.amount).toEqual({ type: "string" });
+			// with the actual literal value as const
+			expect(props?.amount).toEqual({ type: "string", const: "123" });
 		});
 
 		test("excludeTemplateExpression + identifierSchemas → identifiers in excluded props are skipped", () => {
