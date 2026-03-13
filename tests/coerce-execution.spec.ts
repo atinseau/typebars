@@ -601,7 +601,7 @@ describe("coerceSchema at execution time", () => {
 				{ coerceSchema: { type: "string" } },
 			);
 			expect(result.valid).toBe(true);
-			expect(result.outputSchema).toEqual({ type: "string" });
+			expect(result.outputSchema).toEqual({ type: "string", const: "123" });
 		});
 
 		test("compiled static '123' without coerceSchema → outputSchema number", () => {
@@ -629,8 +629,8 @@ describe("coerceSchema at execution time", () => {
 			expect(result.outputSchema).toEqual({
 				type: "object",
 				properties: {
-					meetingId: { type: "string" },
-					count: { type: "integer" },
+					meetingId: { type: "string", const: "123" },
+					count: { type: "integer", const: 42 },
 				},
 				required: ["meetingId", "count"],
 			});
@@ -675,15 +675,15 @@ describe("coerceSchema at execution time", () => {
 				?.properties as Record<string, unknown>;
 			const configProps = (outputProps?.config as Record<string, unknown>)
 				?.properties as Record<string, unknown>;
-			expect(configProps?.maxRetries).toEqual({ type: "string" });
-			expect(configProps?.timeout).toEqual({ type: "number" });
+			expect(configProps?.maxRetries).toEqual({ type: "string", const: "3" });
+			expect(configProps?.timeout).toEqual({ type: "number", const: 5000 });
 
 			const nestedProps = (configProps?.nested as Record<string, unknown>)
 				?.properties as Record<string, unknown>;
 			const deepProps = (nestedProps?.deep as Record<string, unknown>)
 				?.properties as Record<string, unknown>;
-			expect(deepProps?.value).toEqual({ type: "string" });
-			expect(deepProps?.count).toEqual({ type: "integer" });
+			expect(deepProps?.value).toEqual({ type: "string", const: "42" });
+			expect(deepProps?.count).toEqual({ type: "integer", const: 10 });
 		});
 
 		test("compiled Handlebars expression ignores coerceSchema", () => {
@@ -744,9 +744,9 @@ describe("coerceSchema at execution time", () => {
 			// Analysis: types reflect coerceSchema
 			const props = (analysis.outputSchema as Record<string, unknown>)
 				?.properties as Record<string, unknown>;
-			expect(props?.accountId).toEqual({ type: "string" });
+			expect(props?.accountId).toEqual({ type: "string", const: "12345" });
 			expect(props?.name).toEqual({ type: "string" });
-			expect(props?.balance).toEqual({ type: "number" });
+			expect(props?.balance).toEqual({ type: "number", const: 500.25 });
 
 			// Execution: values reflect coerceSchema
 			const v = value as Record<string, unknown>;
@@ -801,13 +801,13 @@ describe("coerceSchema at execution time", () => {
 				?.properties as Record<string, unknown>;
 			const configProps = (outputProps?.config as Record<string, unknown>)
 				?.properties as Record<string, unknown>;
-			expect(configProps?.maxRetries).toEqual({ type: "string" });
-			expect(configProps?.timeout).toEqual({ type: "number" });
+			expect(configProps?.maxRetries).toEqual({ type: "string", const: "3" });
+			expect(configProps?.timeout).toEqual({ type: "number", const: 5000 });
 
 			const metaProps = (outputProps?.metadata as Record<string, unknown>)
 				?.properties as Record<string, unknown>;
-			expect(metaProps?.role).toEqual({ type: "string" });
-			expect(metaProps?.level).toEqual({ type: "number" });
+			expect(metaProps?.role).toEqual({ type: "string", const: "admin" });
+			expect(metaProps?.level).toEqual({ type: "number", const: 5 });
 
 			// Execution
 			const v = value as Record<string, unknown>;
@@ -837,7 +837,7 @@ describe("coerceSchema at execution time", () => {
 				{ coerceSchema: { type: "string" } },
 			);
 			expect(analysis.valid).toBe(true);
-			expect(analysis.outputSchema).toEqual({ type: "string" });
+			expect(analysis.outputSchema).toEqual({ type: "string", const: "42" });
 			expect(value).toBe("42");
 		});
 
@@ -849,7 +849,7 @@ describe("coerceSchema at execution time", () => {
 				{ coerceSchema: { type: "number" } },
 			);
 			expect(analysis.valid).toBe(true);
-			expect(analysis.outputSchema).toEqual({ type: "number" });
+			expect(analysis.outputSchema).toEqual({ type: "number", const: 42 });
 			expect(value).toBe(42);
 		});
 	});
@@ -865,7 +865,7 @@ describe("coerceSchema at execution time", () => {
 				{ coerceSchema: { type: "string" } },
 			);
 			expect(analysis.valid).toBe(true);
-			expect(analysis.outputSchema).toEqual({ type: "string" });
+			expect(analysis.outputSchema).toEqual({ type: "string", const: "123" });
 			expect(value).toBe("123");
 		});
 
@@ -877,7 +877,7 @@ describe("coerceSchema at execution time", () => {
 				{ coerceSchema: { type: "number" } },
 			);
 			expect(analysis.valid).toBe(true);
-			expect(analysis.outputSchema).toEqual({ type: "number" });
+			expect(analysis.outputSchema).toEqual({ type: "number", const: 123 });
 			expect(value).toBe(123);
 		});
 
@@ -1049,7 +1049,7 @@ describe("coerceSchema at execution time", () => {
 					coerceSchema: { type: "string" },
 				},
 			);
-			expect(analysis.outputSchema).toEqual({ type: "string" });
+			expect(analysis.outputSchema).toEqual({ type: "string", const: "123" });
 			expect(value).toBe("123");
 			expect(typeof value).toBe("string");
 		});

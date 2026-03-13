@@ -304,7 +304,7 @@ describe("schema-driven type coercion via coerceSchema", () => {
 				},
 			);
 			expect(result.valid).toBe(true);
-			expect(result.outputSchema).toEqual({ type: "string" });
+			expect(result.outputSchema).toEqual({ type: "string", const: "123" });
 		});
 
 		test("string template '123' with coerceSchema number → outputSchema number", () => {
@@ -316,7 +316,7 @@ describe("schema-driven type coercion via coerceSchema", () => {
 				},
 			);
 			expect(result.valid).toBe(true);
-			expect(result.outputSchema).toEqual({ type: "number" });
+			expect(result.outputSchema).toEqual({ type: "number", const: 123 });
 		});
 
 		test("string template '123' with coerceSchema integer → outputSchema integer", () => {
@@ -328,7 +328,7 @@ describe("schema-driven type coercion via coerceSchema", () => {
 				},
 			);
 			expect(result.valid).toBe(true);
-			expect(result.outputSchema).toEqual({ type: "integer" });
+			expect(result.outputSchema).toEqual({ type: "integer", const: 123 });
 		});
 
 		test("string template 'true' with coerceSchema string → outputSchema string", () => {
@@ -340,7 +340,7 @@ describe("schema-driven type coercion via coerceSchema", () => {
 				},
 			);
 			expect(result.valid).toBe(true);
-			expect(result.outputSchema).toEqual({ type: "string" });
+			expect(result.outputSchema).toEqual({ type: "string", const: "true" });
 		});
 
 		test("string template 'null' with coerceSchema string → outputSchema string", () => {
@@ -352,7 +352,7 @@ describe("schema-driven type coercion via coerceSchema", () => {
 				},
 			);
 			expect(result.valid).toBe(true);
-			expect(result.outputSchema).toEqual({ type: "string" });
+			expect(result.outputSchema).toEqual({ type: "string", const: "null" });
 		});
 
 		test("string template 'null' with coerceSchema null → outputSchema null", () => {
@@ -364,7 +364,7 @@ describe("schema-driven type coercion via coerceSchema", () => {
 				},
 			);
 			expect(result.valid).toBe(true);
-			expect(result.outputSchema).toEqual({ type: "null" });
+			expect(result.outputSchema).toEqual({ type: "null", const: null });
 		});
 
 		test("string template 'true' with coerceSchema boolean → outputSchema boolean", () => {
@@ -376,7 +376,7 @@ describe("schema-driven type coercion via coerceSchema", () => {
 				},
 			);
 			expect(result.valid).toBe(true);
-			expect(result.outputSchema).toEqual({ type: "boolean" });
+			expect(result.outputSchema).toEqual({ type: "boolean", const: true });
 		});
 	});
 
@@ -400,7 +400,7 @@ describe("schema-driven type coercion via coerceSchema", () => {
 			expect(result.valid).toBe(true);
 			expect(result.outputSchema).toEqual({
 				type: "object",
-				properties: { meetingId: { type: "string" } },
+				properties: { meetingId: { type: "string", const: "123" } },
 				required: ["meetingId"],
 			});
 		});
@@ -455,7 +455,7 @@ describe("schema-driven type coercion via coerceSchema", () => {
 				properties: {
 					outer: {
 						type: "object",
-						properties: { count: { type: "string" } },
+						properties: { count: { type: "string", const: "42" } },
 						required: ["count"],
 					},
 				},
@@ -485,7 +485,7 @@ describe("schema-driven type coercion via coerceSchema", () => {
 			expect(result.valid).toBe(true);
 			const props = getProps(result.outputSchema as JSONSchema7);
 			// accountId: coerceSchema says string → "12345" stays string
-			expect(props?.accountId).toEqual({ type: "string" });
+			expect(props?.accountId).toEqual({ type: "string", const: "12345" });
 			// balance: not in coerceSchema → detectLiteralType → number
 			expect(props?.balance).toEqual({ type: "number" });
 			// unknown: not in coerceSchema → detectLiteralType → number
@@ -520,7 +520,7 @@ describe("schema-driven type coercion via coerceSchema", () => {
 					"deep",
 					"value",
 				),
-			).toEqual({ type: "string" });
+			).toEqual({ type: "string", const: "123" });
 		});
 
 		test("4 levels deep — static '42' respects integer coerceSchema at leaf", () => {
@@ -546,7 +546,7 @@ describe("schema-driven type coercion via coerceSchema", () => {
 					"deep",
 					"count",
 				),
-			).toEqual({ type: "integer" });
+			).toEqual({ type: "integer", const: 42 });
 		});
 
 		test("4 levels deep — static 'true' respects boolean coerceSchema at leaf", () => {
@@ -572,7 +572,7 @@ describe("schema-driven type coercion via coerceSchema", () => {
 					"deep",
 					"flag",
 				),
-			).toEqual({ type: "boolean" });
+			).toEqual({ type: "boolean", const: true });
 		});
 
 		test("5 levels deep — static '999' respects string coerceSchema at ultraDeep leaf", () => {
@@ -601,7 +601,7 @@ describe("schema-driven type coercion via coerceSchema", () => {
 					"ultraDeep",
 					"finalValue",
 				),
-			).toEqual({ type: "string" });
+			).toEqual({ type: "string", const: "999" });
 		});
 
 		test("5 levels deep — static '3.14' respects number coerceSchema at ultraDeep leaf", () => {
@@ -630,7 +630,7 @@ describe("schema-driven type coercion via coerceSchema", () => {
 					"ultraDeep",
 					"finalNumber",
 				),
-			).toEqual({ type: "number" });
+			).toEqual({ type: "number", const: 3.14 });
 		});
 
 		test("multiple leaves at different depths — all respect coerceSchema", () => {
@@ -659,11 +659,11 @@ describe("schema-driven type coercion via coerceSchema", () => {
 			// maxRetries: coerceSchema says string → "3" stays string
 			expect(
 				getPropAt(result.outputSchema as JSONSchema7, "config", "maxRetries"),
-			).toEqual({ type: "string" });
+			).toEqual({ type: "string", const: "3" });
 			// timeout: coerceSchema says number → "5000" → number
 			expect(
 				getPropAt(result.outputSchema as JSONSchema7, "config", "timeout"),
-			).toEqual({ type: "number" });
+			).toEqual({ type: "number", const: 5000 });
 			// value: coerceSchema says string → "42" stays string
 			expect(
 				getPropAt(
@@ -673,7 +673,7 @@ describe("schema-driven type coercion via coerceSchema", () => {
 					"deep",
 					"value",
 				),
-			).toEqual({ type: "string" });
+			).toEqual({ type: "string", const: "42" });
 			// count: coerceSchema says integer → "10" → integer
 			expect(
 				getPropAt(
@@ -683,7 +683,7 @@ describe("schema-driven type coercion via coerceSchema", () => {
 					"deep",
 					"count",
 				),
-			).toEqual({ type: "integer" });
+			).toEqual({ type: "integer", const: 10 });
 			// finalValue: coerceSchema says string → "100" stays string
 			expect(
 				getPropAt(
@@ -694,7 +694,7 @@ describe("schema-driven type coercion via coerceSchema", () => {
 					"ultraDeep",
 					"finalValue",
 				),
-			).toEqual({ type: "string" });
+			).toEqual({ type: "string", const: "100" });
 			// finalNumber: coerceSchema says number → "99" → number
 			expect(
 				getPropAt(
@@ -705,7 +705,7 @@ describe("schema-driven type coercion via coerceSchema", () => {
 					"ultraDeep",
 					"finalNumber",
 				),
-			).toEqual({ type: "number" });
+			).toEqual({ type: "number", const: 99 });
 		});
 	});
 
@@ -726,13 +726,13 @@ describe("schema-driven type coercion via coerceSchema", () => {
 			expect(result.valid).toBe(true);
 			const props = getProps(result.outputSchema as JSONSchema7);
 			// accountId: coerceSchema says string → "12345" stays string
-			expect(props?.accountId).toEqual({ type: "string" });
+			expect(props?.accountId).toEqual({ type: "string", const: "12345" });
 			// name: Handlebars expression → resolved from inputSchema as string
 			expect(props?.name).toEqual({ type: "string" });
 			// age: Handlebars expression → resolved from inputSchema as number
 			expect(props?.age).toEqual({ type: "number" });
 			// balance: coerceSchema says number → "100.50" → number
-			expect(props?.balance).toEqual({ type: "number" });
+			expect(props?.balance).toEqual({ type: "number", const: 100.5 });
 		});
 
 		test("deep nesting: mix of static + expressions at the same level", () => {
@@ -761,7 +761,7 @@ describe("schema-driven type coercion via coerceSchema", () => {
 					"deep",
 					"value",
 				),
-			).toEqual({ type: "string" });
+			).toEqual({ type: "string", const: "999" });
 			// count: {{score}} is a Handlebars expression → resolves to integer from inputSchema
 			expect(
 				getPropAt(
@@ -818,9 +818,13 @@ describe("schema-driven type coercion via coerceSchema", () => {
 			expect(result.valid).toBe(true);
 			const props = getProps(result.outputSchema as JSONSchema7);
 			// Static literal + coerceSchema string → stays string
-			expect(props?.accountId).toEqual({ type: "string" });
-			// #if block: both branches are string
-			expect(props?.name).toEqual({ type: "string" });
+			expect(props?.accountId).toEqual({ type: "string", const: "12345" });
+			// #if block: true branch {{name}} → { type: "string" },
+			// else branch "unknown" with coerceSchema string → { type: "string", const: "unknown" }
+			// These are distinct schemas → oneOf
+			expect(props?.name).toEqual({
+				oneOf: [{ type: "string" }, { type: "string", const: "unknown" }],
+			});
 		});
 
 		test("#if block returning different types → oneOf, coerceSchema on sibling", () => {
@@ -835,7 +839,7 @@ describe("schema-driven type coercion via coerceSchema", () => {
 			expect(result.valid).toBe(true);
 			const props = getProps(result.outputSchema as JSONSchema7);
 			// Static → coerceSchema string
-			expect(props?.accountId).toEqual({ type: "string" });
+			expect(props?.accountId).toEqual({ type: "string", const: "67890" });
 			// if block: age is number, name is string → oneOf
 			expect(props?.result).toEqual({
 				oneOf: [{ type: "number" }, { type: "string" }],
@@ -857,11 +861,18 @@ describe("schema-driven type coercion via coerceSchema", () => {
 			// Static "3" with coerceSchema string → string
 			expect(
 				getPropAt(result.outputSchema as JSONSchema7, "config", "maxRetries"),
-			).toEqual({ type: "string" });
-			// #if returns "true"/"false" as static content → boolean (detectLiteralType in block)
+			).toEqual({ type: "string", const: "3" });
+			// #if returns "true"/"false" as static content with coerceSchema boolean →
+			// true branch: { type: "boolean", const: true }, else branch: { type: "boolean", const: false }
+			// These are distinct schemas → oneOf
 			expect(
 				getPropAt(result.outputSchema as JSONSchema7, "config", "enabled"),
-			).toEqual({ type: "boolean" });
+			).toEqual({
+				oneOf: [
+					{ type: "boolean", const: true },
+					{ type: "boolean", const: false },
+				],
+			});
 		});
 	});
 
@@ -878,7 +889,7 @@ describe("schema-driven type coercion via coerceSchema", () => {
 			expect(result.valid).toBe(true);
 			const props = getProps(result.outputSchema as JSONSchema7);
 			// Static coercion: coerceSchema string
-			expect(props?.accountId).toEqual({ type: "string" });
+			expect(props?.accountId).toEqual({ type: "string", const: "55555" });
 			// #each with text → mixed template → string
 			expect(props?.tagList).toEqual({ type: "string" });
 		});
@@ -895,7 +906,7 @@ describe("schema-driven type coercion via coerceSchema", () => {
 			expect(result.valid).toBe(true);
 			const props = getProps(result.outputSchema as JSONSchema7);
 			// "99" with coerceSchema string → string
-			expect(props?.accountId).toEqual({ type: "string" });
+			expect(props?.accountId).toEqual({ type: "string", const: "99" });
 			// #each always produces string
 			expect(props?.firstTag).toEqual({ type: "string" });
 		});
@@ -914,7 +925,7 @@ describe("schema-driven type coercion via coerceSchema", () => {
 			expect(result.valid).toBe(true);
 			const props = getProps(result.outputSchema as JSONSchema7);
 			// "42" with coerceSchema string → string
-			expect(props?.accountId).toEqual({ type: "string" });
+			expect(props?.accountId).toEqual({ type: "string", const: "42" });
 			// #with resolves to metadata.role which is string
 			expect(props?.metaRole).toEqual({ type: "string" });
 		});
@@ -974,7 +985,7 @@ describe("schema-driven type coercion via coerceSchema", () => {
 			expect(result.valid).toBe(true);
 			const props = getProps(result.outputSchema as JSONSchema7);
 			// Known in coerceSchema: string → stays string
-			expect(props?.accountId).toEqual({ type: "string" });
+			expect(props?.accountId).toEqual({ type: "string", const: "12345" });
 			// Unknown: no coerceSchema entry → detectLiteralType → number
 			expect(props?.notInSchema).toEqual({ type: "number" });
 		});
@@ -1006,28 +1017,28 @@ describe("schema-driven type coercion via coerceSchema", () => {
 				{ type: "string" },
 				{ coerceSchema: { type: "string" } },
 			);
-			expect(r1.outputSchema).toEqual({ type: "string" });
+			expect(r1.outputSchema).toEqual({ type: "string", const: "123" });
 
 			const r2 = analyze(
 				"123",
 				{ type: "string" },
 				{ coerceSchema: { type: "number" } },
 			);
-			expect(r2.outputSchema).toEqual({ type: "number" });
+			expect(r2.outputSchema).toEqual({ type: "number", const: 123 });
 
 			const r3 = analyze(
 				"true",
 				{ type: "string" },
 				{ coerceSchema: { type: "string" } },
 			);
-			expect(r3.outputSchema).toEqual({ type: "string" });
+			expect(r3.outputSchema).toEqual({ type: "string", const: "true" });
 
 			const r4 = analyze(
 				"null",
 				{ type: "string" },
 				{ coerceSchema: { type: "string" } },
 			);
-			expect(r4.outputSchema).toEqual({ type: "string" });
+			expect(r4.outputSchema).toEqual({ type: "string", const: "null" });
 		});
 
 		test("standalone analyze with object template + coerceSchema → deep nesting works", () => {
@@ -1054,7 +1065,7 @@ describe("schema-driven type coercion via coerceSchema", () => {
 					"deep",
 					"value",
 				),
-			).toEqual({ type: "string" });
+			).toEqual({ type: "string", const: "456" });
 		});
 
 		test("standalone analyze with object template without coerceSchema → detectLiteralType", () => {
@@ -1185,10 +1196,10 @@ describe("schema-driven type coercion via coerceSchema", () => {
 			const props = getProps(result.outputSchema as JSONSchema7);
 
 			// ── Top-level properties ──────────────────────────────────────
-			expect(props?.accountId).toEqual({ type: "string" });
+			expect(props?.accountId).toEqual({ type: "string", const: "12345" });
 			expect(props?.name).toEqual({ type: "string" });
 			expect(props?.priority).toEqual({ type: "integer" });
-			expect(props?.balance).toEqual({ type: "number" });
+			expect(props?.balance).toEqual({ type: "number", const: 500.25 });
 			expect(props?.greeting).toEqual({ type: "string" });
 			expect(props?.status).toEqual({ type: "string" });
 			expect(props?.isAdmin).toEqual({ type: "boolean" });
@@ -1199,10 +1210,10 @@ describe("schema-driven type coercion via coerceSchema", () => {
 			// ── config (level 2) ──────────────────────────────────────────
 			expect(
 				getPropAt(result.outputSchema as JSONSchema7, "config", "maxRetries"),
-			).toEqual({ type: "string" });
+			).toEqual({ type: "string", const: "3" });
 			expect(
 				getPropAt(result.outputSchema as JSONSchema7, "config", "timeout"),
-			).toEqual({ type: "number" });
+			).toEqual({ type: "number", const: 5000 });
 			expect(
 				getPropAt(result.outputSchema as JSONSchema7, "config", "enabled"),
 			).toEqual({ type: "boolean" });
@@ -1216,7 +1227,7 @@ describe("schema-driven type coercion via coerceSchema", () => {
 					"deep",
 					"value",
 				),
-			).toEqual({ type: "string" });
+			).toEqual({ type: "string", const: "42" });
 			expect(
 				getPropAt(
 					result.outputSchema as JSONSchema7,
@@ -1225,7 +1236,7 @@ describe("schema-driven type coercion via coerceSchema", () => {
 					"deep",
 					"count",
 				),
-			).toEqual({ type: "integer" });
+			).toEqual({ type: "integer", const: 10 });
 			expect(
 				getPropAt(
 					result.outputSchema as JSONSchema7,
@@ -1246,7 +1257,7 @@ describe("schema-driven type coercion via coerceSchema", () => {
 					"ultraDeep",
 					"finalValue",
 				),
-			).toEqual({ type: "string" });
+			).toEqual({ type: "string", const: "100" });
 			expect(
 				getPropAt(
 					result.outputSchema as JSONSchema7,
@@ -1256,15 +1267,14 @@ describe("schema-driven type coercion via coerceSchema", () => {
 					"ultraDeep",
 					"finalNumber",
 				),
-			).toEqual({ type: "number" });
+			).toEqual({ type: "number", const: 99 });
 
-			// ── metadata (level 2) ────────────────────────────────────────
 			expect(
 				getPropAt(result.outputSchema as JSONSchema7, "metadata", "role"),
-			).toEqual({ type: "string" });
+			).toEqual({ type: "string", const: "admin" });
 			expect(
 				getPropAt(result.outputSchema as JSONSchema7, "metadata", "level"),
-			).toEqual({ type: "number" });
+			).toEqual({ type: "number", const: 5 });
 		});
 
 		test("mega analyzeAndExecute — analysis types correct AND execution values correct", () => {
@@ -1307,10 +1317,10 @@ describe("schema-driven type coercion via coerceSchema", () => {
 
 			// ── Analysis types ─────────────────────────────────────────────
 			const props = getProps(analysis.outputSchema as JSONSchema7);
-			expect(props?.accountId).toEqual({ type: "string" });
+			expect(props?.accountId).toEqual({ type: "string", const: "12345" });
 			expect(props?.name).toEqual({ type: "string" });
 			expect(props?.age).toEqual({ type: "number" });
-			expect(props?.balance).toEqual({ type: "number" });
+			expect(props?.balance).toEqual({ type: "number", const: 500.25 });
 			expect(props?.greeting).toEqual({ type: "string" });
 			expect(props?.active).toEqual({ type: "boolean" });
 			expect(props?.priority).toEqual({ type: "integer" });
@@ -1319,10 +1329,10 @@ describe("schema-driven type coercion via coerceSchema", () => {
 
 			expect(
 				getPropAt(analysis.outputSchema as JSONSchema7, "config", "maxRetries"),
-			).toEqual({ type: "string" });
+			).toEqual({ type: "string", const: "3" });
 			expect(
 				getPropAt(analysis.outputSchema as JSONSchema7, "config", "timeout"),
-			).toEqual({ type: "number" });
+			).toEqual({ type: "number", const: 5000 });
 			expect(
 				getPropAt(
 					analysis.outputSchema as JSONSchema7,
@@ -1331,8 +1341,9 @@ describe("schema-driven type coercion via coerceSchema", () => {
 					"deep",
 					"value",
 				),
-			).toEqual({ type: "string" });
+			).toEqual({ type: "string", const: "999" });
 
+			// finalValue: "100" is a static literal with coerceSchema string → { type: "string", const: "100" }
 			expect(
 				getPropAt(
 					analysis.outputSchema as JSONSchema7,
@@ -1342,14 +1353,14 @@ describe("schema-driven type coercion via coerceSchema", () => {
 					"ultraDeep",
 					"finalValue",
 				),
-			).toEqual({ type: "string" });
+			).toEqual({ type: "string", const: "100" });
 
 			expect(
 				getPropAt(analysis.outputSchema as JSONSchema7, "metadata", "role"),
-			).toEqual({ type: "string" });
+			).toEqual({ type: "string", const: "admin" });
 			expect(
 				getPropAt(analysis.outputSchema as JSONSchema7, "metadata", "level"),
-			).toEqual({ type: "number" });
+			).toEqual({ type: "number", const: 5 });
 
 			// ── Execution values ───────────────────────────────────────────
 			// With coerceSchema provided, static literals are coerced at
@@ -1426,7 +1437,7 @@ describe("schema-driven type coercion via coerceSchema", () => {
 			});
 			expect(result.valid).toBe(true);
 			const props = getProps(result.outputSchema as JSONSchema7);
-			expect(props?.balance).toEqual({ type: "number" });
+			expect(props?.balance).toEqual({ type: "number", const: -500 });
 		});
 
 		test("decimal string with coerceSchema number → number", () => {
@@ -1435,7 +1446,8 @@ describe("schema-driven type coercion via coerceSchema", () => {
 			});
 			expect(result.valid).toBe(true);
 			const props = getProps(result.outputSchema as JSONSchema7);
-			expect(props?.balance).toEqual({ type: "number" });
+			// biome-ignore lint/suspicious/noApproximativeNumericConstant: testing exact decimal value
+			expect(props?.balance).toEqual({ type: "number", const: 3.14159 });
 		});
 
 		test("empty object template → empty object output", () => {
@@ -1533,21 +1545,21 @@ describe("schema-driven type coercion via coerceSchema", () => {
 					{ type: "string" },
 					{ coerceSchema: { type: "string" } },
 				).outputSchema,
-			).toEqual({ type: "string" });
+			).toEqual({ type: "string", const: "42" });
 			expect(
 				engine.analyze(
 					"42",
 					{ type: "string" },
 					{ coerceSchema: { type: "number" } },
 				).outputSchema,
-			).toEqual({ type: "number" });
+			).toEqual({ type: "number", const: 42 });
 			expect(
 				engine.analyze(
 					"42",
 					{ type: "string" },
 					{ coerceSchema: { type: "integer" } },
 				).outputSchema,
-			).toEqual({ type: "integer" });
+			).toEqual({ type: "integer", const: 42 });
 		});
 
 		test("without coerceSchema, inputSchema primitive type does NOT influence output", () => {
@@ -1579,7 +1591,7 @@ describe("schema-driven type coercion via coerceSchema", () => {
 			expect(result.valid).toBe(true);
 			const props = getProps(result.outputSchema as JSONSchema7);
 			// name has coerceSchema string → "123" stays string
-			expect(props?.name).toEqual({ type: "string" });
+			expect(props?.name).toEqual({ type: "string", const: "123" });
 			// extra: additionalProperties is true → resolveSchemaPath returns {}
 			// → no type → falls back to detectLiteralType → number
 			expect(props?.extra).toEqual({ type: "number" });
@@ -1599,9 +1611,9 @@ describe("schema-driven type coercion via coerceSchema", () => {
 			expect(result.valid).toBe(true);
 			const props = getProps(result.outputSchema as JSONSchema7);
 			// name: coerceSchema string → "123" stays string
-			expect(props?.name).toEqual({ type: "string" });
+			expect(props?.name).toEqual({ type: "string", const: "123" });
 			// extra: additionalProperties says string → "456" stays string
-			expect(props?.extra).toEqual({ type: "string" });
+			expect(props?.extra).toEqual({ type: "string", const: "456" });
 		});
 
 		test("additionalProperties without coerceSchema → all detectLiteralType", () => {
@@ -1651,9 +1663,9 @@ describe("schema-driven type coercion via coerceSchema", () => {
 			expect(result.valid).toBe(true);
 			const props = getProps(result.outputSchema as JSONSchema7);
 			// meetingId: coerceSchema says string → stays string
-			expect(props?.meetingId).toEqual({ type: "string" });
+			expect(props?.meetingId).toEqual({ type: "string", const: "12345" });
 			// count: coerceSchema says integer → becomes integer
-			expect(props?.count).toEqual({ type: "integer" });
+			expect(props?.count).toEqual({ type: "integer", const: 42 });
 			// label: Handlebars → resolves from inputSchema as string
 			expect(props?.label).toEqual({ type: "string" });
 		});
@@ -1682,7 +1694,7 @@ describe("schema-driven type coercion via coerceSchema", () => {
 			expect(result.valid).toBe(true);
 			const props = getProps(result.outputSchema as JSONSchema7);
 			// code: coerceSchema says string → "404" stays string
-			expect(props?.code).toEqual({ type: "string" });
+			expect(props?.code).toEqual({ type: "string", const: "404" });
 			// name: Handlebars → resolved from inputSchema as string
 			expect(props?.name).toEqual({ type: "string" });
 		});
@@ -1697,7 +1709,13 @@ describe("schema-driven type coercion via coerceSchema", () => {
 			expect(result.valid).toBe(true);
 			expect(result.outputSchema).toEqual({
 				type: "array",
-				items: { type: "string" },
+				items: {
+					oneOf: [
+						{ type: "string", const: "1" },
+						{ type: "string", const: "2" },
+						{ type: "string", const: "3" },
+					],
+				},
 			});
 		});
 
@@ -1717,7 +1735,12 @@ describe("schema-driven type coercion via coerceSchema", () => {
 			expect(result.valid).toBe(true);
 			expect(result.outputSchema).toEqual({
 				type: "array",
-				items: { type: "string" },
+				items: {
+					oneOf: [
+						{ type: "string", const: "true" },
+						{ type: "string", const: "false" },
+					],
+				},
 			});
 		});
 
@@ -1728,7 +1751,7 @@ describe("schema-driven type coercion via coerceSchema", () => {
 			expect(result.valid).toBe(true);
 			expect(result.outputSchema).toEqual({
 				type: "array",
-				items: { type: "string" },
+				items: { type: "string", const: "null" },
 			});
 		});
 
@@ -1739,7 +1762,13 @@ describe("schema-driven type coercion via coerceSchema", () => {
 			expect(result.valid).toBe(true);
 			expect(result.outputSchema).toEqual({
 				type: "array",
-				items: { type: "integer" },
+				items: {
+					oneOf: [
+						{ type: "integer", const: 1 },
+						{ type: "integer", const: 2 },
+						{ type: "integer", const: 3 },
+					],
+				},
 			});
 		});
 
@@ -1754,7 +1783,14 @@ describe("schema-driven type coercion via coerceSchema", () => {
 			expect(result.valid).toBe(true);
 			expect(result.outputSchema).toEqual({
 				type: "array",
-				items: { type: "string" },
+				items: {
+					oneOf: [
+						{ type: "string", const: "42" },
+						{ type: "string", const: "true" },
+						{ type: "string", const: "null" },
+						{ type: "string", const: "hello" },
+					],
+				},
 			});
 		});
 
@@ -1794,11 +1830,23 @@ describe("schema-driven type coercion via coerceSchema", () => {
 			const schema = result.outputSchema as JSONSchema7;
 			expect(schema.type).toBe("array");
 			const itemSchema = schema.items as JSONSchema7;
-			expect(itemSchema.type).toBe("object");
-			const props = getProps(itemSchema);
-			// "1" would be number without coerceSchema, but string with it
-			expect(props?.id).toEqual({ type: "string" });
-			expect(props?.name).toEqual({ type: "string" });
+			// Each array element has unique const values → they produce distinct
+			// object schemas that cannot be deduplicated → oneOf at items level
+			expect(itemSchema.oneOf).toBeDefined();
+			const branches = itemSchema.oneOf as JSONSchema7[];
+			expect(branches).toHaveLength(2);
+			// First element: { id: "1", name: "Alice" }
+			const first = branches[0] as JSONSchema7;
+			expect(first.type).toBe("object");
+			const firstProps = getProps(first);
+			expect(firstProps?.id).toEqual({ type: "string", const: "1" });
+			expect(firstProps?.name).toEqual({ type: "string", const: "Alice" });
+			// Second element: { id: "2", name: "Bob" }
+			const second = branches[1] as JSONSchema7;
+			expect(second.type).toBe("object");
+			const secondProps = getProps(second);
+			expect(secondProps?.id).toEqual({ type: "string", const: "2" });
+			expect(secondProps?.name).toEqual({ type: "string", const: "Bob" });
 		});
 
 		test("nested array in object — coerceSchema propagates through object then into array items", () => {
@@ -1817,7 +1865,12 @@ describe("schema-driven type coercion via coerceSchema", () => {
 			const idsSchema = props?.ids as JSONSchema7;
 			expect(idsSchema).toEqual({
 				type: "array",
-				items: { type: "string" },
+				items: {
+					oneOf: [
+						{ type: "string", const: "1" },
+						{ type: "string", const: "2" },
+					],
+				},
 			});
 		});
 
@@ -1871,7 +1924,12 @@ describe("schema-driven type coercion via coerceSchema", () => {
 			const tagsSchema = getProps(dataItemSchema)?.tags as JSONSchema7;
 			expect(tagsSchema).toEqual({
 				type: "array",
-				items: { type: "string" },
+				items: {
+					oneOf: [
+						{ type: "string", const: "100" },
+						{ type: "string", const: "200" },
+					],
+				},
 			});
 		});
 
@@ -1893,7 +1951,13 @@ describe("schema-driven type coercion via coerceSchema", () => {
 			expect(result.valid).toBe(true);
 			expect(result.outputSchema).toEqual({
 				type: "array",
-				items: { type: "string" },
+				items: {
+					oneOf: [
+						{ type: "string", const: "42" },
+						{ type: "string", const: "true" },
+						{ type: "string", const: "null" },
+					],
+				},
 			});
 		});
 
@@ -1911,7 +1975,12 @@ describe("schema-driven type coercion via coerceSchema", () => {
 			const props = getProps(schema);
 			expect(props?.codes).toEqual({
 				type: "array",
-				items: { type: "string" },
+				items: {
+					oneOf: [
+						{ type: "string", const: "404" },
+						{ type: "string", const: "500" },
+					],
+				},
 			});
 		});
 	});
@@ -1930,7 +1999,13 @@ describe("schema-driven type coercion via coerceSchema", () => {
 			expect(analysis.valid).toBe(true);
 			expect(analysis.outputSchema).toEqual({
 				type: "array",
-				items: { type: "string" },
+				items: {
+					oneOf: [
+						{ type: "string", const: "1" },
+						{ type: "string", const: "2" },
+						{ type: "string", const: "3" },
+					],
+				},
 			});
 			expect(value).toEqual(["1", "2", "3"]);
 		});
@@ -1954,19 +2029,26 @@ describe("schema-driven type coercion via coerceSchema", () => {
 			const props = getProps(schema);
 			expect(props?.ids).toEqual({
 				type: "array",
-				items: { type: "string" },
+				items: {
+					oneOf: [
+						{ type: "string", const: "1" },
+						{ type: "string", const: "2" },
+					],
+				},
 			});
 			expect(value).toEqual({ ids: ["1", "2"] });
 		});
 	});
 
-	// ─── coerceSchema Custom Metadata Preservation ───────────────────────────
-	// When a coerceSchema includes extra properties beyond `type` (e.g.
-	// `constraints`, `description`, `format`), they must be preserved in the
-	// outputSchema — not stripped down to just `{ type }`.
+	// ─── coerceSchema Value-Level Constraint Stripping ────────────────────────
+	// When a coerceSchema includes value-level constraints (e.g. `enum`, `const`,
+	// `format`, `constraints`, `minLength`, `minimum`, `description`…), they must
+	// NOT be propagated into the outputSchema for static literals.  Only the
+	// `type` is extracted from coerceSchema, and a `const` reflecting the actual
+	// literal value is set instead.
 
-	describe("coerceSchema custom metadata preservation", () => {
-		test("string template with coerceSchema containing constraints → outputSchema preserves constraints", () => {
+	describe("coerceSchema value-level constraint stripping", () => {
+		test("string template with coerceSchema containing constraints → outputSchema has const, not constraints", () => {
 			const result = engine.analyze(
 				"salut",
 				{ type: "object", properties: {} },
@@ -1980,11 +2062,11 @@ describe("schema-driven type coercion via coerceSchema", () => {
 			expect(result.valid).toBe(true);
 			expect(result.outputSchema as unknown).toEqual({
 				type: "string",
-				constraints: "IsUuid",
+				const: "salut",
 			});
 		});
 
-		test("numeric string with coerceSchema number + constraints → outputSchema preserves constraints", () => {
+		test("numeric string with coerceSchema number + constraints → outputSchema has const, not constraints", () => {
 			const result = engine.analyze(
 				"123",
 				{ type: "object", properties: {} },
@@ -1998,11 +2080,11 @@ describe("schema-driven type coercion via coerceSchema", () => {
 			expect(result.valid).toBe(true);
 			expect(result.outputSchema as unknown).toEqual({
 				type: "number",
-				constraints: "IsPositive",
+				const: 123,
 			});
 		});
 
-		test("boolean string with coerceSchema boolean + description → outputSchema preserves description", () => {
+		test("boolean string with coerceSchema boolean + description → outputSchema has const, not description", () => {
 			const result = engine.analyze(
 				"true",
 				{ type: "object", properties: {} },
@@ -2016,11 +2098,11 @@ describe("schema-driven type coercion via coerceSchema", () => {
 			expect(result.valid).toBe(true);
 			expect(result.outputSchema).toEqual({
 				type: "boolean",
-				description: "Is the feature enabled",
+				const: true,
 			});
 		});
 
-		test("object template — per-property coerceSchema metadata preserved in outputSchema", () => {
+		test("object template — per-property coerceSchema constraints stripped, const added", () => {
 			const result = engine.analyze(
 				{
 					ok: "salut",
@@ -2041,15 +2123,15 @@ describe("schema-driven type coercion via coerceSchema", () => {
 			const props = getProps(result.outputSchema as JSONSchema7);
 			expect(props?.ok as unknown).toEqual({
 				type: "string",
-				constraints: "IsUuid",
+				const: "salut",
 			});
 			expect(props?.count as unknown).toEqual({
 				type: "integer",
-				constraints: "IsPositive",
+				const: 42,
 			});
 		});
 
-		test("object template with excludeTemplateExpression — dropped key removed, kept key preserves metadata", () => {
+		test("object template with excludeTemplateExpression — dropped key removed, kept key has const not metadata", () => {
 			const result = engine.analyzeAndExecute(
 				{
 					accountId: "{{accountId}}",
@@ -2073,15 +2155,15 @@ describe("schema-driven type coercion via coerceSchema", () => {
 			const props = getProps(schema);
 			// accountId should be dropped (it was a template expression)
 			expect(props?.accountId).toBeUndefined();
-			// ok should preserve the full coerceSchema including constraints
+			// ok should have const with actual value, not constraints from coerceSchema
 			expect(props?.ok as unknown).toEqual({
 				type: "string",
-				constraints: "IsUuid",
+				const: "salut",
 			});
 			expect(result.value).toEqual({ ok: "salut" });
 		});
 
-		test("deeply nested object — coerceSchema metadata preserved at every level", () => {
+		test("deeply nested object — coerceSchema metadata stripped, const added at every level", () => {
 			const result = engine.analyze(
 				{
 					config: {
@@ -2123,12 +2205,11 @@ describe("schema-driven type coercion via coerceSchema", () => {
 			);
 			expect(valueSchema as unknown).toEqual({
 				type: "string",
-				constraints: "IsNotEmpty",
-				format: "custom",
+				const: "hello",
 			});
 		});
 
-		test("array template — coerceSchema items metadata preserved", () => {
+		test("array template — coerceSchema items metadata stripped, const added per element", () => {
 			const result = engine.analyze(
 				["abc", "def"] as TemplateInput,
 				{},
@@ -2146,12 +2227,14 @@ describe("schema-driven type coercion via coerceSchema", () => {
 			const schema = result.outputSchema as JSONSchema7;
 			expect(schema.type).toBe("array");
 			expect(schema.items as unknown).toEqual({
-				type: "string",
-				constraints: "IsAlpha",
+				oneOf: [
+					{ type: "string", const: "abc" },
+					{ type: "string", const: "def" },
+				],
 			});
 		});
 
-		test("coerceSchema with format property → preserved in outputSchema", () => {
+		test("coerceSchema with format property → stripped, const added", () => {
 			const result = engine.analyze(
 				"test@example.com",
 				{ type: "object", properties: {} },
@@ -2165,11 +2248,11 @@ describe("schema-driven type coercion via coerceSchema", () => {
 			expect(result.valid).toBe(true);
 			expect(result.outputSchema).toEqual({
 				type: "string",
-				format: "email",
+				const: "test@example.com",
 			});
 		});
 
-		test("coerceSchema with multiple extra properties → all preserved", () => {
+		test("coerceSchema with multiple extra properties → all stripped, const added", () => {
 			const result = engine.analyze(
 				"42",
 				{ type: "object", properties: {} },
@@ -2185,9 +2268,47 @@ describe("schema-driven type coercion via coerceSchema", () => {
 			expect(result.valid).toBe(true);
 			expect(result.outputSchema).toEqual({
 				type: "integer",
-				minimum: 0,
-				maximum: 100,
-				description: "A percentage value",
+				const: 42,
+			});
+		});
+
+		test("coerceSchema with enum → stripped, const reflects actual value", () => {
+			const result = engine.analyze({ accountId: "bad_value" }, undefined, {
+				coerceSchema: {
+					type: "object",
+					properties: {
+						accountId: {
+							type: "string",
+							enum: ["salut", "coucou"],
+						},
+					},
+				},
+			});
+			expect(result.valid).toBe(true);
+			const props = getProps(result.outputSchema as JSONSchema7);
+			expect(props?.accountId).toEqual({
+				type: "string",
+				const: "bad_value",
+			});
+		});
+
+		test("coerceSchema with const → overridden by actual literal value", () => {
+			const result = engine.analyze({ accountId: "other_value" }, undefined, {
+				coerceSchema: {
+					type: "object",
+					properties: {
+						accountId: {
+							type: "string",
+							const: "expected_value",
+						},
+					},
+				},
+			});
+			expect(result.valid).toBe(true);
+			const props = getProps(result.outputSchema as JSONSchema7);
+			expect(props?.accountId).toEqual({
+				type: "string",
+				const: "other_value",
 			});
 		});
 	});
@@ -2238,14 +2359,12 @@ describe("schema-driven type coercion via coerceSchema", () => {
 			// name comes from the first allOf branch
 			expect(props?.name as unknown).toEqual({
 				type: "string",
-				constraints: "IsAlpha",
-				description: "User full name",
+				const: "Alice",
 			});
 			// age comes from the second allOf branch
 			expect(props?.age as unknown).toEqual({
 				type: "number",
-				constraints: "IsPositive",
-				description: "User age in years",
+				const: 30,
 			});
 		});
 
@@ -2288,13 +2407,11 @@ describe("schema-driven type coercion via coerceSchema", () => {
 			const props = getProps(result.outputSchema as JSONSchema7);
 			expect(props?.email as unknown).toEqual({
 				type: "string",
-				constraints: "IsEmail",
-				format: "email",
+				const: "test@example.com",
 			});
 			expect(props?.score as unknown).toEqual({
 				type: "integer",
-				constraints: "Max(100)",
-				minimum: 0,
+				const: 99,
 			});
 		});
 
@@ -2337,13 +2454,11 @@ describe("schema-driven type coercion via coerceSchema", () => {
 			const props = getProps(result.outputSchema as JSONSchema7);
 			expect(props?.slug as unknown).toEqual({
 				type: "string",
-				constraints: "IsSlug",
-				pattern: "^[a-z0-9-]+$",
+				const: "hello-world",
 			});
 			expect(props?.priority as unknown).toEqual({
 				type: "integer",
-				constraints: "IsPositive",
-				maximum: 10,
+				const: 5,
 			});
 		});
 
@@ -2492,8 +2607,7 @@ describe("schema-driven type coercion via coerceSchema", () => {
 			);
 			expect(timeoutSchema as unknown).toEqual({
 				type: "number",
-				constraints: "IsPositive",
-				description: "Timeout in seconds",
+				const: 30,
 			});
 			const debugSchema = getPropAt(
 				result.outputSchema as JSONSchema7,
@@ -2502,8 +2616,7 @@ describe("schema-driven type coercion via coerceSchema", () => {
 			);
 			expect(debugSchema as unknown).toEqual({
 				type: "boolean",
-				constraints: "IsBooleanString",
-				description: "Enable debug mode",
+				const: true,
 			});
 		});
 
@@ -2557,14 +2670,12 @@ describe("schema-driven type coercion via coerceSchema", () => {
 			// status from first allOf branch — metadata preserved
 			expect(props?.status as unknown).toEqual({
 				type: "string",
-				constraints: "IsAlpha",
-				description: "Account status label",
+				const: "active",
 			});
-			// count from second allOf branch — metadata preserved
+			// count from second allOf branch — const with parsed value
 			expect(props?.count as unknown).toEqual({
 				type: "integer",
-				constraints: "IsPositive",
-				minimum: 1,
+				const: 7,
 			});
 			// Execution result should exclude userId
 			expect(result.value).toEqual({ status: "active", count: 7 });
@@ -2613,8 +2724,7 @@ describe("schema-driven type coercion via coerceSchema", () => {
 			// label from first anyOf branch — metadata preserved
 			expect(props?.label as unknown).toEqual({
 				type: "string",
-				constraints: "IsNotEmpty",
-				minLength: 1,
+				const: "hello",
 			});
 			expect(result.value).toEqual({ label: "hello" });
 		});
@@ -2639,9 +2749,10 @@ describe("schema-driven type coercion via coerceSchema", () => {
 			const schema = result.outputSchema as JSONSchema7;
 			expect(schema.type).toBe("array");
 			expect(schema.items as unknown).toEqual({
-				type: "string",
-				constraints: "IsAlpha",
-				maxLength: 20,
+				oneOf: [
+					{ type: "string", const: "hello" },
+					{ type: "string", const: "world" },
+				],
 			});
 		});
 
@@ -2686,10 +2797,7 @@ describe("schema-driven type coercion via coerceSchema", () => {
 			);
 			expect(innerSchema as unknown).toEqual({
 				type: "integer",
-				constraints: "IsPositive",
-				description: "Deeply nested value",
-				minimum: 0,
-				maximum: 100,
+				const: 42,
 			});
 		});
 
@@ -2745,18 +2853,15 @@ describe("schema-driven type coercion via coerceSchema", () => {
 			// Each property must have exactly its own metadata — nothing from siblings
 			expect(props?.a as unknown).toEqual({
 				type: "string",
-				constraints: "IsAlpha",
-				format: "custom-a",
+				const: "hello",
 			});
 			expect(props?.b as unknown).toEqual({
 				type: "number",
-				constraints: "IsPositive",
-				minimum: 0,
+				const: 42,
 			});
 			expect(props?.c as unknown).toEqual({
 				type: "boolean",
-				constraints: "IsBooleanString",
-				description: "A flag",
+				const: true,
 			});
 		});
 
@@ -2814,14 +2919,12 @@ describe("schema-driven type coercion via coerceSchema", () => {
 			// title from branch 1
 			expect(props?.title as unknown).toEqual({
 				type: "string",
-				constraints: "IsNotEmpty",
-				maxLength: 200,
+				const: "My Article",
 			});
 			// views from branch 2
 			expect(props?.views as unknown).toEqual({
 				type: "integer",
-				constraints: "Min(0)",
-				minimum: 0,
+				const: 1000,
 			});
 			expect(result.value).toEqual({ title: "My Article", views: 1000 });
 		});
