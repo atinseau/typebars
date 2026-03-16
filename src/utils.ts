@@ -385,6 +385,8 @@ export function aggregateArrayAnalysis(
 		outputSchema: {
 			type: "array",
 			items: computeArrayItemsSchema(elementSchemas),
+			minItems: length,
+			maxItems: length,
 		},
 	};
 }
@@ -421,6 +423,8 @@ export function aggregateArrayAnalysisAndExecution(
 		outputSchema: {
 			type: "array",
 			items: computeArrayItemsSchema(elementSchemas),
+			minItems: length,
+			maxItems: length,
 		},
 	};
 

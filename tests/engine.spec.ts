@@ -1239,6 +1239,8 @@ describe("array template input (TemplateInputArray)", () => {
 			expect(result.outputSchema).toEqual({
 				type: "array",
 				items: { type: "string" },
+				minItems: 1,
+				maxItems: 1,
 			});
 		});
 
@@ -1251,6 +1253,8 @@ describe("array template input (TemplateInputArray)", () => {
 			expect(result.outputSchema).toEqual({
 				type: "array",
 				items: { type: "string" },
+				minItems: 2,
+				maxItems: 2,
 			});
 		});
 
@@ -1265,6 +1269,8 @@ describe("array template input (TemplateInputArray)", () => {
 				items: {
 					oneOf: [{ type: "string" }, { type: "number" }, { type: "boolean" }],
 				},
+				minItems: 3,
+				maxItems: 3,
 			});
 		});
 
@@ -1276,6 +1282,8 @@ describe("array template input (TemplateInputArray)", () => {
 				items: {
 					oneOf: [{ type: "integer" }, { type: "boolean" }, { type: "null" }],
 				},
+				minItems: 3,
+				maxItems: 3,
 			});
 		});
 
@@ -1292,6 +1300,8 @@ describe("array template input (TemplateInputArray)", () => {
 						{ type: "null" },
 					],
 				},
+				minItems: 4,
+				maxItems: 4,
 			});
 		});
 
@@ -1302,6 +1312,8 @@ describe("array template input (TemplateInputArray)", () => {
 			expect(result.outputSchema).toEqual({
 				type: "array",
 				items: {},
+				minItems: 0,
+				maxItems: 0,
 			});
 		});
 
@@ -1338,6 +1350,8 @@ describe("array template input (TemplateInputArray)", () => {
 					},
 					required: ["user", "age"],
 				},
+				minItems: 1,
+				maxItems: 1,
 			});
 		});
 
@@ -1348,10 +1362,22 @@ describe("array template input (TemplateInputArray)", () => {
 				type: "array",
 				items: {
 					oneOf: [
-						{ type: "array", items: { type: "string" } },
-						{ type: "array", items: { type: "number" } },
+						{
+							type: "array",
+							items: { type: "string" },
+							minItems: 1,
+							maxItems: 1,
+						},
+						{
+							type: "array",
+							items: { type: "number" },
+							minItems: 1,
+							maxItems: 1,
+						},
 					],
 				},
+				minItems: 2,
+				maxItems: 2,
 			});
 		});
 
@@ -1363,7 +1389,14 @@ describe("array template input (TemplateInputArray)", () => {
 			expect(result.valid).toBe(true);
 			expect(result.outputSchema).toEqual({
 				type: "array",
-				items: { type: "array", items: { type: "string" } },
+				items: {
+					type: "array",
+					items: { type: "string" },
+					minItems: 1,
+					maxItems: 1,
+				},
+				minItems: 2,
+				maxItems: 2,
 			});
 		});
 
@@ -1373,6 +1406,8 @@ describe("array template input (TemplateInputArray)", () => {
 			expect(result.outputSchema).toEqual({
 				type: "array",
 				items: { type: "string" },
+				minItems: 2,
+				maxItems: 2,
 			});
 		});
 
@@ -1382,6 +1417,8 @@ describe("array template input (TemplateInputArray)", () => {
 			expect(result.outputSchema).toEqual({
 				type: "array",
 				items: { type: "integer" },
+				minItems: 3,
+				maxItems: 3,
 			});
 		});
 	});
@@ -1492,6 +1529,8 @@ describe("array template input (TemplateInputArray)", () => {
 				items: {
 					oneOf: [{ type: "string" }, { type: "integer" }],
 				},
+				minItems: 2,
+				maxItems: 2,
 			});
 		});
 
@@ -1523,6 +1562,8 @@ describe("array template input (TemplateInputArray)", () => {
 				items: {
 					oneOf: [{ type: "string" }, { type: "number" }],
 				},
+				minItems: 2,
+				maxItems: 2,
 			});
 			expect(value).toEqual(["Alice", 30]);
 		});
@@ -1542,6 +1583,8 @@ describe("array template input (TemplateInputArray)", () => {
 			expect(analysis.outputSchema).toEqual({
 				type: "array",
 				items: {},
+				minItems: 0,
+				maxItems: 0,
 			});
 		});
 	});
@@ -1559,6 +1602,8 @@ describe("array template input (TemplateInputArray)", () => {
 				items: {
 					oneOf: [{ type: "string" }, { type: "number" }],
 				},
+				minItems: 3,
+				maxItems: 3,
 			});
 			expect(value).toEqual(["Alice", 30, "static"]);
 		});
@@ -1585,6 +1630,8 @@ describe("array template input (TemplateInputArray)", () => {
 				items: {
 					oneOf: [{ type: "integer" }, { type: "boolean" }, { type: "string" }],
 				},
+				minItems: 3,
+				maxItems: 3,
 			});
 			expect(value).toEqual([42, true, "Alice"]);
 		});
@@ -1608,9 +1655,13 @@ describe("array template input (TemplateInputArray)", () => {
 						{
 							type: "array",
 							items: { type: "number" },
+							minItems: 1,
+							maxItems: 1,
 						},
 					],
 				},
+				minItems: 2,
+				maxItems: 2,
 			});
 			expect(value).toEqual([{ name: "Alice" }, [30]]);
 		});
@@ -1635,6 +1686,8 @@ describe("array template input (TemplateInputArray)", () => {
 			expect(analysis.outputSchema).toEqual({
 				type: "array",
 				items: {},
+				minItems: 0,
+				maxItems: 0,
 			});
 			expect(value).toEqual([]);
 		});
@@ -1649,6 +1702,8 @@ describe("array template input (TemplateInputArray)", () => {
 				items: {
 					oneOf: [{ type: "string" }, { type: "number" }],
 				},
+				minItems: 2,
+				maxItems: 2,
 			});
 		});
 

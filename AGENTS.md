@@ -48,7 +48,7 @@ src/
 ├── schema-resolver.ts    # JSON Schema navigation: $ref, combinators, additionalProperties, array items
 ├── errors.ts             # Error hierarchy: TemplateError → Parse/Analysis/Runtime/UnsupportedSchema
 ├── types.ts              # All public types, interfaces, diagnostic codes, defineHelper()
-├── utils.ts              # Shared utilities: deepEqual, LRUCache, aggregateObjectAnalysis, aggregateArrayAnalysis
+├── utils.ts              # Shared utilities: deepEqual, LRUCache, aggregateObjectAnalysis, aggregateArrayAnalysis (with minItems/maxItems)
 └── helpers/
     ├── index.ts           # Re-exports for helper modules
     ├── helper-factory.ts  # Abstract HelperFactory base class + HelperRegistry interface
@@ -59,18 +59,24 @@ src/
 tests/
 ├── fixtures.ts               # Shared userSchema + userData used across test suites
 ├── analyzer.spec.ts           # Static analysis tests (output inference, diagnostics)
+├── array-bounds.spec.ts       # Array minItems/maxItems output schema tests
 ├── parser.spec.ts             # Parsing and AST tests
 ├── executor.spec.ts           # Execution tests
 ├── engine.spec.ts             # Typebars class integration tests
 ├── schema-resolver.spec.ts    # Schema resolution tests ($ref, combinators)
 ├── math-helpers.spec.ts       # Math helper tests
 ├── logical-helpers.spec.ts    # Logical helper tests
+├── map-helpers.spec.ts        # Map helper tests ({{ map collection "prop" }})
 ├── sub-expression.spec.ts     # Sub-expression tests
 ├── conditional-schema.spec.ts # Conditional schema handling tests
 ├── colon-syntax.spec.ts       # Template identifier {{key:N}} tests
 ├── template-identifiers.spec.ts
 ├── schema-type-coercion.spec.ts   # coerceSchema output type coercion tests
+├── coerce-execution.spec.ts       # coerceSchema execution-time tests
+├── exclude-template-expression.spec.ts # excludeTemplateExpression option tests
+├── root-token.spec.ts         # $root token tests
 ├── edge-cases.spec.ts         # Edge case tests
+├── utils.spec.ts              # Utility function unit tests (deepEqual, LRUCache…)
 ├── migration-interop.spec.ts  # Migration / interoperability tests
 └── integration/               # Post-build import tests (ESM + CJS)
 ```
@@ -222,6 +228,7 @@ bun biome check --write --unsafe src/analyzer.ts
 6. **Template identifiers `{{key:N}}`** — identifier is always on the last path segment. Parsed by `extractExpressionIdentifier()`.
 7. **`AnalyzeOptions` object** — `analyze()`, `validate()`, and `analyzeAndExecute()` accept an optional `AnalyzeOptions` object (not positional args) with `identifierSchemas?` and `coerceSchema?`. The `inputSchema` describes available variables for validation; it **never** influences output type coercion.
 8. **`coerceSchema` for output type coercion** — by default, static literal values (`"123"`, `"true"`, `"null"`) are auto-detected by `detectLiteralType`. An explicit `coerceSchema` in `AnalyzeOptions` overrides this for static content only. Handlebars expressions, mixed templates, and JS primitive literals are never affected by `coerceSchema`. For object templates, `coerceSchema` is resolved per-property via `resolveSchemaPath()` and propagated recursively to children.
+9. **Array bounds (`minItems`/`maxItems`)** — `aggregateArrayAnalysis` and `aggregateArrayAnalysisAndExecution` always emit `minItems: length, maxItems: length` in the output schema, because literal template arrays (`["{{name}}", "static"]`) have a statically-known element count. This applies to both the normal and `excludeTemplateExpression` paths (where `length` reflects the filtered count). Data-dependent arrays (e.g. `{{ map }}` helper, `{{tags}}` expression) do **not** have bounds — their size depends on runtime input.
 
 ## Validation Checklist
 
