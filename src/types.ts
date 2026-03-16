@@ -164,7 +164,9 @@ export type DiagnosticCode =
 	/** Syntax error in the template */
 	| "PARSE_ERROR"
 	/** The $root token is used with path traversal (e.g. $root.name) */
-	| "ROOT_PATH_TRAVERSAL";
+	| "ROOT_PATH_TRAVERSAL"
+	/** Unsupported JSON Schema feature (e.g. if/then/else conditional schemas) */
+	| "UNSUPPORTED_SCHEMA";
 
 // ─── Diagnostic Details ──────────────────────────────────────────────────────
 // Supplementary information to understand the exact cause of the error.

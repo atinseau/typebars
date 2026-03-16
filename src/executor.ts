@@ -234,9 +234,21 @@ function coerceValue(raw: string, coerceSchema?: JSONSchema7): unknown {
 		const targetType = coerceSchema.type;
 		if (typeof targetType === "string") {
 			if (targetType === "string") return raw;
-			if (targetType === "number" || targetType === "integer")
-				return Number(raw.trim());
-			if (targetType === "boolean") return raw.trim() === "true";
+			if (targetType === "number" || targetType === "integer") {
+				const trimmed = raw.trim();
+				if (trimmed === "") return undefined;
+				const num = Number(trimmed);
+				if (Number.isNaN(num)) return undefined;
+				if (targetType === "integer" && !Number.isInteger(num))
+					return undefined;
+				return num;
+			}
+			if (targetType === "boolean") {
+				const lower = raw.trim().toLowerCase();
+				if (lower === "true") return true;
+				if (lower === "false") return false;
+				return undefined;
+			}
 			if (targetType === "null") return null;
 		}
 	}

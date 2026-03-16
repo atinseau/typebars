@@ -330,7 +330,7 @@ describe("coerceSchema at execution time", () => {
 			).toBe("hello");
 		});
 
-		test("static 'hello' + coerceSchema number → NaN (expected — analysis should catch this)", () => {
+		test("static 'hello' + coerceSchema number → undefined (non-numeric string)", () => {
 			const result = engine.execute(
 				"hello",
 				{},
@@ -338,7 +338,7 @@ describe("coerceSchema at execution time", () => {
 					coerceSchema: { type: "number" },
 				},
 			);
-			expect(result).toBeNaN();
+			expect(result).toBeUndefined();
 		});
 
 		test("Handlebars expression is NOT affected by coerceSchema", () => {
@@ -1052,6 +1052,239 @@ describe("coerceSchema at execution time", () => {
 			expect(analysis.outputSchema).toEqual({ type: "string", const: "123" });
 			expect(value).toBe("123");
 			expect(typeof value).toBe("string");
+		});
+	});
+
+	// ─── Boolean Coercion Case-Insensitivity ─────────────────────────────
+
+	describe("boolean coercion case-insensitivity", () => {
+		test("'true' → true", () => {
+			const result = engine.execute(
+				"true",
+				{},
+				{ coerceSchema: { type: "boolean" } },
+			);
+			expect(result).toBe(true);
+		});
+
+		test("'false' → false", () => {
+			const result = engine.execute(
+				"false",
+				{},
+				{ coerceSchema: { type: "boolean" } },
+			);
+			expect(result).toBe(false);
+		});
+
+		test("'True' → true (case-insensitive)", () => {
+			const result = engine.execute(
+				"True",
+				{},
+				{ coerceSchema: { type: "boolean" } },
+			);
+			expect(result).toBe(true);
+		});
+
+		test("'TRUE' → true (case-insensitive)", () => {
+			const result = engine.execute(
+				"TRUE",
+				{},
+				{ coerceSchema: { type: "boolean" } },
+			);
+			expect(result).toBe(true);
+		});
+
+		test("'False' → false (case-insensitive)", () => {
+			const result = engine.execute(
+				"False",
+				{},
+				{ coerceSchema: { type: "boolean" } },
+			);
+			expect(result).toBe(false);
+		});
+
+		test("'FALSE' → false (case-insensitive)", () => {
+			const result = engine.execute(
+				"FALSE",
+				{},
+				{ coerceSchema: { type: "boolean" } },
+			);
+			expect(result).toBe(false);
+		});
+
+		test("'' → undefined (empty string is not a boolean)", () => {
+			const result = engine.execute(
+				"",
+				{},
+				{ coerceSchema: { type: "boolean" } },
+			);
+			expect(result).toBeUndefined();
+		});
+
+		test("'  true  ' → true (whitespace trimmed)", () => {
+			const result = engine.execute(
+				"  true  ",
+				{},
+				{ coerceSchema: { type: "boolean" } },
+			);
+			expect(result).toBe(true);
+		});
+
+		test("'  FALSE  ' → false (whitespace trimmed + case-insensitive)", () => {
+			const result = engine.execute(
+				"  FALSE  ",
+				{},
+				{ coerceSchema: { type: "boolean" } },
+			);
+			expect(result).toBe(false);
+		});
+
+		test("'yes' → undefined (not a valid boolean string)", () => {
+			const result = engine.execute(
+				"yes",
+				{},
+				{ coerceSchema: { type: "boolean" } },
+			);
+			expect(result).toBeUndefined();
+		});
+
+		test("'1' → undefined (not a valid boolean string)", () => {
+			const result = engine.execute(
+				"1",
+				{},
+				{ coerceSchema: { type: "boolean" } },
+			);
+			expect(result).toBeUndefined();
+		});
+
+		test("'0' → undefined (not a valid boolean string)", () => {
+			const result = engine.execute(
+				"0",
+				{},
+				{ coerceSchema: { type: "boolean" } },
+			);
+			expect(result).toBeUndefined();
+		});
+	});
+
+	// ─── Number Coercion Edge Cases ──────────────────────────────────────
+
+	describe("number coercion edge cases", () => {
+		test("'42' → 42", () => {
+			const result = engine.execute(
+				"42",
+				{},
+				{ coerceSchema: { type: "number" } },
+			);
+			expect(result).toBe(42);
+		});
+
+		test("'3.14' → 3.14", () => {
+			const result = engine.execute(
+				"3.14",
+				{},
+				{ coerceSchema: { type: "number" } },
+			);
+			expect(result).toBe(3.14);
+		});
+
+		test("'-7' → -7", () => {
+			const result = engine.execute(
+				"-7",
+				{},
+				{ coerceSchema: { type: "number" } },
+			);
+			expect(result).toBe(-7);
+		});
+
+		test("'' → undefined (not 0)", () => {
+			const result = engine.execute(
+				"",
+				{},
+				{ coerceSchema: { type: "number" } },
+			);
+			expect(result).toBeUndefined();
+		});
+
+		test("'  ' → undefined (not 0)", () => {
+			const result = engine.execute(
+				"  ",
+				{},
+				{ coerceSchema: { type: "number" } },
+			);
+			expect(result).toBeUndefined();
+		});
+
+		test("'hello' → undefined (not NaN)", () => {
+			const result = engine.execute(
+				"hello",
+				{},
+				{ coerceSchema: { type: "number" } },
+			);
+			expect(result).toBeUndefined();
+		});
+
+		test("'3.14' with integer schema → undefined (not an integer)", () => {
+			const result = engine.execute(
+				"3.14",
+				{},
+				{ coerceSchema: { type: "integer" } },
+			);
+			expect(result).toBeUndefined();
+		});
+
+		test("'-7' with integer schema → -7", () => {
+			const result = engine.execute(
+				"-7",
+				{},
+				{ coerceSchema: { type: "integer" } },
+			);
+			expect(result).toBe(-7);
+		});
+
+		test("'42' with integer schema → 42", () => {
+			const result = engine.execute(
+				"42",
+				{},
+				{ coerceSchema: { type: "integer" } },
+			);
+			expect(result).toBe(42);
+		});
+
+		test("'0' with number schema → 0", () => {
+			const result = engine.execute(
+				"0",
+				{},
+				{ coerceSchema: { type: "number" } },
+			);
+			expect(result).toBe(0);
+		});
+
+		test("'  42  ' with number schema → 42 (whitespace trimmed)", () => {
+			const result = engine.execute(
+				"  42  ",
+				{},
+				{ coerceSchema: { type: "number" } },
+			);
+			expect(result).toBe(42);
+		});
+
+		test("'' with integer schema → undefined (not 0)", () => {
+			const result = engine.execute(
+				"",
+				{},
+				{ coerceSchema: { type: "integer" } },
+			);
+			expect(result).toBeUndefined();
+		});
+
+		test("'abc' with integer schema → undefined", () => {
+			const result = engine.execute(
+				"abc",
+				{},
+				{ coerceSchema: { type: "integer" } },
+			);
+			expect(result).toBeUndefined();
 		});
 	});
 });
