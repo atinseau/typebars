@@ -502,7 +502,8 @@ export function resolveArrayItems(
  * allocations).
  */
 export function simplifySchema(schema: JSONSchema7): JSONSchema7 {
-	// oneOf / anyOf with a single element → unwrap
+	// ── Phase 1 : Unwrap single-branch combinators ──────────────────────
+
 	for (const key of ["oneOf", "anyOf"] as const) {
 		const arr = schema[key];
 		if (arr && arr.length === 1) {
@@ -512,16 +513,18 @@ export function simplifySchema(schema: JSONSchema7): JSONSchema7 {
 		}
 	}
 
-	// allOf with a single element → unwrap
 	if (schema.allOf && schema.allOf.length === 1) {
 		const first = schema.allOf[0];
 		if (first !== undefined && typeof first !== "boolean")
 			return simplifySchema(first);
 	}
 
-	// Deduplicate identical entries in oneOf/anyOf
+	// ── Phase 2 : Deduplicate multi-branch oneOf/anyOf ──────────────────
+
+	let result: JSONSchema7 = schema;
+
 	for (const key of ["oneOf", "anyOf"] as const) {
-		const arr = schema[key];
+		const arr = result[key];
 		if (arr && arr.length > 1) {
 			const unique: JSONSchema7[] = [];
 			for (const entry of arr) {
@@ -529,17 +532,85 @@ export function simplifySchema(schema: JSONSchema7): JSONSchema7 {
 				// Use deepEqual instead of JSON.stringify for structural
 				// comparison — more robust (key order independent) and
 				// more performant (no string allocations).
+				const simplified = simplifySchema(entry);
 				const isDuplicate = unique.some((existing) =>
-					deepEqual(existing, entry),
+					deepEqual(existing, simplified),
 				);
 				if (!isDuplicate) {
-					unique.push(simplifySchema(entry));
+					unique.push(simplified);
 				}
 			}
 			if (unique.length === 1) return unique[0] as JSONSchema7;
-			return { ...schema, [key]: unique };
+			result = { ...result, [key]: unique };
 		}
 	}
 
-	return schema;
+	// ── Phase 3 : Recurse into allOf branches (multi-branch) ────────────
+
+	if (result.allOf && result.allOf.length > 1) {
+		const simplifiedBranches = result.allOf.map((branch) => {
+			if (typeof branch === "boolean" || branch === undefined) return branch;
+			return simplifySchema(branch);
+		});
+		result = { ...result, allOf: simplifiedBranches };
+	}
+
+	// ── Phase 4 : Recurse into properties ───────────────────────────────
+
+	if (result.properties) {
+		const simplifiedProps: Record<string, JSONSchema7> = {};
+		let changed = false;
+		for (const [key, prop] of Object.entries(result.properties)) {
+			if (prop && typeof prop !== "boolean") {
+				const simplified = simplifySchema(prop);
+				simplifiedProps[key] = simplified;
+				if (simplified !== prop) changed = true;
+			} else {
+				simplifiedProps[key] = prop as unknown as JSONSchema7;
+			}
+		}
+		if (changed) {
+			result = { ...result, properties: simplifiedProps };
+		}
+	}
+
+	// ── Phase 5 : Recurse into items ────────────────────────────────────
+
+	if (result.items) {
+		if (Array.isArray(result.items)) {
+			// Tuple items
+			let itemsChanged = false;
+			const simplifiedItems = result.items.map((item) => {
+				if (item && typeof item !== "boolean") {
+					const simplified = simplifySchema(item);
+					if (simplified !== item) itemsChanged = true;
+					return simplified;
+				}
+				return item;
+			});
+			if (itemsChanged) {
+				result = { ...result, items: simplifiedItems };
+			}
+		} else if (typeof result.items !== "boolean") {
+			// Single items schema
+			const simplified = simplifySchema(result.items);
+			if (simplified !== result.items) {
+				result = { ...result, items: simplified };
+			}
+		}
+	}
+
+	// ── Phase 6 : Recurse into additionalProperties ─────────────────────
+
+	if (
+		result.additionalProperties &&
+		typeof result.additionalProperties === "object"
+	) {
+		const simplified = simplifySchema(result.additionalProperties);
+		if (simplified !== result.additionalProperties) {
+			result = { ...result, additionalProperties: simplified };
+		}
+	}
+
+	return result;
 }

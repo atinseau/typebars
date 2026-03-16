@@ -31,7 +31,17 @@ import { HelperFactory } from "./helper-factory.ts";
 /**
  * Extracts a property from each element of an array.
  *
- * @param array    - The array of objects
+ * **Note:** The input array is automatically flattened one level (`flat(1)`)
+ * before mapping. This is designed to support multi-node outputs and chained
+ * map calls which produce arrays of arrays. If your data is already flat,
+ * this has no effect.
+ *
+ * @example
+ * // Input: [[{name:"a"},{name:"b"}],[{name:"c"}]]
+ * // After flat(1): [{name:"a"},{name:"b"},{name:"c"}]
+ * // Result: ["a","b","c"]
+ *
+ * @param array    - The array of objects (will be flattened one level)
  * @param property - The property name to extract from each element
  * @returns A new array containing the extracted property values
  */
@@ -46,7 +56,12 @@ function mapProperty(array: unknown, property: unknown): unknown[] {
 	// where the inner map returns an array of arrays.
 	const flattened = array.flat(1);
 	return flattened.map((item: unknown) => {
-		if (item !== null && item !== undefined && typeof item === "object") {
+		if (
+			item !== null &&
+			item !== undefined &&
+			typeof item === "object" &&
+			!Array.isArray(item)
+		) {
 			return (item as Record<string, unknown>)[prop];
 		}
 		return undefined;

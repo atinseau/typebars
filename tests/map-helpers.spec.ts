@@ -758,7 +758,10 @@ describe("map helper", () => {
 				nestedData,
 			);
 			expect(analysis.valid).toBe(true);
-			expect(analysis.diagnostics).toHaveLength(0);
+			// The outer map emits a MAP_IMPLICIT_FLATTEN warning because the
+			// inner map returns an array-of-arrays that gets flattened.
+			const errors = analysis.diagnostics.filter((d) => d.severity === "error");
+			expect(errors).toHaveLength(0);
 			expect(value).toEqual(["p1", "p2", "p3"]);
 		});
 
@@ -780,7 +783,9 @@ describe("map helper", () => {
 				nestedSchema,
 			);
 			expect(result.valid).toBe(true);
-			expect(result.diagnostics).toHaveLength(0);
+			// The outer map emits a MAP_IMPLICIT_FLATTEN warning (not an error)
+			const errors = result.diagnostics.filter((d) => d.severity === "error");
+			expect(errors).toHaveLength(0);
 			expect(result.outputSchema).toEqual({
 				type: "array",
 				items: { type: "string" },
@@ -794,7 +799,9 @@ describe("map helper", () => {
 				nestedSchema,
 			);
 			expect(result.valid).toBe(true);
-			expect(result.diagnostics).toHaveLength(0);
+			// The outer map emits a MAP_IMPLICIT_FLATTEN warning (not an error)
+			const errors = result.diagnostics.filter((d) => d.severity === "error");
+			expect(errors).toHaveLength(0);
 			expect(result.outputSchema).toEqual({
 				type: "array",
 				items: { type: "number" },
@@ -854,6 +861,118 @@ describe("map helper", () => {
 				(d) => d.code === "MISSING_ARGUMENT",
 			);
 			expect(error).toBeDefined();
+		});
+	});
+
+	// ─── flat(1) behavior documentation ──────────────────────────────────────
+
+	describe("map helper — flat(1) behavior", () => {
+		test("should map properties from flat array of objects", () => {
+			const tp = new Typebars();
+			const result = tp.execute('{{map users "name"}}', {
+				users: [{ name: "Alice" }, { name: "Bob" }],
+			});
+			expect(result).toEqual(["Alice", "Bob"]);
+		});
+
+		test("should flatten one level before mapping (current behavior)", () => {
+			const tp = new Typebars();
+			const result = tp.execute('{{map groups "name"}}', {
+				groups: [[{ name: "Alice" }, { name: "Bob" }], [{ name: "Charlie" }]],
+			});
+			// flat(1) produces [{name:"Alice"},{name:"Bob"},{name:"Charlie"}]
+			expect(result).toEqual(["Alice", "Bob", "Charlie"]);
+		});
+
+		test("should NOT flatten more than one level", () => {
+			const tp = new Typebars();
+			const result = tp.execute('{{map deepNested "name"}}', {
+				deepNested: [[[{ name: "Alice" }]]],
+			});
+			// flat(1) produces [[{name:"Alice"}]]
+			// The inner array is not a plain object → undefined
+			expect(result).toEqual([undefined]);
+		});
+
+		test("should return undefined for non-object items after flatten", () => {
+			const tp = new Typebars();
+			const result = tp.execute('{{map mixed "name"}}', {
+				mixed: [{ name: "Alice" }, "not-an-object", null, { name: "Bob" }],
+			});
+			expect(result).toEqual(["Alice", undefined, undefined, "Bob"]);
+		});
+
+		test("should return undefined for array items (not treated as objects)", () => {
+			const tp = new Typebars();
+			const result = tp.execute('{{map items "name"}}', {
+				items: [{ name: "Alice" }, [1, 2, 3], { name: "Bob" }],
+			});
+			// [1,2,3] is an array, not a plain object → after flat(1) it becomes 1, 2, 3
+			// 1, 2, 3 are not objects → undefined
+			expect(result).toEqual(["Alice", undefined, undefined, undefined, "Bob"]);
+		});
+	});
+
+	// ─── MAP_IMPLICIT_FLATTEN diagnostic ─────────────────────────────────────
+
+	describe("map helper — MAP_IMPLICIT_FLATTEN diagnostic", () => {
+		test("should emit MAP_IMPLICIT_FLATTEN warning when items are arrays", () => {
+			const tp = new Typebars();
+			const schema: JSONSchema7 = {
+				type: "object",
+				properties: {
+					groups: {
+						type: "array",
+						items: {
+							type: "array",
+							items: {
+								type: "object",
+								properties: {
+									name: { type: "string" },
+								},
+								required: ["name"],
+							},
+						},
+					},
+				},
+				required: ["groups"],
+			};
+			const result = tp.analyze('{{map groups "name"}}', schema);
+			// Analysis should still succeed (the flatten is valid)
+			expect(result.valid).toBe(true);
+			// But a MAP_IMPLICIT_FLATTEN warning should be emitted
+			const warning = result.diagnostics.find(
+				(d) => d.code === "MAP_IMPLICIT_FLATTEN",
+			);
+			expect(warning).toBeDefined();
+			expect(warning?.severity).toBe("warning");
+			expect(warning?.message).toContain("automatically flatten");
+		});
+
+		test("should NOT emit MAP_IMPLICIT_FLATTEN for flat array of objects", () => {
+			const tp = new Typebars();
+			const schema: JSONSchema7 = {
+				type: "object",
+				properties: {
+					users: {
+						type: "array",
+						items: {
+							type: "object",
+							properties: {
+								name: { type: "string" },
+							},
+							required: ["name"],
+						},
+					},
+				},
+				required: ["users"],
+			};
+			const result = tp.analyze('{{map users "name"}}', schema);
+			expect(result.valid).toBe(true);
+			const warning = result.diagnostics.find(
+				(d) => d.code === "MAP_IMPLICIT_FLATTEN",
+			);
+			expect(warning).toBeUndefined();
 		});
 	});
 });

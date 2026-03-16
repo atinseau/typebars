@@ -537,6 +537,20 @@ function processMapHelper(
 		const innerItems = resolveArrayItems(effectiveItemSchema, ctx.root);
 		if (innerItems) {
 			effectiveItemSchema = innerItems;
+			// Emit an informational warning so consumers know the flatten happened
+			addDiagnostic(
+				ctx,
+				"MAP_IMPLICIT_FLATTEN",
+				"warning",
+				`The "${helperName}" helper will automatically flatten the input array one level before mapping. ` +
+					`The item type "${Array.isArray(itemType) ? itemType.join(" | ") : itemType}" was unwrapped to its inner items schema.`,
+				stmt,
+				{
+					helperName,
+					expected: "object",
+					actual: schemaTypeLabel(effectiveItemSchema),
+				},
+			);
 		}
 	}
 

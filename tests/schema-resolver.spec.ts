@@ -763,5 +763,168 @@ describe("schema-resolver", () => {
 			const schema: JSONSchema7 = { type: "string" };
 			expect(simplifySchema(schema)).toEqual(schema);
 		});
+
+		// ── Nested recursion tests ───────────────────────────────────────
+
+		test("should simplify single-branch oneOf inside properties", () => {
+			const schema: JSONSchema7 = {
+				type: "object",
+				properties: {
+					value: { oneOf: [{ type: "string" }] },
+				},
+			};
+			expect(simplifySchema(schema)).toEqual({
+				type: "object",
+				properties: {
+					value: { type: "string" },
+				},
+			});
+		});
+
+		test("should deduplicate oneOf inside properties", () => {
+			const schema: JSONSchema7 = {
+				type: "object",
+				properties: {
+					value: {
+						oneOf: [{ type: "string" }, { type: "string" }],
+					},
+				},
+			};
+			expect(simplifySchema(schema)).toEqual({
+				type: "object",
+				properties: {
+					value: { type: "string" },
+				},
+			});
+		});
+
+		test("should simplify schemas inside allOf branches (multi-branch)", () => {
+			const schema: JSONSchema7 = {
+				allOf: [
+					{
+						type: "object",
+						properties: {
+							x: { anyOf: [{ type: "string" }] },
+						},
+					},
+					{
+						type: "object",
+						properties: {
+							y: { type: "number" },
+						},
+					},
+				],
+			};
+			const result = simplifySchema(schema);
+			expect((result.allOf?.[0] as JSONSchema7).properties?.x).toEqual({
+				type: "string",
+			});
+		});
+
+		test("should simplify schemas inside array items (single schema)", () => {
+			const schema: JSONSchema7 = {
+				type: "array",
+				items: {
+					anyOf: [{ type: "number" }, { type: "number" }],
+				},
+			};
+			expect(simplifySchema(schema)).toEqual({
+				type: "array",
+				items: { type: "number" },
+			});
+		});
+
+		test("should simplify schemas inside tuple items", () => {
+			const schema: JSONSchema7 = {
+				type: "array",
+				items: [{ oneOf: [{ type: "string" }] }, { type: "number" }],
+			};
+			expect(simplifySchema(schema)).toEqual({
+				type: "array",
+				items: [{ type: "string" }, { type: "number" }],
+			});
+		});
+
+		test("should simplify schemas inside additionalProperties", () => {
+			const schema: JSONSchema7 = {
+				type: "object",
+				additionalProperties: {
+					oneOf: [{ type: "string" }],
+				},
+			};
+			expect(simplifySchema(schema)).toEqual({
+				type: "object",
+				additionalProperties: { type: "string" },
+			});
+		});
+
+		test("should handle deeply nested simplification", () => {
+			const schema: JSONSchema7 = {
+				type: "object",
+				properties: {
+					user: {
+						type: "object",
+						properties: {
+							tags: {
+								type: "array",
+								items: {
+									oneOf: [{ type: "string" }],
+								},
+							},
+						},
+					},
+				},
+			};
+			const result = simplifySchema(schema);
+			expect(
+				(
+					(result.properties?.user as JSONSchema7).properties
+						?.tags as JSONSchema7
+				).items,
+			).toEqual({
+				type: "string",
+			});
+		});
+
+		test("should be idempotent", () => {
+			const schema: JSONSchema7 = {
+				type: "object",
+				properties: {
+					x: {
+						oneOf: [{ type: "string" }, { type: "string" }],
+					},
+					y: { allOf: [{ type: "number" }] },
+				},
+			};
+			const once = simplifySchema(schema);
+			const twice = simplifySchema(once);
+			expect(twice).toEqual(once);
+		});
+
+		test("should not change properties when nothing is simplifiable", () => {
+			const schema: JSONSchema7 = {
+				type: "object",
+				properties: {
+					name: { type: "string" },
+					age: { type: "number" },
+				},
+			};
+			expect(simplifySchema(schema)).toEqual(schema);
+		});
+
+		test("should deduplicate anyOf inside items", () => {
+			const schema: JSONSchema7 = {
+				type: "array",
+				items: {
+					anyOf: [{ type: "string" }, { type: "number" }, { type: "string" }],
+				},
+			};
+			expect(simplifySchema(schema)).toEqual({
+				type: "array",
+				items: {
+					anyOf: [{ type: "string" }, { type: "number" }],
+				},
+			});
+		});
 	});
 });
