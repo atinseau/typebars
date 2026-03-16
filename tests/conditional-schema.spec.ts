@@ -1,8 +1,14 @@
 import { beforeEach, describe, expect, test } from "bun:test";
 import type { JSONSchema7 } from "json-schema";
 import { analyze } from "../src/analyzer.ts";
-import { UnsupportedSchemaError } from "../src/errors.ts";
-import { assertNoConditionalSchema } from "../src/schema-resolver.ts";
+import {
+	TemplateAnalysisError,
+	UnsupportedSchemaError,
+} from "../src/errors.ts";
+import {
+	assertNoConditionalSchema,
+	findConditionalSchemaLocations,
+} from "../src/schema-resolver.ts";
 import { Typebars } from "../src/typebars.ts";
 import { userSchema } from "./fixtures.ts";
 
@@ -410,17 +416,26 @@ describe("conditional schema detection (if/then/else)", () => {
 	// ─── Integration with analyze() ────────────────────────────────────────
 
 	describe("integration with analyze()", () => {
-		test("analyze throws UnsupportedSchemaError for schema with if/then/else", () => {
+		test("analyze returns valid: false with UNSUPPORTED_SCHEMA diagnostic for schema with if/then/else", () => {
 			const schema: JSONSchema7 = {
 				type: "object",
 				if: { properties: { kind: { const: "a" } } },
 				then: { properties: { a: { type: "string" } } },
 				else: { properties: { b: { type: "number" } } },
 			};
-			expect(() => analyze("{{a}}", schema)).toThrow(UnsupportedSchemaError);
+			const result = analyze("{{a}}", schema);
+			expect(result.valid).toBe(false);
+			expect(result.diagnostics).toEqual(
+				expect.arrayContaining([
+					expect.objectContaining({
+						code: "UNSUPPORTED_SCHEMA",
+						severity: "error",
+					}),
+				]),
+			);
 		});
 
-		test("analyze throws for nested if/then/else in properties", () => {
+		test("analyze returns valid: false for nested if/then/else in properties", () => {
 			const schema: JSONSchema7 = {
 				type: "object",
 				properties: {
@@ -432,7 +447,16 @@ describe("conditional schema detection (if/then/else)", () => {
 					},
 				},
 			};
-			expect(() => analyze("{{name}}", schema)).toThrow(UnsupportedSchemaError);
+			const result = analyze("{{name}}", schema);
+			expect(result.valid).toBe(false);
+			expect(result.diagnostics).toEqual(
+				expect.arrayContaining([
+					expect.objectContaining({
+						code: "UNSUPPORTED_SCHEMA",
+						severity: "error",
+					}),
+				]),
+			);
 		});
 
 		test("analyze works normally for schemas without conditionals", () => {
@@ -450,47 +474,70 @@ describe("conditional schema detection (if/then/else)", () => {
 			engine = new Typebars();
 		});
 
-		test("engine.analyze throws UnsupportedSchemaError", () => {
+		test("engine.analyze returns valid: false with UNSUPPORTED_SCHEMA diagnostic", () => {
 			const schema: JSONSchema7 = {
 				type: "object",
 				if: { properties: { kind: { const: "a" } } },
 				then: { properties: { a: { type: "string" } } },
 			};
-			expect(() => engine.analyze("{{a}}", schema)).toThrow(
-				UnsupportedSchemaError,
+			const result = engine.analyze("{{a}}", schema);
+			expect(result.valid).toBe(false);
+			expect(result.diagnostics).toEqual(
+				expect.arrayContaining([
+					expect.objectContaining({
+						code: "UNSUPPORTED_SCHEMA",
+						severity: "error",
+					}),
+				]),
 			);
 		});
 
-		test("engine.validate throws UnsupportedSchemaError", () => {
+		test("engine.validate returns valid: false with UNSUPPORTED_SCHEMA diagnostic", () => {
 			const schema: JSONSchema7 = {
 				type: "object",
 				if: { properties: { kind: { const: "a" } } },
 				then: { properties: { a: { type: "string" } } },
 			};
-			expect(() => engine.validate("{{a}}", schema)).toThrow(
-				UnsupportedSchemaError,
+			const result = engine.validate("{{a}}", schema);
+			expect(result.valid).toBe(false);
+			expect(result.diagnostics).toEqual(
+				expect.arrayContaining([
+					expect.objectContaining({
+						code: "UNSUPPORTED_SCHEMA",
+						severity: "error",
+					}),
+				]),
 			);
 		});
 
-		test("engine.analyzeAndExecute throws UnsupportedSchemaError", () => {
+		test("engine.analyzeAndExecute returns valid: false with UNSUPPORTED_SCHEMA diagnostic", () => {
 			const schema: JSONSchema7 = {
 				type: "object",
 				if: { properties: { kind: { const: "a" } } },
 				then: { properties: { a: { type: "string" } } },
 			};
-			expect(() =>
-				engine.analyzeAndExecute("{{a}}", schema, { a: "hello" }),
-			).toThrow(UnsupportedSchemaError);
+			const result = engine.analyzeAndExecute("{{a}}", schema, {
+				a: "hello",
+			});
+			expect(result.analysis.valid).toBe(false);
+			expect(result.analysis.diagnostics).toEqual(
+				expect.arrayContaining([
+					expect.objectContaining({
+						code: "UNSUPPORTED_SCHEMA",
+						severity: "error",
+					}),
+				]),
+			);
 		});
 
-		test("engine.execute with schema option throws UnsupportedSchemaError", () => {
+		test("engine.execute with schema option throws TemplateAnalysisError", () => {
 			const schema: JSONSchema7 = {
 				type: "object",
 				if: { properties: { kind: { const: "a" } } },
 				then: { properties: { a: { type: "string" } } },
 			};
 			expect(() => engine.execute("{{a}}", { a: "hello" }, { schema })).toThrow(
-				UnsupportedSchemaError,
+				TemplateAnalysisError,
 			);
 		});
 
@@ -499,14 +546,23 @@ describe("conditional schema detection (if/then/else)", () => {
 			expect(result).toBe("hello");
 		});
 
-		test("compiled template analyze throws UnsupportedSchemaError", () => {
+		test("compiled template analyze returns valid: false with UNSUPPORTED_SCHEMA diagnostic", () => {
 			const tpl = engine.compile("{{a}}");
 			const schema: JSONSchema7 = {
 				type: "object",
 				if: { properties: { kind: { const: "a" } } },
 				then: { properties: { a: { type: "string" } } },
 			};
-			expect(() => tpl.analyze(schema)).toThrow(UnsupportedSchemaError);
+			const result = tpl.analyze(schema);
+			expect(result.valid).toBe(false);
+			expect(result.diagnostics).toEqual(
+				expect.arrayContaining([
+					expect.objectContaining({
+						code: "UNSUPPORTED_SCHEMA",
+						severity: "error",
+					}),
+				]),
+			);
 		});
 	});
 
@@ -519,7 +575,7 @@ describe("conditional schema detection (if/then/else)", () => {
 			engine = new Typebars();
 		});
 
-		test("throws for if/then/else in an identifierSchema", () => {
+		test("returns valid: false for if/then/else in an identifierSchema", () => {
 			const inputSchema: JSONSchema7 = {
 				type: "object",
 				properties: { name: { type: "string" } },
@@ -531,12 +587,21 @@ describe("conditional schema detection (if/then/else)", () => {
 					then: { properties: { value: { type: "string" } } },
 				},
 			};
-			expect(() =>
-				engine.analyze("{{value:1}}", inputSchema, { identifierSchemas }),
-			).toThrow(UnsupportedSchemaError);
+			const result = engine.analyze("{{value:1}}", inputSchema, {
+				identifierSchemas,
+			});
+			expect(result.valid).toBe(false);
+			expect(result.diagnostics).toEqual(
+				expect.arrayContaining([
+					expect.objectContaining({
+						code: "UNSUPPORTED_SCHEMA",
+						severity: "error",
+					}),
+				]),
+			);
 		});
 
-		test("throws for nested if/then/else in identifierSchema properties", () => {
+		test("returns valid: false for nested if/then/else in identifierSchema properties", () => {
 			const inputSchema: JSONSchema7 = {
 				type: "object",
 				properties: { name: { type: "string" } },
@@ -553,11 +618,18 @@ describe("conditional schema detection (if/then/else)", () => {
 					},
 				},
 			};
-			expect(() =>
-				engine.analyze("{{config.extra:1}}", inputSchema, {
-					identifierSchemas,
-				}),
-			).toThrow(UnsupportedSchemaError);
+			const result = engine.analyze("{{config.extra:1}}", inputSchema, {
+				identifierSchemas,
+			});
+			expect(result.valid).toBe(false);
+			expect(result.diagnostics).toEqual(
+				expect.arrayContaining([
+					expect.objectContaining({
+						code: "UNSUPPORTED_SCHEMA",
+						severity: "error",
+					}),
+				]),
+			);
 		});
 
 		test("does not throw when identifierSchemas are clean", () => {
@@ -577,35 +649,42 @@ describe("conditional schema detection (if/then/else)", () => {
 			expect(result.valid).toBe(true);
 		});
 
-		test("analyzeAndExecute throws for conditional identifierSchema", () => {
+		test("analyzeAndExecute returns valid: false for conditional identifierSchema", () => {
 			const inputSchema: JSONSchema7 = {
 				type: "object",
 				properties: { name: { type: "string" } },
 			};
-			expect(() =>
-				engine.analyzeAndExecute(
-					"{{value:1}}",
-					inputSchema,
-					{ name: "test" },
-					{
-						identifierSchemas: {
-							1: {
-								type: "object",
-								if: { properties: { x: { const: 1 } } },
-								then: { properties: { value: { type: "string" } } },
-							},
+			const result = engine.analyzeAndExecute(
+				"{{value:1}}",
+				inputSchema,
+				{ name: "test" },
+				{
+					identifierSchemas: {
+						1: {
+							type: "object",
+							if: { properties: { x: { const: 1 } } },
+							then: { properties: { value: { type: "string" } } },
 						},
-						identifierData: { 1: { value: "hello" } },
 					},
-				),
-			).toThrow(UnsupportedSchemaError);
+					identifierData: { 1: { value: "hello" } },
+				},
+			);
+			expect(result.analysis.valid).toBe(false);
+			expect(result.analysis.diagnostics).toEqual(
+				expect.arrayContaining([
+					expect.objectContaining({
+						code: "UNSUPPORTED_SCHEMA",
+						severity: "error",
+					}),
+				]),
+			);
 		});
 	});
 
 	// ─── Object templates ──────────────────────────────────────────────────
 
 	describe("object templates", () => {
-		test("throws for if/then/else in schema even with object template", () => {
+		test("returns valid: false for if/then/else in schema even with object template", () => {
 			const engine = new Typebars();
 			const schema: JSONSchema7 = {
 				type: "object",
@@ -613,7 +692,86 @@ describe("conditional schema detection (if/then/else)", () => {
 				then: { properties: { a: { type: "string" } } },
 				else: { properties: { b: { type: "number" } } },
 			};
-			expect(() => engine.analyze({ result: "{{a}}" }, schema)).toThrow(
+			const result = engine.analyze({ result: "{{a}}" }, schema);
+			expect(result.valid).toBe(false);
+			expect(result.diagnostics).toEqual(
+				expect.arrayContaining([
+					expect.objectContaining({
+						code: "UNSUPPORTED_SCHEMA",
+						severity: "error",
+					}),
+				]),
+			);
+		});
+	});
+
+	// ─── findConditionalSchemaLocations ─────────────────────────────────────
+
+	describe("findConditionalSchemaLocations", () => {
+		test("returns locations for root-level if/then/else", () => {
+			const schema: JSONSchema7 = {
+				type: "object",
+				if: { properties: { kind: { const: "a" } } },
+				then: { properties: { a: { type: "string" } } },
+			};
+			const locations = findConditionalSchemaLocations(schema);
+			expect(locations).toEqual([{ keyword: "if/then/else", schemaPath: "/" }]);
+		});
+
+		test("returns empty array for clean schemas", () => {
+			const schema: JSONSchema7 = {
+				type: "object",
+				properties: { name: { type: "string" } },
+			};
+			const locations = findConditionalSchemaLocations(schema);
+			expect(locations).toEqual([]);
+		});
+
+		test("returns locations for nested if/then/else", () => {
+			const schema: JSONSchema7 = {
+				type: "object",
+				properties: {
+					config: {
+						type: "object",
+						if: { properties: { mode: { const: "x" } } },
+						then: { properties: { extra: { type: "string" } } },
+					},
+				},
+			};
+			const locations = findConditionalSchemaLocations(schema);
+			expect(locations).toEqual([
+				{ keyword: "if/then/else", schemaPath: "/properties/config" },
+			]);
+		});
+
+		test("returns locations for if/then/else inside allOf branches", () => {
+			const schema: JSONSchema7 = {
+				type: "object",
+				properties: { role: { type: "string" } },
+				allOf: [
+					{
+						if: { properties: { role: { const: "admin" } } },
+						then: { required: ["permissions"] },
+					},
+				],
+			};
+			const locations = findConditionalSchemaLocations(schema);
+			expect(locations).toEqual([
+				{ keyword: "if/then/else", schemaPath: "/allOf/0" },
+			]);
+		});
+	});
+
+	// ─── assertNoConditionalSchema (deprecated, backward compat) ───────────
+
+	describe("assertNoConditionalSchema (deprecated)", () => {
+		test("still throws UnsupportedSchemaError for backward compatibility", () => {
+			const schema: JSONSchema7 = {
+				type: "object",
+				if: { properties: { kind: { const: "a" } } },
+				then: { properties: { a: { type: "string" } } },
+			};
+			expect(() => assertNoConditionalSchema(schema)).toThrow(
 				UnsupportedSchemaError,
 			);
 		});

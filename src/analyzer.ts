@@ -22,7 +22,7 @@ import {
 	parse,
 } from "./parser";
 import {
-	assertNoConditionalSchema,
+	findConditionalSchemaLocations,
 	resolveArrayItems,
 	resolveSchemaPath,
 	simplifySchema,
@@ -137,13 +137,22 @@ export interface AnalyzeOptions {
 function coerceTextValue(
 	text: string,
 	targetType: "string" | "number" | "integer" | "boolean" | "null",
-): string | number | boolean | null {
+): string | number | boolean | null | undefined {
 	switch (targetType) {
 		case "number":
-		case "integer":
-			return Number(text);
-		case "boolean":
-			return text === "true";
+		case "integer": {
+			if (text === "") return undefined;
+			const num = Number(text);
+			if (Number.isNaN(num)) return undefined;
+			if (targetType === "integer" && !Number.isInteger(num)) return undefined;
+			return num;
+		}
+		case "boolean": {
+			const lower = text.toLowerCase();
+			if (lower === "true") return true;
+			if (lower === "false") return false;
+			return undefined;
+		}
 		case "null":
 			return null;
 		default:
@@ -213,18 +222,7 @@ export function analyzeFromAst(
 		coerceSchema?: JSONSchema7;
 	},
 ): AnalysisResult {
-	// ── Reject unsupported schema features before analysis ────────────
-	// Conditional schemas (if/then/else) are non-resolvable without runtime
-	// data. Fail fast with a clear error rather than producing silently
-	// incorrect results.
-	assertNoConditionalSchema(inputSchema);
-
-	if (options?.identifierSchemas) {
-		for (const [id, idSchema] of Object.entries(options.identifierSchemas)) {
-			assertNoConditionalSchema(idSchema, `/identifierSchemas/${id}`);
-		}
-	}
-
+	// ── Initialize the diagnostic context FIRST ────────────────────────
 	const ctx: AnalysisContext = {
 		root: inputSchema,
 		current: inputSchema,
@@ -234,6 +232,54 @@ export function analyzeFromAst(
 		helpers: options?.helpers,
 		coerceSchema: options?.coerceSchema,
 	};
+
+	// ── Detect unsupported schema features as diagnostics ──────────────
+	// Conditional schemas (if/then/else) are non-resolvable without runtime
+	// data. Instead of throwing, we collect structured diagnostics so the
+	// caller receives a standard AnalysisResult.
+	const conditionalLocations = findConditionalSchemaLocations(inputSchema);
+	for (const loc of conditionalLocations) {
+		addDiagnostic(
+			ctx,
+			"UNSUPPORTED_SCHEMA",
+			"error",
+			`Unsupported JSON Schema feature: "${loc.keyword}" at "${loc.schemaPath}". ` +
+				"Conditional schemas (if/then/else) cannot be resolved during static analysis " +
+				"because they depend on runtime data. Consider using oneOf/anyOf combinators instead.",
+			undefined,
+			{ path: loc.schemaPath },
+		);
+	}
+
+	if (options?.identifierSchemas) {
+		for (const [id, idSchema] of Object.entries(options.identifierSchemas)) {
+			const idLocations = findConditionalSchemaLocations(
+				idSchema,
+				`/identifierSchemas/${id}`,
+			);
+			for (const loc of idLocations) {
+				addDiagnostic(
+					ctx,
+					"UNSUPPORTED_SCHEMA",
+					"error",
+					`Unsupported JSON Schema feature: "${loc.keyword}" at "${loc.schemaPath}". ` +
+						"Conditional schemas (if/then/else) cannot be resolved during static analysis " +
+						"because they depend on runtime data. Consider using oneOf/anyOf combinators instead.",
+					undefined,
+					{ path: loc.schemaPath },
+				);
+			}
+		}
+	}
+
+	// If unsupported schemas were found, return early with valid: false
+	if (ctx.diagnostics.length > 0) {
+		return {
+			valid: false,
+			diagnostics: ctx.diagnostics,
+			outputSchema: {},
+		};
+	}
 
 	// Single pass: type inference + validation in one traversal.
 	const outputSchema = inferProgramType(ast, ctx);

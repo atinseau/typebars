@@ -24,10 +24,11 @@ import { deepEqual } from "./utils.ts";
 // we fail fast with a clear error pointing to the exact location in the schema.
 
 /**
- * Recursively validates that a JSON Schema does not contain `if/then/else`
- * conditional keywords. Throws an `UnsupportedSchemaError` if any are found.
+ * Recursively scans a JSON Schema tree for `if/then/else` conditional keywords
+ * and returns their locations as an array of `{ keyword, schemaPath }` objects.
  *
- * This check traverses the entire schema tree, including:
+ * This is the non-throwing counterpart of `assertNoConditionalSchema`.
+ * It traverses the entire schema tree, including:
  * - `properties` values
  * - `additionalProperties` (when it's a schema)
  * - `items` (single schema or tuple)
@@ -37,6 +38,157 @@ import { deepEqual } from "./utils.ts";
  *
  * A `Set<object>` is used to track visited schemas and prevent infinite loops
  * from circular structures.
+ *
+ * @param schema  - The JSON Schema to scan
+ * @param path    - The current JSON pointer path (for location reporting)
+ * @param visited - Set of already-visited schema objects (cycle protection)
+ * @returns Array of locations where `if/then/else` keywords were found
+ *
+ * @example
+ * ```
+ * // Returns [{ keyword: "if/then/else", schemaPath: "/" }]:
+ * findConditionalSchemaLocations({
+ *   type: "object",
+ *   if: { properties: { kind: { const: "a" } } },
+ *   then: { properties: { a: { type: "string" } } },
+ * });
+ *
+ * // Returns []:
+ * findConditionalSchemaLocations({
+ *   type: "object",
+ *   properties: { name: { type: "string" } },
+ * });
+ * ```
+ */
+export function findConditionalSchemaLocations(
+	schema: JSONSchema7,
+	path = "",
+	visited: Set<object> = new Set(),
+): Array<{ keyword: string; schemaPath: string }> {
+	const locations: Array<{ keyword: string; schemaPath: string }> = [];
+
+	// Cycle protection — avoid infinite loops on circular schema structures
+	if (visited.has(schema)) return locations;
+	visited.add(schema);
+
+	// ── Detect if/then/else at the current level ─────────────────────────
+	// One diagnostic per schema node is enough — no need to report `then`
+	// and `else` separately if `if` is already present.
+	for (const kw of ["if", "then", "else"] as const) {
+		if (schema[kw] !== undefined) {
+			locations.push({ keyword: "if/then/else", schemaPath: path || "/" });
+			break;
+		}
+	}
+
+	// ── Recurse into properties ──────────────────────────────────────────
+	if (schema.properties) {
+		for (const [key, prop] of Object.entries(schema.properties)) {
+			if (prop && typeof prop !== "boolean") {
+				locations.push(
+					...findConditionalSchemaLocations(
+						prop,
+						`${path}/properties/${key}`,
+						visited,
+					),
+				);
+			}
+		}
+	}
+
+	// ── Recurse into additionalProperties ────────────────────────────────
+	if (
+		schema.additionalProperties &&
+		typeof schema.additionalProperties === "object"
+	) {
+		locations.push(
+			...findConditionalSchemaLocations(
+				schema.additionalProperties,
+				`${path}/additionalProperties`,
+				visited,
+			),
+		);
+	}
+
+	// ── Recurse into items ───────────────────────────────────────────────
+	if (schema.items) {
+		if (Array.isArray(schema.items)) {
+			for (let i = 0; i < schema.items.length; i++) {
+				const item = schema.items[i];
+				if (item && typeof item !== "boolean") {
+					locations.push(
+						...findConditionalSchemaLocations(
+							item,
+							`${path}/items/${i}`,
+							visited,
+						),
+					);
+				}
+			}
+		} else if (typeof schema.items !== "boolean") {
+			locations.push(
+				...findConditionalSchemaLocations(
+					schema.items,
+					`${path}/items`,
+					visited,
+				),
+			);
+		}
+	}
+
+	// ── Recurse into combinators ─────────────────────────────────────────
+	for (const keyword of ["allOf", "anyOf", "oneOf"] as const) {
+		const branches = schema[keyword];
+		if (branches) {
+			for (let i = 0; i < branches.length; i++) {
+				const branch = branches[i];
+				if (branch && typeof branch !== "boolean") {
+					locations.push(
+						...findConditionalSchemaLocations(
+							branch,
+							`${path}/${keyword}/${i}`,
+							visited,
+						),
+					);
+				}
+			}
+		}
+	}
+
+	// ── Recurse into not ─────────────────────────────────────────────────
+	if (schema.not && typeof schema.not !== "boolean") {
+		locations.push(
+			...findConditionalSchemaLocations(schema.not, `${path}/not`, visited),
+		);
+	}
+
+	// ── Recurse into definitions / $defs ─────────────────────────────────
+	for (const defsKey of ["definitions", "$defs"] as const) {
+		const defs = schema[defsKey];
+		if (defs) {
+			for (const [name, def] of Object.entries(defs)) {
+				if (def && typeof def !== "boolean") {
+					locations.push(
+						...findConditionalSchemaLocations(
+							def,
+							`${path}/${defsKey}/${name}`,
+							visited,
+						),
+					);
+				}
+			}
+		}
+	}
+
+	return locations;
+}
+
+/**
+ * Recursively validates that a JSON Schema does not contain `if/then/else`
+ * conditional keywords. Throws an `UnsupportedSchemaError` if any are found.
+ *
+ * @deprecated Use `findConditionalSchemaLocations` for diagnostic-based reporting.
+ * This function is preserved for backward compatibility.
  *
  * @param schema - The JSON Schema to validate
  * @param path   - The current JSON pointer path (for error reporting)
@@ -65,85 +217,11 @@ export function assertNoConditionalSchema(
 	path = "",
 	visited: Set<object> = new Set(),
 ): void {
-	// Cycle protection — avoid infinite loops on circular schema structures
-	if (visited.has(schema)) return;
-	visited.add(schema);
-
-	// ── Detect if/then/else at the current level ─────────────────────────
-	if (schema.if !== undefined) {
-		throw new UnsupportedSchemaError("if/then/else", path || "/");
-	}
-	// `then` or `else` without `if` is unusual but still unsupported
-	if (schema.then !== undefined) {
-		throw new UnsupportedSchemaError("if/then/else", path || "/");
-	}
-	if (schema.else !== undefined) {
-		throw new UnsupportedSchemaError("if/then/else", path || "/");
-	}
-
-	// ── Recurse into properties ──────────────────────────────────────────
-	if (schema.properties) {
-		for (const [key, prop] of Object.entries(schema.properties)) {
-			if (prop && typeof prop !== "boolean") {
-				assertNoConditionalSchema(prop, `${path}/properties/${key}`, visited);
-			}
-		}
-	}
-
-	// ── Recurse into additionalProperties ────────────────────────────────
-	if (
-		schema.additionalProperties &&
-		typeof schema.additionalProperties === "object"
-	) {
-		assertNoConditionalSchema(
-			schema.additionalProperties,
-			`${path}/additionalProperties`,
-			visited,
-		);
-	}
-
-	// ── Recurse into items ───────────────────────────────────────────────
-	if (schema.items) {
-		if (Array.isArray(schema.items)) {
-			for (let i = 0; i < schema.items.length; i++) {
-				const item = schema.items[i];
-				if (item && typeof item !== "boolean") {
-					assertNoConditionalSchema(item, `${path}/items/${i}`, visited);
-				}
-			}
-		} else if (typeof schema.items !== "boolean") {
-			assertNoConditionalSchema(schema.items, `${path}/items`, visited);
-		}
-	}
-
-	// ── Recurse into combinators ─────────────────────────────────────────
-	for (const keyword of ["allOf", "anyOf", "oneOf"] as const) {
-		const branches = schema[keyword];
-		if (branches) {
-			for (let i = 0; i < branches.length; i++) {
-				const branch = branches[i];
-				if (branch && typeof branch !== "boolean") {
-					assertNoConditionalSchema(branch, `${path}/${keyword}/${i}`, visited);
-				}
-			}
-		}
-	}
-
-	// ── Recurse into not ─────────────────────────────────────────────────
-	if (schema.not && typeof schema.not !== "boolean") {
-		assertNoConditionalSchema(schema.not, `${path}/not`, visited);
-	}
-
-	// ── Recurse into definitions / $defs ─────────────────────────────────
-	for (const defsKey of ["definitions", "$defs"] as const) {
-		const defs = schema[defsKey];
-		if (defs) {
-			for (const [name, def] of Object.entries(defs)) {
-				if (def && typeof def !== "boolean") {
-					assertNoConditionalSchema(def, `${path}/${defsKey}/${name}`, visited);
-				}
-			}
-		}
+	const locations = findConditionalSchemaLocations(schema, path, visited);
+	if (locations.length > 0) {
+		// biome-ignore lint: length check guarantees defined
+		const first = locations[0]!;
+		throw new UnsupportedSchemaError(first.keyword, first.schemaPath);
 	}
 }
 
