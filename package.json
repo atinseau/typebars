@@ -1,6 +1,6 @@
 {
 	"name": "typebars",
-	"version": "1.0.19",
+	"version": "1.0.20",
 	"license": "MIT",
 	"description": "Typebars is a type-safe handlebars based template engine for generating object or content with static type checking",
 	"author": {
