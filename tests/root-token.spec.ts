@@ -473,6 +473,8 @@ describe("$root token", () => {
 				items: {
 					oneOf: [userSchema, { type: "string" }],
 				},
+				minItems: 2,
+				maxItems: 2,
 			});
 		});
 
@@ -484,6 +486,8 @@ describe("$root token", () => {
 				items: {
 					oneOf: [userSchema, { type: "number" }],
 				},
+				minItems: 2,
+				maxItems: 2,
 			});
 		});
 

@@ -1716,6 +1716,8 @@ describe("schema-driven type coercion via coerceSchema", () => {
 						{ type: "string", const: "3" },
 					],
 				},
+				minItems: 3,
+				maxItems: 3,
 			});
 		});
 
@@ -1725,6 +1727,8 @@ describe("schema-driven type coercion via coerceSchema", () => {
 			expect(result.outputSchema).toEqual({
 				type: "array",
 				items: { type: "number" },
+				minItems: 3,
+				maxItems: 3,
 			});
 		});
 
@@ -1741,6 +1745,8 @@ describe("schema-driven type coercion via coerceSchema", () => {
 						{ type: "string", const: "false" },
 					],
 				},
+				minItems: 2,
+				maxItems: 2,
 			});
 		});
 
@@ -1752,6 +1758,8 @@ describe("schema-driven type coercion via coerceSchema", () => {
 			expect(result.outputSchema).toEqual({
 				type: "array",
 				items: { type: "string", const: "null" },
+				minItems: 2,
+				maxItems: 2,
 			});
 		});
 
@@ -1769,6 +1777,8 @@ describe("schema-driven type coercion via coerceSchema", () => {
 						{ type: "integer", const: 3 },
 					],
 				},
+				minItems: 3,
+				maxItems: 3,
 			});
 		});
 
@@ -1791,6 +1801,8 @@ describe("schema-driven type coercion via coerceSchema", () => {
 						{ type: "string", const: "hello" },
 					],
 				},
+				minItems: 4,
+				maxItems: 4,
 			});
 		});
 
@@ -1871,6 +1883,8 @@ describe("schema-driven type coercion via coerceSchema", () => {
 						{ type: "string", const: "2" },
 					],
 				},
+				minItems: 2,
+				maxItems: 2,
 			});
 		});
 
@@ -1883,6 +1897,8 @@ describe("schema-driven type coercion via coerceSchema", () => {
 			expect(idsSchema).toEqual({
 				type: "array",
 				items: { type: "number" },
+				minItems: 2,
+				maxItems: 2,
 			});
 		});
 
@@ -1930,6 +1946,8 @@ describe("schema-driven type coercion via coerceSchema", () => {
 						{ type: "string", const: "200" },
 					],
 				},
+				minItems: 2,
+				maxItems: 2,
 			});
 		});
 
@@ -1941,6 +1959,8 @@ describe("schema-driven type coercion via coerceSchema", () => {
 			expect(result.outputSchema).toEqual({
 				type: "array",
 				items: { type: "number" },
+				minItems: 2,
+				maxItems: 2,
 			});
 		});
 
@@ -1958,6 +1978,8 @@ describe("schema-driven type coercion via coerceSchema", () => {
 						{ type: "string", const: "null" },
 					],
 				},
+				minItems: 3,
+				maxItems: 3,
 			});
 		});
 
@@ -1981,6 +2003,8 @@ describe("schema-driven type coercion via coerceSchema", () => {
 						{ type: "string", const: "500" },
 					],
 				},
+				minItems: 2,
+				maxItems: 2,
 			});
 		});
 	});
@@ -2006,6 +2030,8 @@ describe("schema-driven type coercion via coerceSchema", () => {
 						{ type: "string", const: "3" },
 					],
 				},
+				minItems: 3,
+				maxItems: 3,
 			});
 			expect(value).toEqual(["1", "2", "3"]);
 		});
@@ -2035,6 +2061,8 @@ describe("schema-driven type coercion via coerceSchema", () => {
 						{ type: "string", const: "2" },
 					],
 				},
+				minItems: 2,
+				maxItems: 2,
 			});
 			expect(value).toEqual({ ids: ["1", "2"] });
 		});
