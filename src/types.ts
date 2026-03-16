@@ -166,7 +166,9 @@ export type DiagnosticCode =
 	/** The $root token is used with path traversal (e.g. $root.name) */
 	| "ROOT_PATH_TRAVERSAL"
 	/** Unsupported JSON Schema feature (e.g. if/then/else conditional schemas) */
-	| "UNSUPPORTED_SCHEMA";
+	| "UNSUPPORTED_SCHEMA"
+	/** The map helper implicitly flattens the input array one level before mapping */
+	| "MAP_IMPLICIT_FLATTEN";
 
 // ─── Diagnostic Details ──────────────────────────────────────────────────────
 // Supplementary information to understand the exact cause of the error.
