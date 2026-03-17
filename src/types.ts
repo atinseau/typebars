@@ -1,6 +1,43 @@
 import type { JSONSchema7 } from "json-schema";
 import type { FromSchema, JSONSchema } from "json-schema-to-ts";
 
+// ─── Identifier Data ─────────────────────────────────────────────────────────
+// Maps template identifier integers to their associated data objects.
+//
+// Each identifier can hold either:
+// - A **single object** — the standard case (one data source per identifier)
+// - An **array of objects** — the aggregated case (multiple versions of a
+//   node merged into a collection, e.g. from a multi-versioned workflow node)
+//
+// When the value is an array, expressions like `{{key:N}}` automatically
+// extract the property from each element, producing a result array.
+// The full array is accessible via `{{$root:N}}` and can be used with
+// the `map` helper: `{{ map ($root:N) "property" }}`.
+
+/**
+ * Data associated with a single template identifier.
+ *
+ * Can be a single record (scalar case) or an array of records
+ * (aggregated multi-version case).
+ */
+export type IdentifierDataEntry =
+	| Record<string, unknown>
+	| Record<string, unknown>[];
+
+/**
+ * Mapping from template identifier integers to their data.
+ *
+ * @example
+ * ```ts
+ * // Scalar identifiers (standard)
+ * { 1: { meetingId: "abc" }, 2: { name: "Alice" } }
+ *
+ * // Aggregated identifier (multi-version node)
+ * { 4: [{ accountId: "A" }, { accountId: "B" }, { accountId: "C" }] }
+ * ```
+ */
+export type IdentifierData = Record<number, IdentifierDataEntry>;
+
 // ─── Template Input ──────────────────────────────────────────────────────────
 // The engine accepts primitive values in addition to template strings.
 // When a non-string value is passed, it is treated as a literal passthrough:
@@ -309,8 +346,14 @@ export interface CommonTypebarsOptions {
 export interface ExecuteOptions extends CommonTypebarsOptions {
 	/** JSON Schema for pre-execution static validation */
 	schema?: JSONSchema7;
-	/** Data by identifier `{ [id]: { key: value } }` */
-	identifierData?: Record<number, Record<string, unknown>>;
+	/**
+	 * Data by identifier `{ [id]: { key: value } }`.
+	 *
+	 * Each identifier can map to a single object (standard) or an array
+	 * of objects (aggregated multi-version data). When the value is an
+	 * array, `{{key:N}}` extracts the property from each element.
+	 */
+	identifierData?: IdentifierData;
 	/** Schemas by identifier (for static validation with identifiers) */
 	identifierSchemas?: Record<number, JSONSchema7>;
 }
@@ -322,8 +365,14 @@ export interface ExecuteOptions extends CommonTypebarsOptions {
 export interface AnalyzeAndExecuteOptions extends CommonTypebarsOptions {
 	/** Schemas by identifier `{ [id]: JSONSchema7 }` for static analysis */
 	identifierSchemas?: Record<number, JSONSchema7>;
-	/** Data by identifier `{ [id]: { key: value } }` for execution */
-	identifierData?: Record<number, Record<string, unknown>>;
+	/**
+	 * Data by identifier `{ [id]: { key: value } }` for execution.
+	 *
+	 * Each identifier can map to a single object (standard) or an array
+	 * of objects (aggregated multi-version data). When the value is an
+	 * array, `{{key:N}}` extracts the property from each element.
+	 */
+	identifierData?: IdentifierData;
 }
 
 // ─── Custom Helpers ──────────────────────────────────────────────────────────

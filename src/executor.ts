@@ -18,7 +18,11 @@ import {
 	parse,
 	ROOT_TOKEN,
 } from "./parser.ts";
-import type { HelperDefinition, TemplateInput } from "./types.ts";
+import type {
+	HelperDefinition,
+	IdentifierData,
+	TemplateInput,
+} from "./types.ts";
 import { LRUCache } from "./utils.ts";
 
 // ─── Template Executor ───────────────────────────────────────────────────────
@@ -58,8 +62,14 @@ import { LRUCache } from "./utils.ts";
 
 /** Optional context for execution (used by Typebars/CompiledTemplate) */
 export interface ExecutorContext {
-	/** Data by identifier `{ [id]: { key: value } }` */
-	identifierData?: Record<number, Record<string, unknown>>;
+	/**
+	 * Data by identifier `{ [id]: { key: value } }`.
+	 *
+	 * Each identifier can map to a single object (standard) or an array
+	 * of objects (aggregated multi-version data). When the value is an
+	 * array, `{{key:N}}` extracts the property from each element.
+	 */
+	identifierData?: IdentifierData;
 	/** Pre-compiled Handlebars template (for CompiledTemplate) */
 	compiledTemplate?: HandlebarsTemplateDelegate;
 	/** Isolated Handlebars environment (for custom helpers) */
@@ -100,7 +110,7 @@ const globalCompilationCache = new LRUCache<string, HandlebarsTemplateDelegate>(
 export function execute(
 	template: TemplateInput,
 	data: unknown,
-	identifierData?: Record<number, Record<string, unknown>>,
+	identifierData?: IdentifierData,
 ): unknown {
 	return dispatchExecute(
 		template,
@@ -274,7 +284,7 @@ function coerceValue(raw: string, coerceSchema?: JSONSchema7): unknown {
 function executeFastPath(
 	ast: hbs.AST.Program,
 	data: unknown,
-	identifierData?: Record<number, Record<string, unknown>>,
+	identifierData?: IdentifierData,
 ): string {
 	let result = "";
 
@@ -316,7 +326,7 @@ function executeFastPath(
 function resolveExpression(
 	expr: hbs.AST.Expression,
 	data: unknown,
-	identifierData?: Record<number, Record<string, unknown>>,
+	identifierData?: IdentifierData,
 	helpers?: Map<string, HelperDefinition>,
 ): unknown {
 	// this / . → return the entire context
@@ -398,6 +408,16 @@ function resolveExpression(
 	if (identifier !== null && identifierData) {
 		const source = identifierData[identifier];
 		if (source) {
+			// ── Aggregated identifier (array of objects) ──────────────────
+			// When the identifier maps to an array of objects (multi-version
+			// data), extract the property from each element to produce a
+			// result array. E.g. {{accountId:4}} on [{accountId:"A"},{accountId:"B"}]
+			// → ["A", "B"]
+			if (Array.isArray(source)) {
+				return source
+					.map((item) => resolveDataPath(item, cleanSegments))
+					.filter((v) => v !== undefined);
+			}
 			return resolveDataPath(source, cleanSegments);
 		}
 		// Source does not exist → undefined (like a missing key)
@@ -465,7 +485,7 @@ export function resolveDataPath(data: unknown, segments: string[]): unknown {
  */
 function mergeDataWithIdentifiers(
 	data: unknown,
-	identifierData?: Record<number, Record<string, unknown>>,
+	identifierData?: IdentifierData,
 ): Record<string, unknown> {
 	// Always include $root so that Handlebars can resolve {{$root}} in
 	// mixed templates and block helpers (where we delegate to Handlebars
@@ -483,8 +503,19 @@ function mergeDataWithIdentifiers(
 	for (const [id, idData] of Object.entries(identifierData)) {
 		// Add `$root:N` so Handlebars can resolve {{$root:N}} in mixed/block
 		// templates (where we delegate to Handlebars instead of resolving
-		// expressions ourselves). The value is the entire identifier data object.
+		// expressions ourselves). The value is the entire identifier data
+		// object (or array for aggregated identifiers).
 		merged[`${ROOT_TOKEN}:${id}`] = idData;
+
+		// ── Aggregated identifier (array of objects) ─────────────────
+		// When the identifier data is an array (multi-version), we cannot
+		// flatten individual properties into `"key:N"` keys because there
+		// are multiple values per key. The array is only accessible via
+		// `$root:N` (already set above). Handlebars helpers like `map`
+		// can then consume it: `{{ map ($root:4) "accountId" }}`.
+		if (Array.isArray(idData)) {
+			continue;
+		}
 
 		for (const [key, value] of Object.entries(idData)) {
 			merged[`${key}:${id}`] = value;

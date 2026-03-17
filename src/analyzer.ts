@@ -1102,6 +1102,10 @@ function resolveExpressionWithDiagnostics(
  * a plain `{{$root}}`. Instead of navigating into properties, it returns
  * the identifier's root schema directly.
  *
+ * When the identifier schema is an array (aggregated multi-version data),
+ * the full array schema is returned as-is — the caller receives the
+ * complete `{ type: "array", items: ... }` schema.
+ *
  * Emits an error diagnostic if:
  * - No `identifierSchemas` were provided
  * - Identifier N has no associated schema
@@ -1138,13 +1142,21 @@ function resolveRootWithIdentifier(
 		return undefined;
 	}
 
-	// Return the entire schema for identifier N
+	// Return the entire schema for identifier N.
+	// For aggregated identifiers (array schemas), this returns the full
+	// array schema — e.g. { type: "array", items: { type: "object", ... } }
 	return idSchema;
 }
 
 /**
  * Resolves an expression with identifier `{{key:N}}` by looking up the
  * schema associated with identifier N.
+ *
+ * When the identifier schema is an array (aggregated multi-version data),
+ * the property is resolved within the array's `items` schema, and the
+ * result is wrapped in `{ type: "array", items: <resolved> }`. This
+ * models the runtime behavior where `{{accountId:4}}` on an array of
+ * objects extracts the property from each element, producing an array.
  *
  * Emits an error diagnostic if:
  * - No `identifierSchemas` were provided
@@ -1186,7 +1198,41 @@ function resolveWithIdentifier(
 		return undefined;
 	}
 
-	// Resolve the path within the identifier's schema
+	// ── Aggregated identifier (array schema) ─────────────────────────────
+	// When the identifier schema is an array of objects (e.g. from a
+	// multi-versioned workflow node), resolve the property within the
+	// items schema and wrap the result in an array type.
+	//
+	// Example: identifierSchemas[4] = { type: "array", items: { type: "object",
+	//   properties: { accountId: { type: "string" } } } }
+	// Expression: {{accountId:4}}
+	// Result: { type: "array", items: { type: "string" } }
+	const itemSchema = resolveArrayItems(idSchema, ctx.root);
+	if (itemSchema !== undefined) {
+		// The identifier schema is an array — resolve within items
+		const resolved = resolveSchemaPath(itemSchema, cleanSegments);
+		if (resolved === undefined) {
+			const availableProperties = getSchemaPropertyNames(itemSchema);
+			addDiagnostic(
+				ctx,
+				"IDENTIFIER_PROPERTY_NOT_FOUND",
+				"error",
+				`Property "${fullPath}" does not exist in the items schema for identifier ${identifier}`,
+				node,
+				{
+					path: fullPath,
+					identifier,
+					availableProperties,
+				},
+			);
+			return undefined;
+		}
+		// Wrap the resolved property schema in an array
+		return { type: "array", items: resolved };
+	}
+
+	// ── Standard identifier (single object schema) ───────────────────────
+	// Resolve the path within the identifier's schema directly.
 	const resolved = resolveSchemaPath(idSchema, cleanSegments);
 	if (resolved === undefined) {
 		const availableProperties = getSchemaPropertyNames(idSchema);
