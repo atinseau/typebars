@@ -1,7 +1,7 @@
 import type { JSONSchema7 } from "json-schema";
 import { hasHandlebarsExpression } from "./parser.ts";
 import { resolveSchemaPath } from "./schema-resolver.ts";
-import type { AnalysisResult, TemplateInput } from "./types.ts";
+import type { AnalysisResult, IdentifierData, TemplateInput } from "./types.ts";
 import {
 	inferPrimitiveSchema,
 	isArrayInput,
@@ -219,7 +219,7 @@ export function dispatchExecute(
 /** Options for combined analyze-and-execute dispatching */
 export interface DispatchAnalyzeAndExecuteOptions {
 	identifierSchemas?: Record<number, JSONSchema7>;
-	identifierData?: Record<number, Record<string, unknown>>;
+	identifierData?: IdentifierData;
 	coerceSchema?: JSONSchema7;
 	/** When true, exclude entries containing Handlebars expressions */
 	excludeTemplateExpression?: boolean;

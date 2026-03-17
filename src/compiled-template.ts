@@ -9,6 +9,7 @@ import type {
 	AnalysisResult,
 	ExecuteOptions,
 	HelperDefinition,
+	IdentifierData,
 	TemplateData,
 	ValidationResult,
 } from "./types.ts";
@@ -392,7 +393,7 @@ export class CompiledTemplate {
 		data: TemplateData,
 		options?: {
 			identifierSchemas?: Record<number, JSONSchema7>;
-			identifierData?: Record<number, Record<string, unknown>>;
+			identifierData?: IdentifierData;
 			coerceSchema?: JSONSchema7;
 		},
 	): { analysis: AnalysisResult; value: unknown } {
