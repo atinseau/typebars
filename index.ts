@@ -3,22 +3,47 @@ import { type TemplateInput, Typebars } from "./src";
 
 const tp = new Typebars();
 
-const params = { accountId: "{{accountId}}", ok: "salut" };
+const params = {
+	names: '{{#if hasUsers}}{{map users "name"}}{{else}}{{defaultNames}}{{/if}}',
+};
 
-const coerceSchema = {
+const coerceSchema = {} as JSONSchema7;
+
+const inputSchema = {
 	type: "object",
 	properties: {
-		ok: { type: "string", constraints: "IsUuid" },
-		accountId: { type: "string", constraints: "IsUuid" },
+		defaultNames: {
+			type: "array",
+			items: {
+				type: "string",
+			},
+		},
+		hasUsers: {
+			type: "boolean",
+		},
+		users: {
+			type: "array",
+			items: {
+				type: "object",
+				properties: {
+					name: {
+						type: "string",
+					},
+				},
+			},
+		},
 	},
 } as JSONSchema7;
 
 const result = tp.analyzeAndExecute(
 	params as TemplateInput,
-	undefined,
-	{},
+	inputSchema,
 	{
-		excludeTemplateExpression: true,
+		hasUsers: false,
+		defaultNames: ["alice", "bob"],
+		users: [],
+	},
+	{
 		coerceSchema,
 	},
 );

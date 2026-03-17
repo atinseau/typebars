@@ -198,10 +198,16 @@ export function executeFromAst(
 	}
 
 	// ── Case 3: single block (possibly surrounded by whitespace) ─────────
-	// Render via Handlebars then attempt to coerce the result to the
-	// detected literal type (number, boolean, null).
+	// For conditional blocks (#if/#unless), try to evaluate the condition
+	// and execute the selected branch directly to preserve non-string types
+	// (e.g. arrays from `map`). Falls back to Handlebars rendering.
 	const singleBlock = getEffectivelySingleBlock(ast);
 	if (singleBlock) {
+		const directResult = tryDirectBlockExecution(singleBlock, data, ctx);
+		if (directResult !== undefined) {
+			return directResult.value;
+		}
+
 		const merged = mergeDataWithIdentifiers(data, identifierData);
 		const raw = renderWithHandlebars(template, merged, ctx);
 		return coerceValue(raw, ctx?.coerceSchema);
@@ -582,6 +588,84 @@ function renderWithHandlebars(
  */
 export function clearCompilationCache(): void {
 	globalCompilationCache.clear();
+}
+
+// ─── Direct Block Execution ──────────────────────────────────────────────────
+// For conditional blocks (#if/#unless), we can evaluate the condition directly
+// and execute the selected branch through the type-preserving execution paths.
+// This avoids Handlebars stringification when the branch contains helpers that
+// return non-primitive values (e.g. `map` returning arrays).
+
+/**
+ * Attempts to execute a conditional block directly by evaluating its condition
+ * and executing the selected branch through type-preserving paths.
+ *
+ * Only handles `#if` and `#unless` blocks. Returns `{ value }` if the branch
+ * was executed directly, or `undefined` to fall back to Handlebars rendering.
+ */
+function tryDirectBlockExecution(
+	block: hbs.AST.BlockStatement,
+	data: unknown,
+	ctx?: ExecutorContext,
+): { value: unknown } | undefined {
+	if (block.path.type !== "PathExpression") return undefined;
+	const helperName = (block.path as hbs.AST.PathExpression).original;
+
+	// Only handle built-in conditional blocks
+	if (helperName !== "if" && helperName !== "unless") return undefined;
+	if (block.params.length !== 1) return undefined;
+
+	// Evaluate the condition
+	const condition = resolveExpression(
+		block.params[0] as hbs.AST.Expression,
+		data,
+		ctx?.identifierData,
+		ctx?.helpers,
+	);
+
+	// Handlebars truthiness: empty arrays are falsy
+	let isTruthy: boolean;
+	if (Array.isArray(condition)) {
+		isTruthy = condition.length > 0;
+	} else {
+		isTruthy = !!condition;
+	}
+	if (helperName === "unless") isTruthy = !isTruthy;
+
+	const branch = isTruthy ? block.program : block.inverse;
+	if (!branch) {
+		// No matching branch (e.g. falsy #if with no {{else}}) → empty string
+		return { value: "" };
+	}
+
+	// Try to execute the branch as a single expression (preserves types)
+	const singleExpr = getEffectivelySingleExpression(branch);
+	if (singleExpr) {
+		if (singleExpr.params.length === 0 && !singleExpr.hash) {
+			return {
+				value: resolveExpression(
+					singleExpr.path,
+					data,
+					ctx?.identifierData,
+					ctx?.helpers,
+				),
+			};
+		}
+		// Single expression with helper (e.g. {{map users "name"}})
+		if (singleExpr.params.length > 0 || singleExpr.hash) {
+			const directResult = tryDirectHelperExecution(singleExpr, data, ctx);
+			if (directResult !== undefined) return directResult;
+		}
+	}
+
+	// Try to execute the branch as a nested conditional block (recursive)
+	const nestedBlock = getEffectivelySingleBlock(branch);
+	if (nestedBlock) {
+		return tryDirectBlockExecution(nestedBlock, data, ctx);
+	}
+
+	// Branch is too complex for direct execution → fall back
+	return undefined;
 }
 
 // ─── Direct Helper Execution ─────────────────────────────────────────────────
