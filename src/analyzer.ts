@@ -8,6 +8,7 @@ import {
 	createUnanalyzableMessage,
 	createUnknownHelperMessage,
 } from "./errors";
+import { DefaultHelpers } from "./helpers/default-helpers.ts";
 import { MapHelpers } from "./helpers/map-helpers.ts";
 import {
 	detectLiteralType,
@@ -23,6 +24,7 @@ import {
 } from "./parser";
 import {
 	findConditionalSchemaLocations,
+	isPropertyRequired,
 	resolveArrayItems,
 	resolveSchemaPath,
 	simplifySchema,
@@ -385,6 +387,14 @@ function processMustache(
 			return processMapHelper(stmt, ctx);
 		}
 
+		// ── Special-case: default helper ─────────────────────────────────
+		// The `default` helper requires deep static analysis: the return
+		// type is the union of all argument types, and the chain must
+		// terminate with a guaranteed (non-optional) value.
+		if (helperName === DefaultHelpers.DEFAULT_HELPER_NAME) {
+			return processDefaultHelper(stmt, ctx);
+		}
+
 		// Check if the helper is registered
 		const helper = ctx.helpers?.get(helperName);
 		if (helper) {
@@ -646,6 +656,180 @@ function processMapHelper(
 
 	// ── 7. Return the inferred output schema ─────────────────────────────
 	return { type: "array", items: propertySchema };
+}
+
+// ─── default helper — special-case analysis ──────────────────────────────────
+// Validates the arguments and infers the return type as the union of all
+// argument types. The chain must terminate with a guaranteed value.
+//
+// Validation rules:
+// 1. At least 2 arguments are required
+// 2. All arguments must be type-compatible
+// 3. The chain must end with a guaranteed value (literal, required property,
+//    or sub-expression)
+
+/**
+ * Analyzes a `default` helper MustacheStatement and returns the inferred
+ * output schema. Shared logic with `processDefaultSubExpression`.
+ */
+function processDefaultHelper(
+	stmt: hbs.AST.MustacheStatement,
+	ctx: AnalysisContext,
+): JSONSchema7 {
+	return analyzeDefaultArgs(stmt.params as hbs.AST.Expression[], ctx, stmt);
+}
+
+/**
+ * Analyzes a `default` helper SubExpression and returns the inferred
+ * output schema.
+ */
+function processDefaultSubExpression(
+	expr: hbs.AST.SubExpression,
+	ctx: AnalysisContext,
+	parentNode?: hbs.AST.Node,
+): JSONSchema7 {
+	return analyzeDefaultArgs(
+		expr.params as hbs.AST.Expression[],
+		ctx,
+		parentNode ?? expr,
+	);
+}
+
+/**
+ * Core analysis logic for the `default` helper (shared by Mustache and
+ * SubExpression paths).
+ *
+ * 1. Validates argument count (≥ 2)
+ * 2. Resolves the schema of each argument
+ * 3. Checks type compatibility between all arguments
+ * 4. Verifies that at least one argument is guaranteed (non-optional)
+ * 5. Returns the simplified union of all argument types
+ */
+function analyzeDefaultArgs(
+	params: hbs.AST.Expression[],
+	ctx: AnalysisContext,
+	node: hbs.AST.Node,
+): JSONSchema7 {
+	const helperName = DefaultHelpers.DEFAULT_HELPER_NAME;
+
+	// ── 1. Check argument count ──────────────────────────────────────────
+	if (params.length < 2) {
+		addDiagnostic(
+			ctx,
+			"MISSING_ARGUMENT",
+			"error",
+			`Helper "${helperName}" expects at least 2 argument(s), but got ${params.length}`,
+			node,
+			{
+				helperName,
+				expected: "2 argument(s)",
+				actual: `${params.length} argument(s)`,
+			},
+		);
+		return {};
+	}
+
+	// ── 2. Resolve the schema of each argument ───────────────────────────
+	const resolvedSchemas: JSONSchema7[] = [];
+	let hasGuaranteedValue = false;
+
+	for (let i = 0; i < params.length; i++) {
+		const param = params[i] as hbs.AST.Expression;
+		const resolvedSchema = resolveExpressionWithDiagnostics(param, ctx, node);
+
+		if (resolvedSchema) {
+			resolvedSchemas.push(resolvedSchema);
+		}
+
+		// ── 3. Check if this argument is guaranteed ──────────────────────
+		if (isGuaranteedExpression(param, ctx)) {
+			hasGuaranteedValue = true;
+		}
+	}
+
+	// ── 4. Check type compatibility between all arguments ────────────────
+	// All arguments must be compatible with each other. We compare each
+	// pair of resolved schemas (only those with type info).
+	if (resolvedSchemas.length >= 2) {
+		const firstWithType = resolvedSchemas.find((s) => s.type);
+		if (firstWithType) {
+			for (let i = 0; i < resolvedSchemas.length; i++) {
+				const schema = resolvedSchemas[i] as JSONSchema7;
+				if (schema.type && !isParamTypeCompatible(schema, firstWithType)) {
+					addDiagnostic(
+						ctx,
+						"TYPE_MISMATCH",
+						"error",
+						`Helper "${helperName}" argument ${i + 1} has type ${schemaTypeLabel(schema)}, incompatible with ${schemaTypeLabel(firstWithType)}`,
+						node,
+						{
+							helperName,
+							expected: schemaTypeLabel(firstWithType),
+							actual: schemaTypeLabel(schema),
+						},
+					);
+				}
+			}
+		}
+	}
+
+	// ── 5. Verify the chain terminates with a guaranteed value ───────────
+	if (!hasGuaranteedValue) {
+		addDiagnostic(
+			ctx,
+			"DEFAULT_NO_GUARANTEED_VALUE",
+			"error",
+			`Helper "${helperName}" argument chain has no guaranteed fallback — ` +
+				"the last argument must be a literal or a non-optional property",
+			node,
+			{ helperName },
+		);
+	}
+
+	// ── 6. Return the union of all argument types ────────────────────────
+	if (resolvedSchemas.length === 0) return {};
+	if (resolvedSchemas.length === 1) return resolvedSchemas[0] as JSONSchema7;
+
+	return simplifySchema({ oneOf: resolvedSchemas });
+}
+
+/**
+ * Determines whether a template expression is **guaranteed** to produce a
+ * non-nullish value at runtime.
+ *
+ * An expression is guaranteed when:
+ * - It is a literal (StringLiteral, NumberLiteral, BooleanLiteral)
+ * - It is a SubExpression (helpers always return a value)
+ * - It is a PathExpression pointing to a **required** property in the schema
+ */
+function isGuaranteedExpression(
+	expr: hbs.AST.Expression,
+	ctx: AnalysisContext,
+): boolean {
+	// Literals are always guaranteed
+	if (
+		expr.type === "StringLiteral" ||
+		expr.type === "NumberLiteral" ||
+		expr.type === "BooleanLiteral"
+	) {
+		return true;
+	}
+
+	// Sub-expressions (helper calls) are considered guaranteed
+	if (expr.type === "SubExpression") {
+		return true;
+	}
+
+	// PathExpression: check if the property is required in the schema
+	if (expr.type === "PathExpression") {
+		const segments = extractPathSegments(expr);
+		if (segments.length === 0) return false;
+
+		const { cleanSegments } = extractExpressionIdentifier(segments);
+		return isPropertyRequired(ctx.current, cleanSegments);
+	}
+
+	return false;
 }
 
 /**
@@ -1293,6 +1477,11 @@ function resolveSubExpression(
 	// returnType), losing the item schema needed by nested map calls.
 	if (helperName === MapHelpers.MAP_HELPER_NAME) {
 		return processMapSubExpression(expr, ctx, parentNode);
+	}
+
+	// ── Special-case: default helper ─────────────────────────────────
+	if (helperName === DefaultHelpers.DEFAULT_HELPER_NAME) {
+		return processDefaultSubExpression(expr, ctx, parentNode);
 	}
 
 	const helper = ctx.helpers?.get(helperName);

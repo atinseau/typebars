@@ -228,6 +228,7 @@ interface TemplateDiagnostic {
 | `IDENTIFIER_PROPERTY_NOT_FOUND` | error | Property doesn't exist in the identifier's schema | `path`, `identifier` |
 | `PARSE_ERROR` | error | Invalid Handlebars syntax | — |
 | `ROOT_PATH_TRAVERSAL` | error | `$root` used with path traversal (e.g. `$root.name`) | `path` |
+| `DEFAULT_NO_GUARANTEED_VALUE` | error | `default` helper chain has no guaranteed fallback value | `helperName` |
 
 For identifier-related diagnostics, see [Template Identifiers — Identifier Diagnostics](identifiers.md#identifier-diagnostics).
 

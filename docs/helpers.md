@@ -2,7 +2,7 @@
 
 > **[← Back to README](../README.md)** | **Related:** [Templates](templates.md) · [Static Analysis](static-analysis.md) · [Execution](execution.md) · [API Reference](api-reference.md)
 
-Typebars pre-registers a comprehensive set of helpers on every engine instance: **math**, **logical/comparison**, and **map** helpers. All are fully integrated with the static analyzer — argument types are validated, missing properties are caught, and the output schema is correctly inferred.
+Typebars pre-registers a comprehensive set of helpers on every engine instance: **math**, **logical/comparison**, **map**, and **default** helpers. All are fully integrated with the static analyzer — argument types are validated, missing properties are caught, and the output schema is correctly inferred.
 
 You can also register your own **custom helpers** with type metadata for full static analysis support.
 
@@ -28,6 +28,10 @@ You can also register your own **custom helpers** with type metadata for full st
   - [Basic Usage](#basic-usage)
   - [Chaining](#chaining)
   - [Static Analysis of Map](#static-analysis-of-map)
+- [Default Helper](#default-helper)
+  - [Basic Usage](#basic-usage-1)
+  - [Variadic Chaining](#variadic-chaining)
+  - [Static Analysis of Default](#static-analysis-of-default)
 - [Custom Helpers](#custom-helpers)
   - [`registerHelper`](#registerhelper)
   - [`defineHelper` (Type-Safe)](#definehelper-type-safe)
@@ -445,6 +449,148 @@ engine.analyze('{{map users "age"}}', schema);
 
 ---
 
+## Default Helper
+
+The `default` helper returns the first non-nullish value from a list of arguments, similar to a `??` (nullish coalescing) chain in JavaScript. It is pre-registered on every `Typebars` instance.
+
+### Basic Usage
+
+```ts
+const schema = {
+  type: "object",
+  properties: {
+    userId: { type: "string" },
+    fallbackId: { type: "string" },
+  },
+  required: ["fallbackId"],
+};
+
+// Returns userId if non-nullish, otherwise the literal "anonymous"
+engine.execute('{{default userId "anonymous"}}', { userId: "user-123" });
+// → "user-123"
+
+engine.execute('{{default userId "anonymous"}}', { userId: null });
+// → "anonymous"
+
+// Falls back to another variable
+engine.execute("{{default userId fallbackId}}", { userId: null, fallbackId: "fb-789" });
+// → "fb-789"
+```
+
+> **Type preservation:** In [single expression mode](execution.md#single-expression), `default` preserves the raw type. `{{default count 0}}` returns a number, not a string.
+
+### Variadic Chaining
+
+`default` accepts any number of arguments (minimum 2). Arguments are evaluated left to right — the first non-nullish value wins:
+
+```ts
+// Chain of variables with a literal fallback at the end
+engine.execute('{{default a b c "last-resort"}}', { a: null, b: undefined, c: "found" });
+// → "found"
+
+engine.execute('{{default a b c "last-resort"}}', { a: null, b: null, c: null });
+// → "last-resort"
+```
+
+**Important:** `false`, `0`, and `""` (empty string) are non-nullish — they will be returned as-is. Only `null` and `undefined` are skipped.
+
+```ts
+engine.execute("{{default active true}}", { active: false });
+// → false (not skipped — false is non-nullish)
+
+engine.execute('{{default label "fallback"}}', { label: "" });
+// → "" (not skipped — empty string is non-nullish)
+```
+
+### Static Analysis of Default
+
+The `default` helper has special static analysis handling with three validation rules:
+
+**1. Guaranteed termination** — the argument chain must end with a value that is guaranteed to exist at runtime. A guaranteed value is:
+- A **literal** (`"fallback"`, `42`, `true`)
+- A **required property** (listed in the schema's `required` array)
+- A **sub-expression** (helper calls always return a value)
+
+```ts
+const schema = {
+  type: "object",
+  properties: {
+    userId: { type: "string" },
+    accountId: { type: "string" },
+    fallbackId: { type: "string" },
+  },
+  required: ["fallbackId"],
+};
+
+// ✅ Valid — "anonymous" is a literal (always guaranteed)
+engine.analyze('{{default userId "anonymous"}}', schema);
+// valid: true
+
+// ✅ Valid — fallbackId is required in the schema
+engine.analyze("{{default userId fallbackId}}", schema);
+// valid: true
+
+// ✅ Valid — chain ends with required property
+engine.analyze("{{default userId accountId fallbackId}}", schema);
+// valid: true
+
+// ❌ Invalid — both userId and accountId are optional, no guaranteed fallback
+engine.analyze("{{default userId accountId}}", schema);
+// valid: false — DEFAULT_NO_GUARANTEED_VALUE
+```
+
+**2. Type compatibility** — all arguments must have compatible types:
+
+```ts
+const schema = {
+  type: "object",
+  properties: {
+    count: { type: "number" },
+    label: { type: "string" },
+  },
+  required: ["count", "label"],
+};
+
+// ❌ Invalid — number and string are incompatible
+engine.analyze("{{default count label}}", schema);
+// valid: false — TYPE_MISMATCH
+```
+
+**3. Minimum arguments** — at least 2 arguments are required:
+
+```ts
+// ❌ Invalid — only 1 argument
+engine.analyze("{{default userId}}", schema);
+// valid: false — MISSING_ARGUMENT
+```
+
+**Output schema inference** — the inferred output type is the union of all argument types (simplified when identical):
+
+```ts
+// All arguments are strings → output is string
+engine.analyze('{{default userId "anon"}}', schema).outputSchema;
+// → { type: "string" }
+
+// Mixed types (if compatible) → oneOf union
+```
+
+**Sub-expression usage** — `default` works as a sub-expression inside block helpers, and can be nested:
+
+```ts
+// As a condition in {{#if}}
+engine.analyze('{{#if (default userId "anon")}}has value{{/if}}', schema);
+// valid: true
+
+// Nested: inner default provides a guaranteed value to the outer default
+engine.analyze(
+  "{{#if (default userId (default accountId fallbackId))}}yes{{/if}}",
+  schema,
+);
+// valid: true
+```
+
+---
+
 ## Custom Helpers
 
 ### `registerHelper`
@@ -567,6 +713,7 @@ engine.hasHelper("uppercase");  // false
 | **Collection** | `contains`, `in` | `{ type: "boolean" }` |
 | **Generic compare** | `compare` | `{ type: "boolean" }` |
 | **Map** | `map` | `{ type: "array", items: <resolved> }` |
+| **Default** | `default` | Union of argument types (simplified) |
 
 ---
 
