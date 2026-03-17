@@ -13,7 +13,12 @@ import {
 } from "./dispatch.ts";
 import { TemplateAnalysisError } from "./errors.ts";
 import { executeFromAst } from "./executor.ts";
-import { LogicalHelpers, MapHelpers, MathHelpers } from "./helpers/index.ts";
+import {
+	DefaultHelpers,
+	LogicalHelpers,
+	MapHelpers,
+	MathHelpers,
+} from "./helpers/index.ts";
 import { parse } from "./parser.ts";
 import type {
 	AnalysisResult,
@@ -113,6 +118,7 @@ export class Typebars {
 		new MathHelpers().register(this);
 		new LogicalHelpers().register(this);
 		new MapHelpers().register(this);
+		new DefaultHelpers().register(this);
 
 		// ── Custom helpers via options ───────────────────────────────────
 		if (options.helpers) {

@@ -221,6 +221,7 @@ See [Error Handling](error-handling.md) for how diagnostics are surfaced via err
 | `IDENTIFIER_PROPERTY_NOT_FOUND` | error | Property doesn't exist in identifier's schema — see [Identifiers](identifiers.md) |
 | `PARSE_ERROR` | error | Invalid Handlebars syntax |
 | `ROOT_PATH_TRAVERSAL` | error | `$root` used with path traversal (e.g. `$root.name`) — see [`$root` token](advanced.md#root-token) |
+| `DEFAULT_NO_GUARANTEED_VALUE` | error | `default` helper chain has no guaranteed fallback — see [Default Helper](helpers.md#static-analysis-of-default) |
 
 ---
 

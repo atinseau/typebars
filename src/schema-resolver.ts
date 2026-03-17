@@ -494,6 +494,93 @@ export function resolveArrayItems(
 }
 
 /**
+ * Checks whether a property at the given path is **required** in its parent
+ * object schema. This navigates the schema segment by segment and checks
+ * the `required` array of the parent object for the last segment.
+ *
+ * For multi-segment paths (e.g. `["user", "name"]`), each intermediate
+ * segment is navigated and the check applies only to the final segment
+ * within its immediate parent.
+ *
+ * Returns `true` if the property is explicitly listed in the parent's
+ * `required` array. Returns `false` otherwise (including when the path
+ * cannot be resolved).
+ *
+ * @param schema - The root schema describing the template context
+ * @param path   - Array of segments (property names) leading to the property
+ */
+export function isPropertyRequired(
+	schema: JSONSchema7,
+	path: string[],
+): boolean {
+	if (path.length === 0) return true;
+
+	const root = schema;
+	let parent: JSONSchema7 = resolveRef(schema, root);
+
+	// Navigate to the parent of the target property
+	for (let i = 0; i < path.length - 1; i++) {
+		const segment = path[i] as string;
+		const next = resolveSegment(parent, segment, root);
+		if (next === undefined) return false;
+		parent = next;
+	}
+
+	const lastSegment = path[path.length - 1] as string;
+
+	// Check direct properties + required array
+	if (isRequiredInSchema(parent, lastSegment)) return true;
+
+	// Check combinators: for allOf, the property is required if ANY branch
+	// requires it. For anyOf/oneOf, the property is required only if ALL
+	// branches require it.
+	return isRequiredInCombinators(parent, lastSegment);
+}
+
+/**
+ * Checks if a property is in the `required` array of a schema.
+ */
+function isRequiredInSchema(schema: JSONSchema7, property: string): boolean {
+	const resolved = schema.$ref ? resolveRef(schema, schema) : schema;
+	return (
+		Array.isArray(resolved.required) && resolved.required.includes(property)
+	);
+}
+
+/**
+ * Checks if a property is required through combinator schemas.
+ */
+function isRequiredInCombinators(
+	schema: JSONSchema7,
+	property: string,
+): boolean {
+	// allOf: required if ANY branch lists it as required
+	if (schema.allOf) {
+		for (const branch of schema.allOf) {
+			if (typeof branch === "boolean") continue;
+			if (isRequiredInSchema(branch, property)) return true;
+		}
+	}
+
+	// anyOf / oneOf: required only if ALL branches list it as required
+	for (const key of ["anyOf", "oneOf"] as const) {
+		const arr = schema[key];
+		if (!arr || arr.length === 0) continue;
+		const nonBoolBranches = arr.filter(
+			(b): b is JSONSchema7 => typeof b !== "boolean",
+		);
+		if (
+			nonBoolBranches.length > 0 &&
+			nonBoolBranches.every((branch) => isRequiredInSchema(branch, property))
+		) {
+			return true;
+		}
+	}
+
+	return false;
+}
+
+/**
  * Simplifies an output schema to avoid unnecessarily complex constructs
  * (e.g. `oneOf` with a single element, duplicates, etc.).
  *

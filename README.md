@@ -58,7 +58,7 @@ bun add typebars
 | [Schema Features](docs/schema-features.md) | `$ref` resolution, combinators, `additionalProperties`, array `.length` |
 | [Execution & Compiled Templates](docs/execution.md) | Type preservation, execution modes, and compile-once / execute-many |
 | [Templates](docs/templates.md) | Object templates, array templates, and block helpers (`#if`, `#each`, `#with`) |
-| [Built-in & Custom Helpers](docs/helpers.md) | Math, logical, comparison, `map` helper, and custom helper registration |
+| [Built-in & Custom Helpers](docs/helpers.md) | Math, logical, comparison, `map`, `default` helpers, and custom helper registration |
 | [Template Identifiers](docs/identifiers.md) | The `{{key:N}}` syntax for multi-source data pipelines |
 | [Advanced Features](docs/advanced.md) | `coerceSchema`, `excludeTemplateExpression`, and the `$root` token |
 | [Error Handling](docs/error-handling.md) | Error hierarchy, diagnostics structure, and syntax validation |
@@ -73,7 +73,7 @@ bun add typebars
 - **Type preservation** — `{{age}}` returns `30` (number), not `"30"` ([docs](docs/execution.md))
 - **Object & array templates** — pass structured inputs, get structured outputs ([docs](docs/templates.md))
 - **Block helpers** — `#if`, `#unless`, `#each`, `#with` with full static analysis ([docs](docs/templates.md#block-helpers))
-- **Built-in helpers** — math, logical, comparison, and `map` — all statically analyzed ([docs](docs/helpers.md))
+- **Built-in helpers** — math, logical, comparison, `map`, and `default` — all statically analyzed ([docs](docs/helpers.md))
 - **Custom helpers** — register your own with type metadata for full analysis integration ([docs](docs/helpers.md#custom-helpers))
 - **Template identifiers** — `{{key:N}}` syntax for multi-source workflows ([docs](docs/identifiers.md))
 - **Output type coercion** — control how static literals are typed with `coerceSchema` ([docs](docs/advanced.md#output-type-coercion-coerceschema))

@@ -205,7 +205,9 @@ export type DiagnosticCode =
 	/** Unsupported JSON Schema feature (e.g. if/then/else conditional schemas) */
 	| "UNSUPPORTED_SCHEMA"
 	/** The map helper implicitly flattens the input array one level before mapping */
-	| "MAP_IMPLICIT_FLATTEN";
+	| "MAP_IMPLICIT_FLATTEN"
+	/** The default helper's argument chain does not end with a guaranteed (non-optional) value */
+	| "DEFAULT_NO_GUARANTEED_VALUE";
 
 // ─── Diagnostic Details ──────────────────────────────────────────────────────
 // Supplementary information to understand the exact cause of the error.

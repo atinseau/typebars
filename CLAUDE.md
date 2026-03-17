@@ -52,6 +52,7 @@ src/
 └── helpers/
     ├── index.ts           # Re-exports for helper modules
     ├── helper-factory.ts  # Abstract HelperFactory base class + HelperRegistry interface
+    ├── default-helpers.ts # Built-in default/fallback helper ({{ default a b "fallback" }})
     ├── math-helpers.ts    # Built-in math helpers (add, subtract, math, abs, round…)
     ├── logical-helpers.ts # Built-in logical/comparison helpers (eq, lt, not, compare…)
     └── utils.ts           # toNumber() shared utility
@@ -66,6 +67,7 @@ tests/
 ├── schema-resolver.spec.ts    # Schema resolution tests ($ref, combinators)
 ├── math-helpers.spec.ts       # Math helper tests
 ├── logical-helpers.spec.ts    # Logical helper tests
+├── default-helpers.spec.ts     # Default/fallback helper tests ({{ default a b "fallback" }})
 ├── map-helpers.spec.ts        # Map helper tests ({{ map collection "prop" }})
 ├── sub-expression.spec.ts     # Sub-expression tests
 ├── conditional-schema.spec.ts # Conditional schema handling tests
@@ -229,6 +231,7 @@ bun biome check --write --unsafe src/analyzer.ts
 7. **`AnalyzeOptions` object** — `analyze()`, `validate()`, and `analyzeAndExecute()` accept an optional `AnalyzeOptions` object (not positional args) with `identifierSchemas?` and `coerceSchema?`. The `inputSchema` describes available variables for validation; it **never** influences output type coercion.
 8. **`coerceSchema` for output type coercion** — by default, static literal values (`"123"`, `"true"`, `"null"`) are auto-detected by `detectLiteralType`. An explicit `coerceSchema` in `AnalyzeOptions` overrides this for static content only. Handlebars expressions, mixed templates, and JS primitive literals are never affected by `coerceSchema`. For object templates, `coerceSchema` is resolved per-property via `resolveSchemaPath()` and propagated recursively to children.
 9. **Array bounds (`minItems`/`maxItems`)** — `aggregateArrayAnalysis` and `aggregateArrayAnalysisAndExecution` always emit `minItems: length, maxItems: length` in the output schema, because literal template arrays (`["{{name}}", "static"]`) have a statically-known element count. This applies to both the normal and `excludeTemplateExpression` paths (where `length` reflects the filtered count). Data-dependent arrays (e.g. `{{ map }}` helper, `{{tags}}` expression) do **not** have bounds — their size depends on runtime input.
+10. **`default` helper for fallback values** — `{{ default a b "fallback" }}` returns the first non-nullish argument (like a `??` chain). Variadic: accepts 2+ arguments. Has special-case analysis in the analyzer (like `map`): infers the return type as the union of all argument types, validates type compatibility between arguments, and requires the chain to terminate with a guaranteed value (literal, required property, or sub-expression). Uses `isPropertyRequired()` from `schema-resolver.ts` to check the input schema's `required` arrays. Emits `DEFAULT_NO_GUARANTEED_VALUE` diagnostic when no argument is guaranteed. Listed in `DIRECT_EXECUTION_HELPERS` in `executor.ts` to preserve raw types in single-expression mode.
 
 ## Validation Checklist
 

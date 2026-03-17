@@ -2,6 +2,7 @@ import Handlebars from "handlebars";
 import type { JSONSchema7 } from "json-schema";
 import { dispatchExecute } from "./dispatch.ts";
 import { TemplateRuntimeError } from "./errors.ts";
+import { DefaultHelpers } from "./helpers/default-helpers.ts";
 import { MapHelpers } from "./helpers/map-helpers.ts";
 import {
 	canUseFastPath,
@@ -674,7 +675,10 @@ function tryDirectBlockExecution(
 // arguments directly and call the helper's `fn` to preserve the raw value.
 
 /** Set of helper names that must be executed directly (bypass Handlebars) */
-const DIRECT_EXECUTION_HELPERS = new Set<string>([MapHelpers.MAP_HELPER_NAME]);
+const DIRECT_EXECUTION_HELPERS = new Set<string>([
+	DefaultHelpers.DEFAULT_HELPER_NAME,
+	MapHelpers.MAP_HELPER_NAME,
+]);
 
 /**
  * Attempts to execute a helper directly (without Handlebars rendering).
