@@ -818,15 +818,16 @@ describe("SubExpression resolution", () => {
 	// ─── Type inference — structured types (object, array) in branches ───
 
 	describe("type inference — structured types in branches with sub-expression conditions", () => {
-		it("#if (lt ...) → {{account}} → object schema", () => {
+		it("#if (lt ...) → {{account}} → object schema (optional → nullable)", () => {
 			const result = engine.analyze(
 				"{{#if (lt count 10)}}{{account}}{{/if}}",
 				schema,
 			);
 			expect(result.valid).toBe(true);
 			expect(result.diagnostics).toHaveLength(0);
+			// account is optional → nullable
 			expect(result.outputSchema).toEqual({
-				type: "object",
+				type: ["object", "null"],
 				properties: {
 					id: { type: "string" },
 					balance: { type: "number" },
@@ -835,20 +836,21 @@ describe("SubExpression resolution", () => {
 			});
 		});
 
-		it("#if (gt ...) → {{tags}} → array schema", () => {
+		it("#if (gt ...) → {{tags}} → array schema (optional → nullable)", () => {
 			const result = engine.analyze(
 				"{{#if (gt score 50)}}{{tags}}{{/if}}",
 				schema,
 			);
 			expect(result.valid).toBe(true);
 			expect(result.diagnostics).toHaveLength(0);
+			// tags is optional → nullable
 			expect(result.outputSchema).toEqual({
-				type: "array",
+				type: ["array", "null"],
 				items: { type: "string" },
 			});
 		});
 
-		it("#if (eq ...) → {{account}} else {{name}} → oneOf [object, string]", () => {
+		it("#if (eq ...) → {{account}} else {{name}} → oneOf [object|null, string]", () => {
 			const result = engine.analyze(
 				'{{#if (eq role "admin")}}{{account}}{{else}}{{name}}{{/if}}',
 				schema,
@@ -859,10 +861,10 @@ describe("SubExpression resolution", () => {
 			expect(outputSchema).toHaveProperty("oneOf");
 			const oneOf = (outputSchema as { oneOf: unknown[] }).oneOf;
 			expect(oneOf).toHaveLength(2);
-			// One should be the object schema, the other string
+			// account is optional (object|null), name is required (string)
 			expect(oneOf).toContainEqual({ type: "string" });
 			expect(oneOf).toContainEqual({
-				type: "object",
+				type: ["object", "null"],
 				properties: {
 					id: { type: "string" },
 					balance: { type: "number" },
@@ -939,8 +941,11 @@ describe("SubExpression resolution", () => {
 			);
 			expect(result.valid).toBe(true);
 			expect(result.diagnostics).toHaveLength(0);
-			// Both branches are number → single number, not boolean
-			expect(result.outputSchema).toEqual({ type: "number" });
+			// account is optional → account.balance is nullable number
+			// count is required → number
+			expect(result.outputSchema).toEqual({
+				oneOf: [{ type: ["number", "null"] }, { type: "number" }],
+			});
 		});
 
 		it("(not ...) returns boolean but single branch determines output", () => {
@@ -950,9 +955,9 @@ describe("SubExpression resolution", () => {
 			);
 			expect(result.valid).toBe(true);
 			expect(result.diagnostics).toHaveLength(0);
-			// Output should be the object schema, not boolean
+			// account is optional → nullable object
 			expect(result.outputSchema).toEqual({
-				type: "object",
+				type: ["object", "null"],
 				properties: {
 					id: { type: "string" },
 					balance: { type: "number" },

@@ -350,3 +350,94 @@ describe("default helper — mixed templates", () => {
 		expect(result).toBe("Hello stranger!");
 	});
 });
+
+// ─── default helper resolves nullable to non-nullable ────────────────────────
+
+describe("default helper — nullable output schema resolution", () => {
+	const schemaWithOptional: JSONSchema7 = {
+		type: "object",
+		properties: {
+			accountId: { type: "string" },
+			accountDepartmentId: { type: "string" },
+		},
+		required: ["accountId"],
+	};
+
+	test("optional prop alone → nullable output", () => {
+		const result = engine.analyze(
+			["{{accountDepartmentId}}"],
+			schemaWithOptional,
+		);
+		expect(result.valid).toBe(true);
+		// Without default helper, optional prop is nullable
+		expect(result.outputSchema).toEqual({
+			type: "array",
+			items: { type: ["string", "null"] },
+			minItems: 1,
+			maxItems: 1,
+		});
+	});
+
+	test("default with required fallback → non-nullable string output", () => {
+		const result = engine.analyze(
+			["{{default accountDepartmentId accountId}}"],
+			schemaWithOptional,
+		);
+		expect(result.valid).toBe(true);
+		// default helper guarantees a value (accountId is required) → no null
+		expect(result.outputSchema).toEqual({
+			type: "array",
+			items: { type: "string" },
+			minItems: 1,
+			maxItems: 1,
+		});
+	});
+
+	test("default with literal fallback → non-nullable string output", () => {
+		const result = engine.analyze(
+			['{{default accountDepartmentId "N/A"}}'],
+			schemaWithOptional,
+		);
+		expect(result.valid).toBe(true);
+		expect(result.outputSchema).toEqual({
+			type: "array",
+			items: { type: "string" },
+			minItems: 1,
+			maxItems: 1,
+		});
+	});
+
+	test("default helper execution — optional null falls back to required", () => {
+		const { analysis, value } = engine.analyzeAndExecute(
+			{ accountIds: ["{{default accountDepartmentId accountId}}"] },
+			schemaWithOptional,
+			{ accountDepartmentId: null, accountId: "salut" },
+		);
+		expect(analysis.valid).toBe(true);
+		// Schema says string (not null)
+		expect(analysis.outputSchema).toEqual({
+			type: "object",
+			properties: {
+				accountIds: {
+					type: "array",
+					items: { type: "string" },
+					minItems: 1,
+					maxItems: 1,
+				},
+			},
+			required: ["accountIds"],
+		});
+		// Value falls back to accountId
+		expect(value).toEqual({ accountIds: ["salut"] });
+	});
+
+	test("default helper execution — optional present uses first value", () => {
+		const { analysis, value } = engine.analyzeAndExecute(
+			{ accountIds: ["{{default accountDepartmentId accountId}}"] },
+			schemaWithOptional,
+			{ accountDepartmentId: "dept-42", accountId: "salut" },
+		);
+		expect(analysis.valid).toBe(true);
+		expect(value).toEqual({ accountIds: ["dept-42"] });
+	});
+});

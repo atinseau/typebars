@@ -586,6 +586,7 @@ describe("analyze() with identifierSchemas", () => {
 				1: {
 					type: "object",
 					properties: { meetingId: { type: "string" } },
+					required: ["meetingId"],
 				},
 			};
 
@@ -602,6 +603,7 @@ describe("analyze() with identifierSchemas", () => {
 				1: {
 					type: "object",
 					properties: { age: { type: "number" } },
+					required: ["age"],
 				},
 			};
 
@@ -618,6 +620,7 @@ describe("analyze() with identifierSchemas", () => {
 				1: {
 					type: "object",
 					properties: { active: { type: "boolean" } },
+					required: ["active"],
 				},
 			};
 
@@ -636,6 +639,7 @@ describe("analyze() with identifierSchemas", () => {
 					properties: {
 						ids: { type: "array", items: { type: "number" } },
 					},
+					required: ["ids"],
 				},
 			};
 
@@ -657,6 +661,7 @@ describe("analyze() with identifierSchemas", () => {
 					properties: {
 						role: { type: "string", enum: ["admin", "user"] },
 					},
+					required: ["role"],
 				},
 			};
 
@@ -697,10 +702,12 @@ describe("analyze() with identifierSchemas", () => {
 				1: {
 					type: "object",
 					properties: { someKey: { type: "string" } },
+					required: ["someKey"],
 				},
 				2: {
 					type: "object",
 					properties: { someKey: { type: "boolean" } },
+					required: ["someKey"],
 				},
 			};
 
@@ -863,6 +870,7 @@ describe("Typebars with identifiers", () => {
 				1: {
 					type: "object",
 					properties: { meetingId: { type: "string" } },
+					required: ["meetingId"],
 				},
 			};
 
@@ -996,6 +1004,7 @@ describe("Typebars with identifiers", () => {
 				1: {
 					type: "object",
 					properties: { meetingId: { type: "number" } },
+					required: ["meetingId"],
 				},
 			};
 
@@ -1236,6 +1245,7 @@ describe("Exact migration of old findTemplateSchemaFromPrevSchemas behavior", ()
 			1: {
 				type: "object",
 				properties: { someKey: { type: "string" } },
+				required: ["someKey"],
 			},
 		};
 
@@ -1285,10 +1295,12 @@ describe("Exact migration of old findTemplateSchemaFromPrevSchemas behavior", ()
 			1: {
 				type: "object",
 				properties: { someKey: { type: "string" } },
+				required: ["someKey"],
 			},
 			2: {
 				type: "object",
 				properties: { someKey: { type: "boolean" } },
+				required: ["someKey"],
 			},
 		};
 
@@ -1317,11 +1329,13 @@ describe("Exact migration of old findTemplateSchemaFromPrevSchemas behavior", ()
 		const schema: JSONSchema7 = {
 			type: "object",
 			properties: { someKey: { type: "number" } },
+			required: ["someKey"],
 		};
 		const idSchemas: Record<number, JSONSchema7> = {
 			1: {
 				type: "object",
 				properties: { someKey: { type: "string" } },
+				required: ["someKey"],
 			},
 		};
 
@@ -1571,6 +1585,7 @@ describe("Negative identifiers — analyze()", () => {
 				properties: {
 					meetingId: { type: "string" },
 				},
+				required: ["meetingId"],
 			},
 		};
 		const result = analyze("{{meetingId:-1}}", schema, {
@@ -1588,6 +1603,7 @@ describe("Negative identifiers — analyze()", () => {
 				properties: {
 					count: { type: "number" },
 				},
+				required: ["count"],
 			},
 		};
 		const result = analyze("{{count:-1}}", schema, {
@@ -1714,6 +1730,7 @@ describe("Negative identifiers — Typebars engine", () => {
 				properties: {
 					meetingId: { type: "string" },
 				},
+				required: ["meetingId"],
 			},
 		};
 		const result = engine.analyze("{{meetingId:-1}}", schema, {

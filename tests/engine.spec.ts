@@ -510,7 +510,7 @@ describe("object template input (TemplateInputObject)", () => {
 					meta: {
 						type: "object",
 						properties: {
-							active: { type: "boolean" },
+							active: { type: ["boolean", "null"] },
 						},
 						required: ["active"],
 					},
@@ -554,7 +554,7 @@ describe("object template input (TemplateInputObject)", () => {
 					nested: {
 						type: "object",
 						properties: {
-							city: { type: "string" },
+							city: { type: ["string", "null"] },
 							fixed: { type: "integer" },
 						},
 						required: ["city", "fixed"],
@@ -1244,30 +1244,38 @@ describe("array template input (TemplateInputArray)", () => {
 			});
 		});
 
-		test("array with multiple same-type templates → single items schema", () => {
+		test("array with multiple same-type templates (one optional) → oneOf items", () => {
 			const result = engine.analyze(
 				["{{name}}", "{{address.city}}"],
 				userSchema,
 			);
 			expect(result.valid).toBe(true);
+			// name is required (string), address.city is optional (string|null)
 			expect(result.outputSchema).toEqual({
 				type: "array",
-				items: { type: "string" },
+				items: {
+					oneOf: [{ type: "string" }, { type: ["string", "null"] }],
+				},
 				minItems: 2,
 				maxItems: 2,
 			});
 		});
 
-		test("array with different-type templates → oneOf items schema", () => {
+		test("array with different-type templates (some optional) → oneOf items schema", () => {
 			const result = engine.analyze(
 				["{{name}}", "{{age}}", "{{active}}"],
 				userSchema,
 			);
 			expect(result.valid).toBe(true);
+			// active is optional → boolean|null
 			expect(result.outputSchema).toEqual({
 				type: "array",
 				items: {
-					oneOf: [{ type: "string" }, { type: "number" }, { type: "boolean" }],
+					oneOf: [
+						{ type: "string" },
+						{ type: "number" },
+						{ type: ["boolean", "null"] },
+					],
 				},
 				minItems: 3,
 				maxItems: 3,
@@ -1381,19 +1389,30 @@ describe("array template input (TemplateInputArray)", () => {
 			});
 		});
 
-		test("array with identical nested arrays → deduplicated items schema", () => {
+		test("array with nested arrays (one optional) → oneOf items", () => {
 			const result = engine.analyze(
 				[["{{name}}"], ["{{address.city}}"]],
 				userSchema,
 			);
 			expect(result.valid).toBe(true);
+			// name is required (string), address.city is optional (string|null) → distinct
 			expect(result.outputSchema).toEqual({
 				type: "array",
 				items: {
-					type: "array",
-					items: { type: "string" },
-					minItems: 1,
-					maxItems: 1,
+					oneOf: [
+						{
+							type: "array",
+							items: { type: "string" },
+							minItems: 1,
+							maxItems: 1,
+						},
+						{
+							type: "array",
+							items: { type: ["string", "null"] },
+							minItems: 1,
+							maxItems: 1,
+						},
+					],
 				},
 				minItems: 2,
 				maxItems: 2,

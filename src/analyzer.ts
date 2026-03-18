@@ -466,7 +466,38 @@ function processMustache(
 	}
 
 	// ── Simple expression ────────────────────────────────────────────────────
-	return resolveExpressionWithDiagnostics(stmt.path, ctx, stmt) ?? {};
+	const resolved = resolveExpressionWithDiagnostics(stmt.path, ctx, stmt) ?? {};
+
+	// When the expression points to an optional property (not in `required`),
+	// the output can be null at runtime. Wrap the resolved schema with null
+	// so the output schema accurately reflects this.
+	// $root returns the entire context — optionality does not apply.
+	if (stmt.path.type === "PathExpression") {
+		const segments = extractPathSegments(stmt.path);
+		if (segments.length > 0) {
+			const { cleanSegments, identifier } =
+				extractExpressionIdentifier(segments);
+			if (!isRootSegments(cleanSegments)) {
+				let targetSchema =
+					identifier !== null
+						? ctx.identifierSchemas?.[identifier]
+						: ctx.current;
+				// For aggregated identifiers (array schema), check optionality
+				// within the items schema, not the array itself.
+				if (targetSchema && identifier !== null) {
+					const itemSchema = resolveArrayItems(targetSchema, ctx.root);
+					if (itemSchema !== undefined) {
+						targetSchema = itemSchema;
+					}
+				}
+				if (targetSchema && !isPathFullyRequired(targetSchema, cleanSegments)) {
+					return withNullType(resolved);
+				}
+			}
+		}
+	}
+
+	return resolved;
 }
 
 // ─── map helper — special-case analysis ──────────────────────────────────────
@@ -1436,6 +1467,51 @@ function resolveWithIdentifier(
 	}
 
 	return resolved;
+}
+
+// ─── Nullable Schema Wrapping ────────────────────────────────────────────────
+
+/**
+ * Wraps a JSON Schema with `null` to indicate the value can be nullish.
+ *
+ * - If the schema already includes `null`, it is returned as-is.
+ * - For schemas with a simple `type` string, the type becomes an array
+ *   (e.g. `{ type: "string" }` → `{ type: ["string", "null"] }`).
+ * - For schemas with a type array, `"null"` is appended.
+ * - For complex schemas (oneOf, anyOf, etc.), a `oneOf` wrapper is used.
+ */
+function withNullType(schema: JSONSchema7): JSONSchema7 {
+	if (schema.type === "null") return schema;
+
+	if (typeof schema.type === "string") {
+		return { ...schema, type: [schema.type, "null"] };
+	}
+
+	if (Array.isArray(schema.type)) {
+		if (schema.type.includes("null")) return schema;
+		return { ...schema, type: [...schema.type, "null"] };
+	}
+
+	// Complex schema (oneOf, anyOf, allOf, etc.) — wrap with oneOf
+	return simplifySchema({ oneOf: [schema, { type: "null" }] });
+}
+
+/**
+ * Checks whether EVERY segment along a property path is required.
+ *
+ * Unlike `isPropertyRequired` (which only checks the last segment),
+ * this function verifies that no intermediate segment is optional.
+ * If any segment along the path is optional, the entire expression
+ * can produce `null`/`undefined` at runtime.
+ *
+ * Example: for path `["user", "name"]`, checks both that `user` is
+ * required in the root schema AND that `name` is required in `user`.
+ */
+function isPathFullyRequired(schema: JSONSchema7, segments: string[]): boolean {
+	for (let i = 1; i <= segments.length; i++) {
+		if (!isPropertyRequired(schema, segments.slice(0, i))) return false;
+	}
+	return true;
 }
 
 // ─── Utilities ───────────────────────────────────────────────────────────────

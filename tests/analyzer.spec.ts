@@ -17,23 +17,23 @@ describe("analyzer", () => {
 			expect(result.outputSchema).toEqual({ type: "number" });
 		});
 
-		test("single boolean expression → { type: 'boolean' }", () => {
+		test("single boolean expression (optional) → { type: ['boolean', 'null'] }", () => {
 			const result = analyze("{{active}}", userSchema);
 			expect(result.valid).toBe(true);
-			expect(result.outputSchema).toEqual({ type: "boolean" });
+			expect(result.outputSchema).toEqual({ type: ["boolean", "null"] });
 		});
 
-		test("single integer expression → { type: 'integer' }", () => {
+		test("single integer expression (optional) → { type: ['integer', 'null'] }", () => {
 			const result = analyze("{{score}}", userSchema);
 			expect(result.valid).toBe(true);
-			expect(result.outputSchema).toEqual({ type: "integer" });
+			expect(result.outputSchema).toEqual({ type: ["integer", "null"] });
 		});
 
-		test("single object expression → full object schema", () => {
+		test("single object expression (optional) → full object schema with null", () => {
 			const result = analyze("{{address}}", userSchema);
 			expect(result.valid).toBe(true);
 			expect(result.outputSchema).toEqual({
-				type: "object",
+				type: ["object", "null"],
 				properties: {
 					city: { type: "string" },
 					zip: { type: "string" },
@@ -41,26 +41,26 @@ describe("analyzer", () => {
 			});
 		});
 
-		test("single array expression → array schema", () => {
+		test("single array expression (optional) → array schema with null", () => {
 			const result = analyze("{{tags}}", userSchema);
 			expect(result.valid).toBe(true);
 			expect(result.outputSchema).toEqual({
-				type: "array",
+				type: ["array", "null"],
 				items: { type: "string" },
 			});
 		});
 
-		test("single expression with dot notation → leaf type", () => {
+		test("single expression with dot notation (optional parent) → leaf type with null", () => {
 			const result = analyze("{{address.city}}", userSchema);
 			expect(result.valid).toBe(true);
-			expect(result.outputSchema).toEqual({ type: "string" });
+			expect(result.outputSchema).toEqual({ type: ["string", "null"] });
 		});
 
-		test("single expression with enum → preserves enum", () => {
+		test("single expression with enum (optional parent) → preserves enum with null", () => {
 			const result = analyze("{{metadata.role}}", userSchema);
 			expect(result.valid).toBe(true);
 			expect(result.outputSchema).toEqual({
-				type: "string",
+				type: ["string", "null"],
 				enum: ["admin", "user", "guest"],
 			});
 		});
@@ -89,10 +89,11 @@ describe("analyzer", () => {
 			expect(result.outputSchema).toEqual({ type: "string" });
 		});
 
-		test("template with #with block → { type: 'string' }", () => {
+		test("template with #with block (optional inner prop) → { type: ['string', 'null'] }", () => {
 			const result = analyze("{{#with address}}{{city}}{{/with}}", userSchema);
 			expect(result.valid).toBe(true);
-			expect(result.outputSchema).toEqual({ type: "string" });
+			// city has no `required` in address schema → nullable
+			expect(result.outputSchema).toEqual({ type: ["string", "null"] });
 		});
 
 		test("plain text without expression → { type: 'string' }", () => {
@@ -164,19 +165,22 @@ describe("analyzer", () => {
 				userSchema,
 			);
 			expect(result.valid).toBe(true);
-			// age is number, score is integer → oneOf
+			// age is required (number), score is optional (integer|null) → oneOf
 			expect(result.outputSchema).toEqual({
-				oneOf: [{ type: "number" }, { type: "integer" }],
+				oneOf: [{ type: "number" }, { type: ["integer", "null"] }],
 			});
 		});
 
-		test("#if with same expression type in both branches → single type", () => {
+		test("#if with same expression type in both branches (one optional) → oneOf", () => {
 			const result = analyze(
 				"{{#if active}}{{name}}{{else}}{{address.city}}{{/if}}",
 				userSchema,
 			);
 			expect(result.valid).toBe(true);
-			expect(result.outputSchema).toEqual({ type: "string" });
+			// name is required (string), address.city is optional (string|null)
+			expect(result.outputSchema).toEqual({
+				oneOf: [{ type: "string" }, { type: ["string", "null"] }],
+			});
 		});
 
 		test("#if with single expression and surrounding whitespace → expression type", () => {
@@ -186,14 +190,14 @@ describe("analyzer", () => {
 			);
 			expect(result.valid).toBe(true);
 			expect(result.outputSchema).toEqual({
-				oneOf: [{ type: "number" }, { type: "integer" }],
+				oneOf: [{ type: "number" }, { type: ["integer", "null"] }],
 			});
 		});
 
-		test("#with as single block → body type", () => {
+		test("#with as single block → body type (optional inner prop)", () => {
 			const result = analyze("{{#with address}}{{city}}{{/with}}", userSchema);
 			expect(result.valid).toBe(true);
-			expect(result.outputSchema).toEqual({ type: "string" });
+			expect(result.outputSchema).toEqual({ type: ["string", "null"] });
 		});
 
 		test("#each as single block → always string", () => {
@@ -460,10 +464,11 @@ describe("analyzer", () => {
 			},
 		};
 
-		test("resolves a property access via $ref", () => {
+		test("resolves a property access via $ref (optional) → nullable", () => {
 			const result = analyze("{{home.city}}", schemaWithRef);
 			expect(result.valid).toBe(true);
-			expect(result.outputSchema).toEqual({ type: "string" });
+			// home is optional (no required) → nullable
+			expect(result.outputSchema).toEqual({ type: ["string", "null"] });
 		});
 
 		test("mixed template with multiple $ref accesses", () => {
@@ -478,18 +483,19 @@ describe("analyzer", () => {
 	});
 
 	describe("validation — intrinsic array properties", () => {
-		test(".length access on an array is valid", () => {
+		test(".length access on an array is valid (optional parent)", () => {
 			const result = analyze("{{tags.length}}", userSchema);
 			expect(result.valid).toBe(true);
 			expect(result.diagnostics).toHaveLength(0);
-			expect(result.outputSchema).toEqual({ type: "integer" });
+			// tags is optional → nullable
+			expect(result.outputSchema).toEqual({ type: ["integer", "null"] });
 		});
 
-		test(".length access on an array of objects is valid", () => {
+		test(".length access on an array of objects is valid (optional parent)", () => {
 			const result = analyze("{{orders.length}}", userSchema);
 			expect(result.valid).toBe(true);
 			expect(result.diagnostics).toHaveLength(0);
-			expect(result.outputSchema).toEqual({ type: "integer" });
+			expect(result.outputSchema).toEqual({ type: ["integer", "null"] });
 		});
 
 		test(".length access in a mixed template → string", () => {
@@ -526,26 +532,26 @@ describe("analyzer", () => {
 	});
 
 	describe("validation — numeric array index access", () => {
-		test("[0] on a string array is valid → { type: 'string' }", () => {
+		test("[0] on a string array is valid (optional parent) → nullable", () => {
 			const result = analyze("{{tags.[0]}}", userSchema);
 			expect(result.valid).toBe(true);
 			expect(result.diagnostics).toHaveLength(0);
-			expect(result.outputSchema).toEqual({ type: "string" });
+			expect(result.outputSchema).toEqual({ type: ["string", "null"] });
 		});
 
-		test("[1] on a string array is valid → { type: 'string' }", () => {
+		test("[1] on a string array is valid (optional parent) → nullable", () => {
 			const result = analyze("{{tags.[1]}}", userSchema);
 			expect(result.valid).toBe(true);
 			expect(result.diagnostics).toHaveLength(0);
-			expect(result.outputSchema).toEqual({ type: "string" });
+			expect(result.outputSchema).toEqual({ type: ["string", "null"] });
 		});
 
-		test("[0] on an array of objects → object schema", () => {
+		test("[0] on an array of objects (optional parent) → nullable object schema", () => {
 			const result = analyze("{{orders.[0]}}", userSchema);
 			expect(result.valid).toBe(true);
 			expect(result.diagnostics).toHaveLength(0);
 			expect(result.outputSchema).toEqual({
-				type: "object",
+				type: ["object", "null"],
 				properties: {
 					id: { type: "number" },
 					product: { type: "string" },
@@ -554,18 +560,18 @@ describe("analyzer", () => {
 			});
 		});
 
-		test("nested property after index: orders.[0].product → { type: 'string' }", () => {
+		test("nested property after index: orders.[0].product (optional parent) → nullable", () => {
 			const result = analyze("{{orders.[0].product}}", userSchema);
 			expect(result.valid).toBe(true);
 			expect(result.diagnostics).toHaveLength(0);
-			expect(result.outputSchema).toEqual({ type: "string" });
+			expect(result.outputSchema).toEqual({ type: ["string", "null"] });
 		});
 
-		test("nested property after index: orders.[0].quantity → { type: 'integer' }", () => {
+		test("nested property after index: orders.[0].quantity (optional parent) → nullable", () => {
 			const result = analyze("{{orders.[0].quantity}}", userSchema);
 			expect(result.valid).toBe(true);
 			expect(result.diagnostics).toHaveLength(0);
-			expect(result.outputSchema).toEqual({ type: "integer" });
+			expect(result.outputSchema).toEqual({ type: ["integer", "null"] });
 		});
 
 		test("[0] in mixed template → string output", () => {
@@ -591,17 +597,18 @@ describe("analyzer", () => {
 			expect(result.diagnostics[0]?.code).toBe("UNKNOWN_PROPERTY");
 		});
 
-		test("nested [0] via #with on metadata.permissions", () => {
+		test("nested [0] via #with on metadata.permissions (optional)", () => {
 			const result = analyze(
 				"{{#with metadata}}{{permissions.[0]}}{{/with}}",
 				userSchema,
 			);
 			expect(result.valid).toBe(true);
 			expect(result.diagnostics).toHaveLength(0);
-			expect(result.outputSchema).toEqual({ type: "string" });
+			// permissions is optional in metadata schema → nullable
+			expect(result.outputSchema).toEqual({ type: ["string", "null"] });
 		});
 
-		test("[0] with custom schema — array with $ref items", () => {
+		test("[0] with custom schema — array with $ref items (optional)", () => {
 			const schema: JSONSchema7 = {
 				type: "object",
 				definitions: {
@@ -617,10 +624,11 @@ describe("analyzer", () => {
 			const result = analyze("{{tags.[0]}}", schema);
 			expect(result.valid).toBe(true);
 			expect(result.diagnostics).toHaveLength(0);
-			expect(result.outputSchema).toEqual({ type: "string" });
+			// tags is optional → nullable
+			expect(result.outputSchema).toEqual({ type: ["string", "null"] });
 		});
 
-		test("[0] with tuple items schema — resolves correct index type", () => {
+		test("[0] with tuple items schema (optional) → resolves correct index type with null", () => {
 			const schema: JSONSchema7 = {
 				type: "object",
 				properties: {
@@ -632,11 +640,12 @@ describe("analyzer", () => {
 			};
 			const r0 = analyze("{{pair.[0]}}", schema);
 			expect(r0.valid).toBe(true);
-			expect(r0.outputSchema).toEqual({ type: "string" });
+			// pair is optional → nullable
+			expect(r0.outputSchema).toEqual({ type: ["string", "null"] });
 
 			const r1 = analyze("{{pair.[1]}}", schema);
 			expect(r1.valid).toBe(true);
-			expect(r1.outputSchema).toEqual({ type: "number" });
+			expect(r1.outputSchema).toEqual({ type: ["number", "null"] });
 		});
 	});
 
@@ -652,13 +661,16 @@ describe("analyzer", () => {
 			});
 		});
 
-		test("two #if blocks with same type → single type", () => {
+		test("two #if blocks — required string and optional string → oneOf", () => {
 			const result = analyze(
 				"{{#if active}}{{name}}{{/if}}\n{{#if active}}{{address.city}}{{/if}}",
 				userSchema,
 			);
 			expect(result.valid).toBe(true);
-			expect(result.outputSchema).toEqual({ type: "string" });
+			// name is required (string), address.city is optional (string|null) → distinct
+			expect(result.outputSchema).toEqual({
+				oneOf: [{ type: "string" }, { type: ["string", "null"] }],
+			});
 		});
 
 		test("two #if blocks with surrounding whitespace → oneOf", () => {
@@ -672,26 +684,35 @@ describe("analyzer", () => {
 			});
 		});
 
-		test("three #if blocks with three different types → oneOf with all types", () => {
+		test("three #if blocks with three different types (some optional) → oneOf with all types", () => {
 			const result = analyze(
 				"{{#if active}}{{name}}{{/if}}\n{{#if active}}{{age}}{{/if}}\n{{#if active}}{{active}}{{/if}}",
 				userSchema,
 			);
 			expect(result.valid).toBe(true);
+			// active is optional → boolean|null
 			expect(result.outputSchema).toEqual({
-				oneOf: [{ type: "string" }, { type: "number" }, { type: "boolean" }],
+				oneOf: [
+					{ type: "string" },
+					{ type: "number" },
+					{ type: ["boolean", "null"] },
+				],
 			});
 		});
 
-		test("three #if blocks with duplicate types → deduplicated oneOf", () => {
+		test("three #if blocks with duplicate types (one optional) → oneOf", () => {
 			const result = analyze(
 				"{{#if active}}{{name}}{{/if}}\n{{#if active}}{{age}}{{/if}}\n{{#if active}}{{address.city}}{{/if}}",
 				userSchema,
 			);
 			expect(result.valid).toBe(true);
-			// name and address.city are both string → deduplicated
+			// name is string, address.city is string|null → distinct, not deduplicated
 			expect(result.outputSchema).toEqual({
-				oneOf: [{ type: "string" }, { type: "number" }],
+				oneOf: [
+					{ type: "string" },
+					{ type: "number" },
+					{ type: ["string", "null"] },
+				],
 			});
 		});
 
@@ -721,10 +742,10 @@ describe("analyzer", () => {
 				userSchema,
 			);
 			expect(result.valid).toBe(true);
-			// first block: oneOf(number, integer), second block: string
+			// first block: oneOf(number, integer|null), second block: string
 			expect(result.outputSchema).toEqual({
 				oneOf: [
-					{ oneOf: [{ type: "number" }, { type: "integer" }] },
+					{ oneOf: [{ type: "number" }, { type: ["integer", "null"] }] },
 					{ type: "string" },
 				],
 			});
@@ -738,6 +759,368 @@ describe("analyzer", () => {
 			expect(result.valid).toBe(false);
 			expect(result.diagnostics).toHaveLength(1);
 			expect(result.diagnostics[0]?.code).toBe("UNKNOWN_PROPERTY");
+		});
+	});
+
+	// ─── Optional property → nullable output schema ──────────────────────────
+	describe("nullable output schema for optional properties", () => {
+		const schemaWithRequired: JSONSchema7 = {
+			type: "object",
+			properties: {
+				reqStr: { type: "string" },
+				optStr: { type: "string" },
+				optNum: { type: "number" },
+				nested: {
+					type: "object",
+					properties: {
+						inner: { type: "string" },
+					},
+					required: ["inner"],
+				},
+			},
+			required: ["reqStr", "nested"],
+		};
+
+		test("required property → no null in output schema", () => {
+			const result = analyze("{{reqStr}}", schemaWithRequired);
+			expect(result.valid).toBe(true);
+			expect(result.outputSchema).toEqual({ type: "string" });
+		});
+
+		test("optional property → null added to output schema", () => {
+			const result = analyze("{{optStr}}", schemaWithRequired);
+			expect(result.valid).toBe(true);
+			expect(result.outputSchema).toEqual({ type: ["string", "null"] });
+		});
+
+		test("optional number property → nullable number", () => {
+			const result = analyze("{{optNum}}", schemaWithRequired);
+			expect(result.valid).toBe(true);
+			expect(result.outputSchema).toEqual({ type: ["number", "null"] });
+		});
+
+		test("required nested path (all segments required) → no null", () => {
+			const result = analyze("{{nested.inner}}", schemaWithRequired);
+			expect(result.valid).toBe(true);
+			expect(result.outputSchema).toEqual({ type: "string" });
+		});
+
+		test("path with optional intermediate segment → nullable", () => {
+			const schema: JSONSchema7 = {
+				type: "object",
+				properties: {
+					user: {
+						type: "object",
+						properties: {
+							name: { type: "string" },
+						},
+						required: ["name"],
+					},
+				},
+				// user is NOT required
+			};
+			const result = analyze("{{user.name}}", schema);
+			expect(result.valid).toBe(true);
+			// user is optional → entire path is nullable
+			expect(result.outputSchema).toEqual({ type: ["string", "null"] });
+		});
+
+		test("mixed template with optional property → always string (no null)", () => {
+			const result = analyze("Hello {{optStr}}", schemaWithRequired);
+			expect(result.valid).toBe(true);
+			expect(result.outputSchema).toEqual({ type: "string" });
+		});
+
+		test("$root → never nullable", () => {
+			const result = analyze("{{$root}}", { type: "string" });
+			expect(result.valid).toBe(true);
+			expect(result.outputSchema).toEqual({ type: "string" });
+		});
+
+		test("array element with optional property → nullable items", () => {
+			const result = analyze(["{{optStr}}"], schemaWithRequired);
+			expect(result.valid).toBe(true);
+			expect(result.outputSchema).toEqual({
+				type: "array",
+				items: { type: ["string", "null"] },
+				minItems: 1,
+				maxItems: 1,
+			});
+		});
+
+		test("object property with optional expression → nullable value", () => {
+			const result = analyze({ key: "{{optStr}}" }, schemaWithRequired);
+			expect(result.valid).toBe(true);
+			expect(result.outputSchema).toEqual({
+				type: "object",
+				properties: {
+					key: { type: ["string", "null"] },
+				},
+				required: ["key"],
+			});
+		});
+
+		// ── Deeply nested paths ──────────────────────────────────────────
+
+		test("deeply nested path — first segment optional → nullable", () => {
+			const schema: JSONSchema7 = {
+				type: "object",
+				properties: {
+					a: {
+						type: "object",
+						properties: {
+							b: {
+								type: "object",
+								properties: {
+									c: {
+										type: "object",
+										properties: { d: { type: "string" } },
+										required: ["d"],
+									},
+								},
+								required: ["c"],
+							},
+						},
+						required: ["b"],
+					},
+				},
+				// a is NOT required
+			};
+			const result = analyze("{{a.b.c.d}}", schema);
+			expect(result.valid).toBe(true);
+			expect(result.outputSchema).toEqual({ type: ["string", "null"] });
+		});
+
+		test("deeply nested path — all segments required → no null", () => {
+			const schema: JSONSchema7 = {
+				type: "object",
+				properties: {
+					a: {
+						type: "object",
+						properties: {
+							b: {
+								type: "object",
+								properties: {
+									c: {
+										type: "object",
+										properties: { d: { type: "string" } },
+										required: ["d"],
+									},
+								},
+								required: ["c"],
+							},
+						},
+						required: ["b"],
+					},
+				},
+				required: ["a"],
+			};
+			const result = analyze("{{a.b.c.d}}", schema);
+			expect(result.valid).toBe(true);
+			expect(result.outputSchema).toEqual({ type: "string" });
+		});
+
+		test("deeply nested path — middle segment optional → nullable", () => {
+			const schema: JSONSchema7 = {
+				type: "object",
+				properties: {
+					a: {
+						type: "object",
+						properties: {
+							b: {
+								type: "object",
+								properties: {
+									c: {
+										type: "object",
+										properties: { d: { type: "string" } },
+										required: ["d"],
+									},
+								},
+								// c is NOT required in b
+							},
+						},
+						required: ["b"],
+					},
+				},
+				required: ["a"],
+			};
+			const result = analyze("{{a.b.c.d}}", schema);
+			expect(result.valid).toBe(true);
+			// c is optional → entire path is nullable
+			expect(result.outputSchema).toEqual({ type: ["string", "null"] });
+		});
+
+		test("5 levels deep — only leaf optional → nullable", () => {
+			const schema: JSONSchema7 = {
+				type: "object",
+				properties: {
+					l1: {
+						type: "object",
+						properties: {
+							l2: {
+								type: "object",
+								properties: {
+									l3: {
+										type: "object",
+										properties: {
+											l4: {
+												type: "object",
+												properties: {
+													value: { type: "number" },
+												},
+												// value NOT required
+											},
+										},
+										required: ["l4"],
+									},
+								},
+								required: ["l3"],
+							},
+						},
+						required: ["l2"],
+					},
+				},
+				required: ["l1"],
+			};
+			const result = analyze("{{l1.l2.l3.l4.value}}", schema);
+			expect(result.valid).toBe(true);
+			expect(result.outputSchema).toEqual({ type: ["number", "null"] });
+		});
+
+		// ── Deeply nested template inputs ────────────────────────────────
+
+		test("nested object template — optional and required at each level", () => {
+			const schema: JSONSchema7 = {
+				type: "object",
+				properties: {
+					reqStr: { type: "string" },
+					optStr: { type: "string" },
+				},
+				required: ["reqStr"],
+			};
+			const result = analyze(
+				{
+					level1: {
+						level2: {
+							opt: "{{optStr}}",
+							req: "{{reqStr}}",
+						},
+					},
+				},
+				schema,
+			);
+			expect(result.valid).toBe(true);
+			expect(result.outputSchema).toEqual({
+				type: "object",
+				properties: {
+					level1: {
+						type: "object",
+						properties: {
+							level2: {
+								type: "object",
+								properties: {
+									opt: { type: ["string", "null"] },
+									req: { type: "string" },
+								},
+								required: ["opt", "req"],
+							},
+						},
+						required: ["level2"],
+					},
+				},
+				required: ["level1"],
+			});
+		});
+
+		test("array inside nested object template — optional items", () => {
+			const schema: JSONSchema7 = {
+				type: "object",
+				properties: {
+					reqStr: { type: "string" },
+					optStr: { type: "string" },
+				},
+				required: ["reqStr"],
+			};
+			const result = analyze(
+				{
+					data: {
+						ids: ["{{optStr}}", "{{reqStr}}"],
+					},
+				},
+				schema,
+			);
+			expect(result.valid).toBe(true);
+			expect(result.outputSchema).toEqual({
+				type: "object",
+				properties: {
+					data: {
+						type: "object",
+						properties: {
+							ids: {
+								type: "array",
+								items: {
+									oneOf: [{ type: ["string", "null"] }, { type: "string" }],
+								},
+								minItems: 2,
+								maxItems: 2,
+							},
+						},
+						required: ["ids"],
+					},
+				},
+				required: ["data"],
+			});
+		});
+
+		test("triple nested template — all expressions optional → all nullable", () => {
+			const schema: JSONSchema7 = {
+				type: "object",
+				properties: {
+					a: { type: "string" },
+					b: { type: "number" },
+				},
+				// nothing required
+			};
+			const result = analyze(
+				{
+					l1: {
+						l2: {
+							l3: {
+								strVal: "{{a}}",
+								numVal: "{{b}}",
+							},
+						},
+					},
+				},
+				schema,
+			);
+			expect(result.valid).toBe(true);
+			expect(result.outputSchema).toEqual({
+				type: "object",
+				properties: {
+					l1: {
+						type: "object",
+						properties: {
+							l2: {
+								type: "object",
+								properties: {
+									l3: {
+										type: "object",
+										properties: {
+											strVal: { type: ["string", "null"] },
+											numVal: { type: ["number", "null"] },
+										},
+										required: ["strVal", "numVal"],
+									},
+								},
+								required: ["l3"],
+							},
+						},
+						required: ["l2"],
+					},
+				},
+				required: ["l1"],
+			});
 		});
 	});
 
