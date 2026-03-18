@@ -1504,12 +1504,30 @@ function withNullType(schema: JSONSchema7): JSONSchema7 {
  * If any segment along the path is optional, the entire expression
  * can produce `null`/`undefined` at runtime.
  *
+ * Intrinsic array accesses (`.length`, `.[N]`) are always considered
+ * required — they are synthesized by the schema resolver and do not
+ * appear in any `required` array.
+ *
  * Example: for path `["user", "name"]`, checks both that `user` is
  * required in the root schema AND that `name` is required in `user`.
  */
 function isPathFullyRequired(schema: JSONSchema7, segments: string[]): boolean {
 	for (let i = 1; i <= segments.length; i++) {
-		if (!isPropertyRequired(schema, segments.slice(0, i))) return false;
+		if (!isPropertyRequired(schema, segments.slice(0, i))) {
+			// Intrinsic array access: .length and .[N] are always available
+			// on array schemas. They are not listed in `required` because
+			// they are synthesized by the schema resolver, not real properties.
+			if (i >= 2) {
+				const parentSchema = resolveSchemaPath(
+					schema,
+					segments.slice(0, i - 1),
+				);
+				if (parentSchema && parentSchema.type === "array") {
+					continue;
+				}
+			}
+			return false;
+		}
 	}
 	return true;
 }
