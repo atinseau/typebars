@@ -214,19 +214,30 @@ describe("array bounds (minItems / maxItems)", () => {
 			expect(branch2).toHaveProperty("maxItems", 2);
 		});
 
-		test("identical nested arrays → deduplicated with bounds", () => {
+		test("nested arrays (one optional) → oneOf with bounds", () => {
 			const result = engine.analyze(
 				[["{{name}}"], ["{{address.city}}"]],
 				userSchema,
 			);
 			expect(result.valid).toBe(true);
+			// name is required, address.city is optional → distinct nested arrays
 			expect(result.outputSchema).toEqual({
 				type: "array",
 				items: {
-					type: "array",
-					items: { type: "string" },
-					minItems: 1,
-					maxItems: 1,
+					oneOf: [
+						{
+							type: "array",
+							items: { type: "string" },
+							minItems: 1,
+							maxItems: 1,
+						},
+						{
+							type: "array",
+							items: { type: ["string", "null"] },
+							minItems: 1,
+							maxItems: 1,
+						},
+					],
 				},
 				minItems: 2,
 				maxItems: 2,
@@ -237,18 +248,21 @@ describe("array bounds (minItems / maxItems)", () => {
 	// ─── Array inside object ─────────────────────────────────────────────────
 
 	describe("array inside object", () => {
-		test("array property in object template → bounds on inner array", () => {
+		test("array property in object template (one optional) → oneOf items with bounds", () => {
 			const result = engine.analyze(
 				{ ids: ["{{name}}", "{{address.city}}"] },
 				userSchema,
 			);
 			expect(result.valid).toBe(true);
+			// name is required (string), address.city is optional (string|null)
 			expect(result.outputSchema).toEqual({
 				type: "object",
 				properties: {
 					ids: {
 						type: "array",
-						items: { type: "string" },
+						items: {
+							oneOf: [{ type: "string" }, { type: ["string", "null"] }],
+						},
 						minItems: 2,
 						maxItems: 2,
 					},

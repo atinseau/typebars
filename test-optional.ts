@@ -4,7 +4,7 @@ import { type TemplateInput, Typebars } from "./src";
 const tp = new Typebars();
 
 const params = {
-	accountIds: ["{{default accountDepartmentId accountId}}"],
+	accountIds: ["{{accountDepartmentId}}"],
 };
 
 const inputSchema = {
@@ -21,7 +21,7 @@ const inputSchema = {
 } as JSONSchema7;
 
 const result = tp.analyzeAndExecute(params as TemplateInput, inputSchema, {
-	accountDepartmentId: null,
+	accountDepartmentId: null, // optional property not provided
 	accountId: "salut",
 });
 

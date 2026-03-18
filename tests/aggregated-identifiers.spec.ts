@@ -43,6 +43,7 @@ const aggregatedSchema: JSONSchema7 = {
 			amount: { type: "number" },
 			active: { type: "boolean" },
 		},
+		required: ["accountId", "amount", "active"],
 	},
 };
 
@@ -53,6 +54,7 @@ const scalarSchema: JSONSchema7 = {
 		seqOutput: { type: "string" },
 		count: { type: "number" },
 	},
+	required: ["seqOutput", "count"],
 };
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -455,8 +457,10 @@ describe("Aggregated identifiers — analyze()", () => {
 							properties: {
 								city: { type: "string" },
 							},
+							required: ["city"],
 						},
 					},
+					required: ["info"],
 				},
 			};
 
@@ -488,18 +492,11 @@ describe("Aggregated identifiers — analyze()", () => {
 						properties: {
 							accountId: { type: "string" },
 						},
+						required: ["accountId"],
 					},
 				},
 			};
 
-			// For $ref resolution, the root schema used by the analyzer
-			// is the inputSchema (ctx.root). Since identifierSchemas are
-			// independent, we place the definitions where the resolver can
-			// find them. The analyzer's ctx.root is the inputSchema — but
-			// resolveSchemaPath in resolveWithIdentifier uses idSchema itself,
-			// so the $ref must be resolvable within the idSchema.
-			// resolveSchemaPath calls resolveRef which needs root — which is
-			// the inputSchema. So we pass the definitions in the inputSchema.
 			const inputSchema: JSONSchema7 = {
 				type: "object",
 				definitions: {
@@ -508,6 +505,7 @@ describe("Aggregated identifiers — analyze()", () => {
 						properties: {
 							accountId: { type: "string" },
 						},
+						required: ["accountId"],
 					},
 				},
 			};
@@ -947,6 +945,7 @@ describe("Aggregated identifiers — backward compatibility", () => {
 					1: {
 						type: "object",
 						properties: { meetingId: { type: "string" } },
+						required: ["meetingId"],
 					},
 				},
 			},
@@ -1042,6 +1041,7 @@ describe("Aggregated identifiers — workflow merge scenario", () => {
 			2: {
 				type: "object",
 				properties: { seqOutput: { type: "string" } },
+				required: ["seqOutput"],
 			},
 			4: {
 				type: "array",
@@ -1051,6 +1051,7 @@ describe("Aggregated identifiers — workflow merge scenario", () => {
 						accountId: { type: "string" },
 						processedId: { type: "string" },
 					},
+					required: ["accountId", "processedId"],
 				},
 			},
 		};
@@ -1107,6 +1108,7 @@ describe("Aggregated identifiers — workflow merge scenario", () => {
 						accountId: { type: "string" },
 						amount: { type: "number" },
 					},
+					required: ["accountId", "amount"],
 				},
 			},
 		};

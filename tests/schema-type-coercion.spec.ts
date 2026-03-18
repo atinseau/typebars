@@ -77,9 +77,20 @@ const complexSchema: JSONSchema7 = {
 				role: { type: "string" },
 				level: { type: "number" },
 			},
+			required: ["role", "level"],
 		},
 	},
-	required: ["name", "age"],
+	required: [
+		"name",
+		"age",
+		"active",
+		"score",
+		"accountId",
+		"balance",
+		"config",
+		"items",
+		"metadata",
+	],
 };
 
 const complexData: Record<string, unknown> = {
@@ -1643,6 +1654,7 @@ describe("schema-driven type coercion via coerceSchema", () => {
 					userName: { type: "string" },
 					userAge: { type: "number" },
 				},
+				required: ["userName", "userAge"],
 			};
 			const coerceSchema: JSONSchema7 = {
 				type: "object",
@@ -1676,6 +1688,7 @@ describe("schema-driven type coercion via coerceSchema", () => {
 				properties: {
 					name: { type: "string" },
 				},
+				required: ["name"],
 			};
 			const coerceSchema: JSONSchema7 = {
 				type: "object",

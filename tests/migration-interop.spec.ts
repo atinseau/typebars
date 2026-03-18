@@ -513,6 +513,7 @@ describe("Migration: compare → analyze() outputSchema inference", () => {
 			properties: {
 				accountId: { type: "string" },
 			},
+			required: ["accountId"],
 		};
 
 		const result = analyze("{{accountId}}", schema);
@@ -526,6 +527,7 @@ describe("Migration: compare → analyze() outputSchema inference", () => {
 			properties: {
 				age: { type: "number" },
 			},
+			required: ["age"],
 		};
 
 		const result = analyze("{{age}}", schema);
@@ -539,6 +541,7 @@ describe("Migration: compare → analyze() outputSchema inference", () => {
 			properties: {
 				active: { type: "boolean" },
 			},
+			required: ["active"],
 		};
 
 		const result = analyze("{{active}}", schema);
@@ -569,6 +572,7 @@ describe("Migration: compare → analyze() outputSchema inference", () => {
 					items: { type: "number" },
 				},
 			},
+			required: ["items"],
 		};
 
 		const result = analyze("{{items}}", schema);
@@ -585,6 +589,7 @@ describe("Migration: compare → analyze() outputSchema inference", () => {
 			properties: {
 				role: { type: "string", enum: ["admin", "user", "guest"] },
 			},
+			required: ["role"],
 		};
 
 		const result = analyze("{{role}}", schema);
@@ -749,14 +754,17 @@ describe("Migration: findTemplateSchemaFromPrevSchemas → JSON Schema resolutio
 					properties: {
 						someKey: { type: "string" },
 					},
+					required: ["someKey"],
 				},
 				node_2: {
 					type: "object",
 					properties: {
 						someKey: { type: "boolean" },
 					},
+					required: ["someKey"],
 				},
 			},
+			required: ["node_1", "node_2"],
 		};
 
 		{
@@ -961,6 +969,7 @@ describe("Bonus: New features not available in old system", () => {
 			properties: {
 				age: { type: "number" },
 			},
+			required: ["age"],
 		};
 
 		const result = analyze("{{age}}", schema);
@@ -976,11 +985,13 @@ describe("Bonus: New features not available in old system", () => {
 					properties: {
 						city: { type: "string" },
 					},
+					required: ["city"],
 				},
 			},
 			properties: {
 				home: { $ref: "#/definitions/Address" },
 			},
+			required: ["home"],
 		};
 
 		const result = analyze("{{home.city}}", schema);
