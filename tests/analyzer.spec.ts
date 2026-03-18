@@ -1122,6 +1122,60 @@ describe("analyzer", () => {
 				required: ["l1"],
 			});
 		});
+
+		// ── Intrinsic array access (.length, .[N]) ───────────────────────
+
+		test(".length on required array → integer (not nullable)", () => {
+			const schema: JSONSchema7 = {
+				type: "object",
+				properties: {
+					items: { type: "array", items: { type: "string" } },
+				},
+				required: ["items"],
+			};
+			const result = analyze("{{items.length}}", schema);
+			expect(result.valid).toBe(true);
+			expect(result.outputSchema).toEqual({ type: "integer" });
+		});
+
+		test(".[0] on required array → element type (not nullable)", () => {
+			const schema: JSONSchema7 = {
+				type: "object",
+				properties: {
+					items: { type: "array", items: { type: "number" } },
+				},
+				required: ["items"],
+			};
+			const result = analyze("{{items.[0]}}", schema);
+			expect(result.valid).toBe(true);
+			expect(result.outputSchema).toEqual({ type: "number" });
+		});
+
+		test(".length on optional array → nullable integer", () => {
+			const schema: JSONSchema7 = {
+				type: "object",
+				properties: {
+					items: { type: "array", items: { type: "string" } },
+				},
+				// items is NOT required
+			};
+			const result = analyze("{{items.length}}", schema);
+			expect(result.valid).toBe(true);
+			expect(result.outputSchema).toEqual({ type: ["integer", "null"] });
+		});
+
+		test(".[0] on optional array → nullable element type", () => {
+			const schema: JSONSchema7 = {
+				type: "object",
+				properties: {
+					items: { type: "array", items: { type: "number" } },
+				},
+				// items is NOT required
+			};
+			const result = analyze("{{items.[0]}}", schema);
+			expect(result.valid).toBe(true);
+			expect(result.outputSchema).toEqual({ type: ["number", "null"] });
+		});
 	});
 
 	describe("diagnostics include a position (loc)", () => {
