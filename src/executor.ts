@@ -2,6 +2,7 @@ import Handlebars from "handlebars";
 import type { JSONSchema7 } from "json-schema";
 import { dispatchExecute } from "./dispatch.ts";
 import { TemplateRuntimeError } from "./errors.ts";
+import { ArrayHelpers } from "./helpers/array-helpers.ts";
 import { DefaultHelpers } from "./helpers/default-helpers.ts";
 import { MapHelpers } from "./helpers/map-helpers.ts";
 import {
@@ -676,6 +677,7 @@ function tryDirectBlockExecution(
 
 /** Set of helper names that must be executed directly (bypass Handlebars) */
 const DIRECT_EXECUTION_HELPERS = new Set<string>([
+	ArrayHelpers.ARRAY_HELPER_NAME,
 	DefaultHelpers.DEFAULT_HELPER_NAME,
 	MapHelpers.MAP_HELPER_NAME,
 ]);
