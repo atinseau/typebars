@@ -364,6 +364,64 @@ describe("analyzer", () => {
 		});
 	});
 
+	describe("validation — @data variables in #each", () => {
+		test("@index does not produce validation errors", () => {
+			const result = analyze(
+				"{{#each tags}}{{@index}}: {{this}} {{/each}}",
+				userSchema,
+			);
+			expect(result.valid).toBe(true);
+			expect(result.diagnostics).toHaveLength(0);
+		});
+
+		test("@first does not produce validation errors", () => {
+			const result = analyze(
+				"{{#each tags}}{{#if @first}}[FIRST] {{/if}}{{this}}{{/each}}",
+				userSchema,
+			);
+			expect(result.valid).toBe(true);
+			expect(result.diagnostics).toHaveLength(0);
+		});
+
+		test("@last does not produce validation errors", () => {
+			const result = analyze(
+				"{{#each tags}}{{this}}{{#unless @last}}, {{/unless}}{{/each}}",
+				userSchema,
+			);
+			expect(result.valid).toBe(true);
+			expect(result.diagnostics).toHaveLength(0);
+		});
+
+		test("@key does not produce validation errors", () => {
+			const result = analyze(
+				"{{#each tags}}{{@key}}={{this}} {{/each}}",
+				userSchema,
+			);
+			expect(result.valid).toBe(true);
+			expect(result.diagnostics).toHaveLength(0);
+		});
+
+		test("@index infers number type in output schema", () => {
+			const result = analyze("{{#each tags}}{{@index}}{{/each}}", userSchema);
+			expect(result.valid).toBe(true);
+			expect(result.outputSchema).toEqual({ type: "string" });
+		});
+
+		test("@data variables work alongside regular properties", () => {
+			const result = analyze(
+				"{{#each orders}}{{@index}}: {{product}} (x{{quantity}}){{/each}}",
+				userSchema,
+			);
+			expect(result.valid).toBe(true);
+			expect(result.diagnostics).toHaveLength(0);
+		});
+
+		test("unknown @data variable does not cause errors", () => {
+			const result = analyze("{{#each tags}}{{@level}}{{/each}}", userSchema);
+			expect(result.valid).toBe(true);
+		});
+	});
+
 	describe("validation — #with block", () => {
 		test("#with on a valid object — correct inner access", () => {
 			const result = analyze("{{#with address}}{{city}}{{/with}}", userSchema);

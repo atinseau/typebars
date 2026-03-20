@@ -17,6 +17,7 @@ import {
 	getEffectiveBody,
 	getEffectivelySingleBlock,
 	getEffectivelySingleExpression,
+	isDataExpression,
 	isRootPathTraversal,
 	isRootSegments,
 	isThisExpression,
@@ -467,6 +468,12 @@ function processMustache(
 
 	// ── Simple expression ────────────────────────────────────────────────────
 	const resolved = resolveExpressionWithDiagnostics(stmt.path, ctx, stmt) ?? {};
+
+	// @data variables (@index, @first, @last, @key) are runtime-provided —
+	// optionality checks against the input schema do not apply.
+	if (isDataExpression(stmt.path)) {
+		return resolved;
+	}
 
 	// When the expression points to an optional property (not in `required`),
 	// the output can be null at runtime. Wrap the resolved schema with null
@@ -1215,6 +1222,34 @@ function inferBlockType(
  *
  * @returns The resolved sub-schema, or `undefined` if the path is invalid.
  */
+
+// ─── @data variable types ────────────────────────────────────────────────────
+// Handlebars injects these variables inside block helpers at runtime.
+// We map each known variable to its static type so the analyzer can
+// validate templates that use them without false UNKNOWN_PROPERTY errors.
+
+const DATA_VARIABLE_SCHEMAS: Record<string, JSONSchema7> = {
+	index: { type: "number" },
+	first: { type: "boolean" },
+	last: { type: "boolean" },
+	key: { type: "string" },
+};
+
+/**
+ * Returns the inferred schema for a Handlebars `@data` variable.
+ * Known variables (`@index`, `@first`, `@last`, `@key`) return their
+ * concrete type; unknown `@data` variables return the open schema `{}`
+ * (any type) to avoid blocking valid templates.
+ */
+function resolveDataExpression(expr: hbs.AST.PathExpression): JSONSchema7 {
+	const name = expr.parts[0];
+	if (name && name in DATA_VARIABLE_SCHEMAS) {
+		return DATA_VARIABLE_SCHEMAS[name] as JSONSchema7;
+	}
+	// Unknown @data variable — return open schema (best-effort)
+	return {};
+}
+
 function resolveExpressionWithDiagnostics(
 	expr: hbs.AST.Expression,
 	ctx: AnalysisContext,
@@ -1224,6 +1259,14 @@ function resolveExpressionWithDiagnostics(
 	// Handle `this` / `.` → return the current context
 	if (isThisExpression(expr)) {
 		return ctx.current;
+	}
+
+	// ── Handlebars @data variables (@index, @first, @last, @key) ────────────
+	// These are runtime-provided by Handlebars inside block helpers (e.g.
+	// `#each`). They are NOT part of the user's input schema, so we must
+	// short-circuit here to avoid false UNKNOWN_PROPERTY diagnostics.
+	if (isDataExpression(expr)) {
+		return resolveDataExpression(expr as hbs.AST.PathExpression);
 	}
 
 	// ── SubExpression (nested helper call, e.g. `(lt account.balance 500)`) ──
