@@ -8,6 +8,7 @@ import {
 	createUnanalyzableMessage,
 	createUnknownHelperMessage,
 } from "./errors";
+import { ArrayHelpers } from "./helpers/array-helpers.ts";
 import { DefaultHelpers } from "./helpers/default-helpers.ts";
 import { MapHelpers } from "./helpers/map-helpers.ts";
 import {
@@ -394,6 +395,13 @@ function processMustache(
 		// terminate with a guaranteed (non-optional) value.
 		if (helperName === DefaultHelpers.DEFAULT_HELPER_NAME) {
 			return processDefaultHelper(stmt, ctx);
+		}
+
+		// ── Special-case: array helper ───────────────────────────────────
+		// The `array` helper constructs an array from its arguments. The
+		// return type is `{ type: "array", items: <union of arg types> }`.
+		if (helperName === ArrayHelpers.ARRAY_HELPER_NAME) {
+			return processArrayHelper(stmt, ctx);
 		}
 
 		// Check if the helper is registered
@@ -868,6 +876,85 @@ function isGuaranteedExpression(
 	}
 
 	return false;
+}
+
+// ─── Array Helper Analysis ──────────────────────────────────────────────────
+
+function processArrayHelper(
+	stmt: hbs.AST.MustacheStatement,
+	ctx: AnalysisContext,
+): JSONSchema7 {
+	return analyzeArrayArgs(stmt.params as hbs.AST.Expression[], ctx, stmt);
+}
+
+function processArraySubExpression(
+	expr: hbs.AST.SubExpression,
+	ctx: AnalysisContext,
+	parentNode?: hbs.AST.Node,
+): JSONSchema7 {
+	return analyzeArrayArgs(
+		expr.params as hbs.AST.Expression[],
+		ctx,
+		parentNode ?? expr,
+	);
+}
+
+/**
+ * Core analysis logic for the `array` helper (shared by Mustache and
+ * SubExpression paths).
+ *
+ * 1. Validates argument count (≥ 1)
+ * 2. Resolves the schema of each argument
+ * 3. Returns `{ type: "array", items: <union of arg types> }`
+ *
+ * Unlike `default`, there is no type compatibility check between arguments:
+ * `{{array name count}}` is valid and produces `(string | number)[]`.
+ */
+function analyzeArrayArgs(
+	params: hbs.AST.Expression[],
+	ctx: AnalysisContext,
+	node: hbs.AST.Node,
+): JSONSchema7 {
+	const helperName = ArrayHelpers.ARRAY_HELPER_NAME;
+
+	// ── 1. Check argument count ──────────────────────────────────────────
+	if (params.length < 1) {
+		addDiagnostic(
+			ctx,
+			"MISSING_ARGUMENT",
+			"error",
+			`Helper "${helperName}" expects at least 1 argument(s), but got 0`,
+			node,
+			{
+				helperName,
+				expected: "1 argument(s)",
+				actual: "0 argument(s)",
+			},
+		);
+		return { type: "array" };
+	}
+
+	// ── 2. Resolve the schema of each argument ───────────────────────────
+	const resolvedSchemas: JSONSchema7[] = [];
+
+	for (let i = 0; i < params.length; i++) {
+		const param = params[i] as hbs.AST.Expression;
+		const resolvedSchema = resolveExpressionWithDiagnostics(param, ctx, node);
+
+		if (resolvedSchema) {
+			resolvedSchemas.push(resolvedSchema);
+		}
+	}
+
+	// ── 3. Build output schema ───────────────────────────────────────────
+	if (resolvedSchemas.length === 0) return { type: "array" };
+
+	const itemSchema =
+		resolvedSchemas.length === 1
+			? (resolvedSchemas[0] as JSONSchema7)
+			: simplifySchema({ oneOf: resolvedSchemas });
+
+	return { type: "array", items: itemSchema };
 }
 
 /**
@@ -1619,6 +1706,11 @@ function resolveSubExpression(
 	// ── Special-case: default helper ─────────────────────────────────
 	if (helperName === DefaultHelpers.DEFAULT_HELPER_NAME) {
 		return processDefaultSubExpression(expr, ctx, parentNode);
+	}
+
+	// ── Special-case: array helper ───────────────────────────────────
+	if (helperName === ArrayHelpers.ARRAY_HELPER_NAME) {
+		return processArraySubExpression(expr, ctx, parentNode);
 	}
 
 	const helper = ctx.helpers?.get(helperName);

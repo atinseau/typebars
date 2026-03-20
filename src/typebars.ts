@@ -14,6 +14,7 @@ import {
 import { TemplateAnalysisError } from "./errors.ts";
 import { executeFromAst } from "./executor.ts";
 import {
+	ArrayHelpers,
 	DefaultHelpers,
 	LogicalHelpers,
 	MapHelpers,
@@ -66,6 +67,7 @@ import { LRUCache } from "./utils";
 // In single-expression mode the executor bypasses Handlebars entirely, so the
 // raw value is preserved.
 const DIRECT_EXECUTION_HELPER_NAMES = new Set<string>([
+	ArrayHelpers.ARRAY_HELPER_NAME,
 	MapHelpers.MAP_HELPER_NAME,
 ]);
 
@@ -115,6 +117,7 @@ export class Typebars {
 		this.compilationCache = new LRUCache(options.compilationCacheSize ?? 256);
 
 		// ── Built-in helpers ─────────────────────────────────────────────
+		new ArrayHelpers().register(this);
 		new MathHelpers().register(this);
 		new LogicalHelpers().register(this);
 		new MapHelpers().register(this);
