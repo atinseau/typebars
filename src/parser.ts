@@ -106,6 +106,18 @@ export function isThisExpression(expr: hbs.AST.Expression): boolean {
 }
 
 /**
+ * Checks whether an AST expression is a Handlebars `@data` variable
+ * (e.g. `@index`, `@first`, `@last`, `@key`).
+ *
+ * These variables are injected by Handlebars at runtime inside block helpers
+ * and are not part of the user-provided input schema.
+ */
+export function isDataExpression(expr: hbs.AST.Expression): boolean {
+	if (expr.type !== "PathExpression") return false;
+	return (expr as hbs.AST.PathExpression).data === true;
+}
+
+/**
  * Checks whether an AST expression is a `PathExpression` whose first
  * segment is the `$root` token.
  *
